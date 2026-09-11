@@ -63,16 +63,3 @@ hover previews, menus, and database interactions.
 
 `.qmd` rendering needs Quarto and a Python with the packages in the vault's
 `requirements.txt` (`pip install -r ../vault/requirements.txt`).
-
-## Deployment
-
-`.github/workflows/deploy.yml` runs on pushes to `main`, on the `vault-updated` dispatch sent
-by the vault repository, manually, and once a day. It checks out the vault, renders, builds,
-and deploys with `actions/deploy-pages`. GitHub Pages must be set to "GitHub Actions" as its
-source. `preview.yml` builds pull requests and uploads the site as an artifact.
-
-## Upstream
-
-Quartz is vendored at commit `f1fba3fc55cbf60a60a5d09c95a49c042cdab63a` (branch `v5`,
-2026-09-06). To upgrade, merge the upstream branch and re-check `JqiFrame.tsx`,
-`frames/index.ts`, `custom.scss`, and `quartz.config.yaml`.

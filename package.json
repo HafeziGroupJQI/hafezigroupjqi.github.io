@@ -21,8 +21,10 @@
     "prebuild": "npm run install-plugins",
     "render-qmd": "node tools/render-qmd.mjs",
     "sync-theme": "node tools/sync-theme.mjs",
-    "build": "node tools/render-qmd.mjs && npx quartz build && node tools/clean-qmd.mjs",
-    "serve": "npx quartz build --serve",
+    "build": "node tools/build-site.mjs",
+    "serve": "node tools/build-site.mjs --serve",
+    "test:site": "node --test tools/site-model.test.mjs",
+    "compare:site": "node tools/compare-site.mjs",
     "clean-qmd": "node tools/clean-qmd.mjs"
   },
   "engines": {

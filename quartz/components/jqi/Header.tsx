@@ -22,8 +22,8 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
     <header class="site-header">
       <div class="site-header__inner">
         <div class="site-header__logo">
-          <a class="responsive-img" style="padding-top:17.05426356589147%" href={resolveRelative(slug, "index" as FullSlug)}>
-            <img src={joinSegments(root, "static/theme/logo_hafezi.svg")} alt="Joint Quantum Institute Research - Hafezi Group" loading="lazy" />
+          <a href={resolveRelative(slug, "index" as FullSlug)}>
+            <img src={joinSegments(root, "static/theme/logo_hafezi.svg")} alt="Joint Quantum Institute Research - Hafezi Group" width="350" height="60" />
           </a>
         </div>
         <div class="site-header__mobile-controls">
@@ -41,7 +41,7 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
             </span>
           </button>
         </div>
-        <nav class="site-header__nav" aria-label="Main" aria-hidden="true">
+        <nav class="site-header__nav" aria-label="Main" aria-hidden="false">
           <ul>
             {mainNav.map((item) => (
               <li>

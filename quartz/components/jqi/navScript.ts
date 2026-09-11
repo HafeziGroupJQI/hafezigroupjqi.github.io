@@ -5,7 +5,7 @@ export const navScript = `(function () {
   try { if (sessionStorage.getItem("explorerScrollTop") === null) sessionStorage.setItem("explorerScrollTop", "0"); } catch (e) {}
   if (window.__jqiNavBound) return;
   window.__jqiNavBound = true;
-  var desktop = window.matchMedia("(min-width: 1000px)");
+  var desktop = window.matchMedia("(min-width: 1200px)");
   function sync() {
     var nav = document.querySelector(".site-header__nav");
     var toggle = document.querySelector("[data-jqi-nav-toggle]");
@@ -24,7 +24,11 @@ export const navScript = `(function () {
     }
   });
   desktop.addEventListener("change", sync);
-  document.addEventListener("nav", sync);
+  document.addEventListener("nav", function () {
+    var toggle = document.querySelector("[data-jqi-nav-toggle]");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+    sync();
+  });
   sync();
 })();
 `

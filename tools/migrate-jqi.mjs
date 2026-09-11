@@ -107,9 +107,9 @@ if (ONLY.includes("people")) {
     if (!page) continue
     const slug = slugify(page.name)
     const file = `people/${slug}.md`
-    const [group, roleTag] = peopleGroup.get(u) ?? (old.group ? [old.group, "role/" + { "Group Leads": "lead", "Postdoctoral Researchers": "postdoc", "Graduate Students": "grad", "Undergraduate Students": "undergrad" }[old.group]] : ["Alumni", "role/alumni"])
     const existing = fs.existsSync(path.join(CONTENT, file)) ? fs.readFileSync(path.join(CONTENT, file), "utf8") : null
     const old = existing?.match(/^---\n([\s\S]*?)\n---\n/) ? yaml.parse(existing.match(/^---\n([\s\S]*?)\n---\n/)[1]) : {}
+    const [group, roleTag] = peopleGroup.get(u) ?? (old.group ? [old.group, "role/" + ({ "Group Leads": "lead", "Postdoctoral Researchers": "postdoc", "Graduate Students": "grad", "Undergraduate Students": "undergrad", "High School Students": "highschool", "Alumni": "alumni" }[old.group] ?? "member")] : ["Alumni", "role/alumni"])
     const email = page.relationships?.contactInfo?.find?.((c) => c.email)?.email ?? page.contactInfo?.find?.((c) => c.email)?.email ?? old.email ?? "TBD"
     const img = imageUrl(page.relationships?.image)
     const photo = img ? await download(img, `assets/people/${slug}${ext(img)}`) : null

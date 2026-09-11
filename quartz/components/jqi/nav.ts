@@ -14,7 +14,6 @@ export const mainNav: NavItem[] = [
   { label: "Publications", slug: "publications" },
   { label: "Lab Facilities", slug: "lab-facilities" },
   { label: "Theses", slug: "theses" },
-  { label: "Onboarding", slug: "onboarding" },
 ]
 
 export const footerNav: NavItem[] = mainNav.slice(0, 7)

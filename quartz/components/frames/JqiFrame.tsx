@@ -2,6 +2,8 @@ import { PageFrame, PageFrameProps } from "./types"
 import JqiHeaderConstructor from "../jqi/Header"
 import JqiFooterConstructor from "../jqi/Footer"
 import { navScript } from "../jqi/navScript"
+import SectionNav from "../jqi/SectionNav"
+import { FullSlug, resolveRelative } from "../../util/path"
 
 const JqiHeader = JqiHeaderConstructor()
 const JqiFooter = JqiFooterConstructor()
@@ -24,8 +26,11 @@ const JqiFooter = JqiFooterConstructor()
 export const JqiFrame: PageFrame = {
   name: "jqi",
   render({ componentData, header, beforeBody, pageBody: Content, afterBody, left, right, footer }: PageFrameProps) {
+    const publicPage = componentData.fileData.frontmatter?.site_public === true
+    const home = componentData.fileData.frontmatter?.site_home === true
+    const person = componentData.fileData.frontmatter?.type === "person"
     return (
-      <div class="base-layout">
+      <div class={`base-layout${publicPage ? " site-public" : " site-handbook"}${home ? " site-home" : ""}${person ? " site-person" : ""}`}>
         <a href="#main-content" class="skip-nav-link">
           Skip to main content
         </a>
@@ -37,13 +42,16 @@ export const JqiFrame: PageFrame = {
         <main id="main-content">
           <div class="page-content">
             <div class="page-content__sidebar">
-              {left.map((BodyComponent) => (
+              {publicPage ? <SectionNav {...componentData} /> : left.map((BodyComponent) => (
                 <BodyComponent {...componentData} />
               ))}
             </div>
             <div class="page-content__main">
               <div class="page-content__header popover-hint">
-                {beforeBody.map((BodyComponent) => (
+                {publicPage ? <>
+                  <nav class="public-breadcrumbs" aria-label="Breadcrumb"><a href={resolveRelative(componentData.fileData.slug!, "index" as FullSlug)}>Home</a><span aria-hidden="true">›</span><span>{componentData.fileData.frontmatter?.title}</span></nav>
+                  <h1>{componentData.fileData.frontmatter?.title}</h1>
+                </> : beforeBody.map((BodyComponent) => (
                   <BodyComponent {...componentData} />
                 ))}
               </div>
@@ -59,7 +67,7 @@ export const JqiFrame: PageFrame = {
               </div>
             </div>
             <aside class="page-content__aside">
-              {right.map((BodyComponent) => (
+              {!publicPage && right.map((BodyComponent) => (
                 <BodyComponent {...componentData} />
               ))}
             </aside>

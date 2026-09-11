@@ -1,6 +1,6 @@
 # Hafezi Group website
 
-Source of the group site published at <https://hafezigroupjqi.github.io/website/>
+Source of the group site published at <https://hafezigroupjqi.github.io/>
 (a mock of the group's public site plus onboarding, equipment, and notes). It is
 [Quartz 5](https://quartz.jzhao.xyz/) wearing the theme of hafezi.jqi.umd.edu, and it
 builds from the content in [HafeziGroupJQI/vault](https://github.com/HafeziGroupJQI/vault):

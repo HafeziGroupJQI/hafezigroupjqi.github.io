@@ -12,6 +12,9 @@ jobs:
         with:
           repository: HafeziGroupJQI/vault
           path: vault-src
+          # the default token can read the vault only while it is public; a fine-grained
+          # PAT with contents:read on the vault (secret VAULT_READ_TOKEN) covers a private vault
+          token: ${{ secrets.VAULT_READ_TOKEN || github.token }}
       - run: rm -f content && ln -s vault-src/content content
       - uses: actions/setup-node@v4
         with:

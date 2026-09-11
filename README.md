@@ -1,0 +1,51 @@
+# Hafezi Group website
+
+Source of the group site published at <https://hafezigroupjqi.github.io/website/>
+(a mock of the group's public site plus onboarding, equipment, and notes). It is
+[Quartz 5](https://quartz.jzhao.xyz/) wearing the theme of hafezi.jqi.umd.edu, and it
+builds from the content in [HafeziGroupJQI/vault](https://github.com/HafeziGroupJQI/vault):
+there is no content in this repository.
+
+## How it fits together
+
+```
+vault (markdown, .qmd, images)  --push-->  vault CI validates, dispatches "vault-updated"
+                                                 |
+website CI: checkout vault/content -> quarto render .qmd -> quartz build -> GitHub Pages
+```
+
+- `quartz/components/frames/JqiFrame.tsx` reproduces the live site's DOM (header, sidebar,
+  content column, aside, footer) so the vendored stylesheet applies unchanged.
+- `quartz/components/jqi/` holds the header, footer, nav list, and the small nav script.
+- `quartz/styles/_jqi-theme.scss` is the live site's stylesheet (refresh with `npm run sync-theme`);
+  `quartz/styles/custom.scss` holds everything on top of it.
+- `quartz/static/theme/` holds the fonts and logos.
+- `quartz.config.yaml` enables the plugins: explorer (sidebar nav), search, graph, backlinks,
+  table of contents, tags, folder and tag pages, Bases (filterable tables), LaTeX, callouts.
+- `tools/render-qmd.mjs` renders `.qmd` files with Quarto before the build; `tools/clean-qmd.mjs`
+  removes the generated twins afterwards.
+
+## Local development
+
+```sh
+npm ci
+ln -sfn ../vault/content content   # the vault checked out next to this repo
+npm run build                      # render .qmd, build to public/, clean up
+npm run serve                      # dev server at http://localhost:8080
+```
+
+`.qmd` rendering needs Quarto and a Python with the packages in the vault's
+`requirements.txt` (`pip install -r ../vault/requirements.txt`).
+
+## Deployment
+
+`.github/workflows/deploy.yml` runs on pushes to `main`, on the `vault-updated` dispatch sent
+by the vault repository, manually, and once a day. It checks out the vault, renders, builds,
+and deploys with `actions/deploy-pages`. GitHub Pages must be set to "GitHub Actions" as its
+source. `preview.yml` builds pull requests and uploads the site as an artifact.
+
+## Upstream
+
+Quartz is vendored at commit `f1fba3fc55cbf60a60a5d09c95a49c042cdab63a` (branch `v5`,
+2026-09-06). To upgrade, merge the upstream branch and re-check `JqiFrame.tsx`,
+`frames/index.ts`, `custom.scss`, and `quartz.config.yaml`.

@@ -1,0 +1,62 @@
+name: build and deploy
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [vault-updated]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *" # daily safety net in case a dispatch is missed
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: checkout the vault (public content)
+        uses: actions/checkout@v4
+        with:
+          repository: HafeziGroupJQI/vault
+          path: vault-src
+      - run: rm -f content && ln -s vault-src/content content
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 1.10.18
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: vault-src/requirements.txt
+      - run: pip install -r vault-src/requirements.txt
+      - name: render .qmd files to markdown
+        run: node tools/render-qmd.mjs
+      - name: build site
+        run: npx quartz build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

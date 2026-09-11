@@ -1,0 +1,167 @@
+@use "./variables.scss" as *;
+
+// 1. The vendored hafezi.jqi.umd.edu stylesheet (Tailwind build), refreshed with
+//    `npm run sync-theme`. It is unlayered, so it wins over Quartz's base layer.
+@use "./jqi-theme";
+
+// 2. Additions from the original onboarding site: tables, callouts, materials tints.
+.table-wrap { overflow-x: auto; margin: 25px 0; }
+.text-content table { border-collapse: collapse; width: 100%; font-size: 15px; line-height: 1.45; display: table; }
+.text-content th, .text-content td { border: 1px solid #d0d0d0; padding: 9px 12px; text-align: left; vertical-align: top; }
+.text-content thead th { background-color: #222; color: #fff; font-family: Roboto, sans-serif; font-weight: 700; }
+.text-content tbody tr:nth-child(even) td { background-color: #f7f7f7; }
+.materials-linear tbody tr:nth-child(odd) td { background-color: #e8f2e4; }
+.materials-linear tbody tr:nth-child(even) td { background-color: #f2f8ef; }
+.materials-nonlinear tbody tr:nth-child(odd) td { background-color: #fdebd7; }
+.materials-nonlinear tbody tr:nth-child(even) td { background-color: #fef4e8; }
+.materials-eo tbody tr:nth-child(odd) td { background-color: #d9e5f8; }
+.materials-eo tbody tr:nth-child(even) td { background-color: #eaf1fc; }
+
+// 3. Quartz components inside the JQI shell.
+:root {
+  --jqi-red: #e21833;
+  --jqi-gold: #f0b323;
+  --jqi-rule: #e6e6e6;
+  --jqi-muted: #454545;
+}
+
+// Quartz's own page grid must not apply to the jqi frame.
+.page[data-frame="jqi"] {
+  max-width: none;
+  margin: 0;
+  & > #quartz-body {
+    display: block;
+    padding: 0;
+  }
+}
+body { background: #fff; color: #222; margin: 0; }
+
+// Article title and meta take the live site's header styles.
+.page-content__header {
+  h1.article-title, h1 {
+    font-size: 25px; font-weight: 700; line-height: 1.2; margin: 12px 0 18px;
+    @media (min-width: 800px) { font-size: 35px; font-weight: 900; }
+  }
+  .breadcrumb-container { margin: 0; font-size: 14px; }
+  .content-meta { color: var(--jqi-muted); font-size: 14px; margin: 0 0 8px; }
+  .tags { list-style: none; margin: 0 0 24px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags .tag-link { border: 1px solid var(--jqi-rule); border-radius: 999px; padding: 2px 10px; font-size: 13px; color: var(--jqi-muted); background: none; }
+}
+
+// Body typography: let the live site's .text-content rules win over Quartz article defaults.
+.text-content article { font-size: inherit; }
+.text-content ul, .text-content ol { margin-left: 30px; }
+.text-content ol { list-style-type: decimal; }
+.text-content img { max-width: 100%; height: auto; margin: 25px 0; }
+.text-content pre { overflow-x: auto; border: 1px solid var(--jqi-rule); border-radius: 4px; padding: 12px 14px; margin: 20px 0; font-size: 14px; }
+.text-content code { font-size: 0.92em; }
+.text-content blockquote { border-left: 4px solid var(--jqi-rule); margin: 20px 0; padding: 4px 18px; color: var(--jqi-muted); }
+.text-content .callout { margin: 25px 0; }
+.text-content hr { border: 0; border-top: 2px solid var(--jqi-rule); margin: 40px 0; }
+.text-content a.internal { background: none; padding: 0; border-radius: 0; }
+
+// Left sidebar: the explorer styled as the live site's sidebar nav.
+.page-content__sidebar {
+  .explorer { font-family: Roboto, sans-serif; font-size: 15px; }
+  .explorer .title-button { display: none; }
+  .explorer-content, .explorer-ul { margin: 0; padding: 0; }
+  .explorer .folder-title, .explorer .nav-file-title { color: #000; }
+  .explorer a { color: #000; text-decoration: none; }
+  .explorer a:hover, .explorer a.active { color: var(--jqi-red); }
+  .search { width: 100%; }
+  @media (max-width: 999px) {
+    display: block; margin-bottom: 24px;
+    .explorer .title-button { display: none; }
+  }
+}
+
+// Search lives in the header on desktop; the mobile icon opens the same modal.
+.site-header__search-slot { margin-left: 24px; }
+.site-header__search-slot .search .search-button {
+  border: 1px solid var(--jqi-rule); background: #fff; color: #222; border-radius: 4px; width: 200px;
+  height: 36px; font-family: Roboto, sans-serif;
+}
+.site-header__search-slot .search .search-button p { color: var(--jqi-muted); }
+@media (max-width: 999px) { .site-header__search-slot { display: none; } }
+
+// Right column: graph, backlinks, table of contents as cards.
+.page-content__aside {
+  display: none;
+  @media (min-width: 1200px) {
+    display: flex; flex-direction: column; gap: 20px; flex: 0 0 auto; width: 260px;
+    position: sticky; top: 130px; align-self: flex-start; max-height: calc(100vh - 150px); overflow-y: auto;
+  }
+  & > * { border: 1px solid var(--jqi-rule); border-radius: 6px; padding: 12px 14px; font-family: Roboto, sans-serif; font-size: 14px; }
+  h3 { font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--jqi-muted); margin: 0 0 8px; font-family: Roboto, sans-serif; }
+  .toc-content ul { margin: 0; padding-left: 0; }
+  a.internal { background: none; }
+}
+// Below the desktop breakpoint, graph and backlinks move under the article.
+@media (max-width: 1199px) {
+  .page-content { flex-wrap: wrap; }
+  .page-content__aside { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; width: 100%; margin-top: 32px; }
+  .page-content__aside .toc { display: none; }
+}
+
+// Folder / tag listing pages.
+.page-listing ul.section-ul { list-style: none; margin: 0; padding: 0; }
+.page-listing .section { display: grid; grid-template-columns: 6em 1fr auto; gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--jqi-rule); }
+.page-listing .section .tags { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; }
+.page-listing .section .tag-link { font-size: 12px; }
+.page-listing h3 { margin: 0; }
+
+// Bases (directory, inventory) tables use the same table styling as content.
+.bases-table, .bases-container table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.bases-container th, .bases-container td { border: 1px solid #d0d0d0; padding: 8px 10px; vertical-align: top; }
+.bases-container thead th { background: #222; color: #fff; }
+
+// Quartz callouts keep the live site's neutral palette.
+.callout { --color: var(--jqi-muted); --border: var(--jqi-rule); --bg: #f2f2f2; }
+.callout[data-callout="warning"] { --color: #9a6b00; --border: var(--jqi-gold); --bg: #fdf6e5; }
+.callout[data-callout="danger"], .callout[data-callout="draft"] { --color: var(--jqi-red); --border: var(--jqi-red); --bg: #fdeef0; }
+
+// Popovers and search preview inherit the site fonts.
+.popover, .search-container { font-family: Roboto, sans-serif; }
+
+// 4. Layout fixes found while comparing against the live site.
+body, .page[data-frame="jqi"] { font-family: Roboto, sans-serif; }
+.site-header__logo { flex-shrink: 0; }
+.site-header__nav ul li a { font-family: Roboto, sans-serif; }
+// The sidebar scrolls on its own so the explorer's scroll-into-view never moves the page.
+@media (min-width: 1000px) {
+  .page-content__sidebar { position: sticky; top: 130px; align-self: flex-start; max-height: calc(100vh - 150px); overflow-y: auto; }
+}
+.text-content h2 { margin: 40px 0 14px; }
+.text-content h3 { margin: 28px 0 10px; }
+.text-content h2 + p, .text-content h3 + p { margin-top: 0; }
+.text-content h1:first-child, .text-content h2:first-child { margin-top: 0; }
+article.popover-hint > *:first-child { margin-top: 0; }
+// Tailwind's preflight makes every svg display:block; Quartz's heading anchors and inline icons must stay inline.
+.text-content [role="anchor"] svg, .text-content a svg, .page-content__aside svg, .explorer svg, .search svg, .site-header svg, .site-footer svg { display: inline-block; vertical-align: middle; }
+// Compact search in the header: icon only, expanding on wide screens.
+.site-header__search-slot { flex: 0 0 auto; margin-left: 16px; }
+.site-header__search-slot .search .search-button { width: 44px; padding: 0; justify-content: center; border: 0; }
+.site-header__search-slot .search .search-button p { display: none; }
+@media (min-width: 1500px) {
+  .site-header__search-slot .search .search-button { width: 170px; padding: 0 10px; border: 1px solid var(--jqi-rule); justify-content: flex-start; }
+  .site-header__search-slot .search .search-button p { display: inline; margin: 0 0 0 8px; }
+}
+.site-header__nav ul { flex-wrap: nowrap; }
+.site-header__nav ul li a { white-space: nowrap; }
+.site-header__search-slot .search { width: auto; max-width: none; min-width: 0; }
+.site-header__nav ul li a { font-size: 17px; }
+@media (min-width: 1000px) and (max-width: 1299px) { .site-header__nav ul li a { font-size: 16px; } }
+// The explorer is its own scroll container so a long file list never scrolls the page.
+@media (min-width: 1000px) {
+  .page-content__sidebar .explorer { max-height: calc(100vh - 190px); overflow-y: auto; padding-right: 8px; }
+}
+// Top-level headings inside long-form notes (Quarto output uses # for sections).
+.text-content h1 { font-family: Roboto, sans-serif; font-size: 26px; font-weight: 700; line-height: 1.3; margin: 44px 0 14px; }
+@media (min-width: 800px) { .text-content h1 { font-size: 32px; } }
+.text-content h1 + p { margin-top: 0; }
+// Bases tables: list-valued cells (authors, equipment) flow inline instead of one line per item.
+.bases-container td ul, .bases-container td .bases-list, .bases-container td [class*="list"] { display: inline; margin: 0; padding: 0; }
+.bases-container td li, .bases-container td [class*="list"] > * { display: inline; }
+.bases-container td li::after { content: ", "; }
+.bases-container td li:last-child::after { content: ""; }
+.bases-container td { font-size: 13px; line-height: 1.4; }

@@ -1,0 +1,17 @@
+.DS_Store
+.gitignore
+node_modules
+public
+prof
+tsconfig.tsbuildinfo
+.obsidian
+.quartz-cache
+private/
+.replit
+replit.nix
+.quartz/
+quartz/cli/tui/dist/
+.turbo/
+# the vault checkout in CI (content is a committed symlink to ../vault/content; CI repoints it)
+vault-src/
+.cache/

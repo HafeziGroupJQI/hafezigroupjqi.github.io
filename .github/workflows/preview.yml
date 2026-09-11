@@ -1,0 +1,33 @@
+name: preview build
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: HafeziGroupJQI/vault
+          path: vault-src
+      - run: rm -f content && ln -s vault-src/content content
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 1.10.18
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r vault-src/requirements.txt
+      - run: node tools/render-qmd.mjs
+      - run: npx quartz build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-preview
+          path: public

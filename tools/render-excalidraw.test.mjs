@@ -20,7 +20,7 @@ test("drawing embeds become static images with interactive links", () => {
     title: "Drawing",
   }]
   assert.equal(
-    rewriteDrawingEmbeds("![[notes/drawing.excalidraw]]", drawings),
-    "![[assets/excalidraw/notes/drawing.svg|Drawing]]\n\n[[notes/drawing.excalidraw|Open interactive drawing]]",
+    rewriteDrawingEmbeds("![[notes/drawing.excalidraw]]", drawings, "journal/source.md"),
+    "![Drawing](../assets/excalidraw/notes/drawing.svg)\n\n[Open interactive drawing](../notes/drawing.excalidraw)",
   )
 })

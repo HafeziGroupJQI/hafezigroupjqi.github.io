@@ -27,7 +27,7 @@ test("source audit accepts valid local images and rejects missing and remote ima
 test("output audit rejects an emitted image target that does not exist", async () => {
   const root = fixture()
   try {
-    fs.writeFileSync(path.join(root, "index.html"), '<img src="missing.png" alt="missing">')
+    fs.writeFileSync(path.join(root, "index.html"), '<img src="missing.png" alt="missing"><object data="missing.svg"></object>')
     assert.match((await auditOutput(root)).errors.join("\n"), /emitted asset is missing/)
   } finally {
     fs.rmSync(root, { recursive: true })

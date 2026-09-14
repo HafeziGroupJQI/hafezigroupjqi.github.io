@@ -69,14 +69,17 @@ export function drawingAliases(root, filename) {
   ])
 }
 
-export function rewriteDrawingEmbeds(text, drawings) {
+export function rewriteDrawingEmbeds(text, drawings, pageRelative = "index.md") {
   return text.replace(/!\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g, (match, raw) => {
     const target = raw.trim().replace(/\\$/, "")
     const candidates = drawings.filter((drawing) => drawing.aliases.has(target) || drawing.aliases.has(path.basename(target)))
     if (candidates.length === 0) return match
     if (candidates.length > 1) throw new Error(`ambiguous Excalidraw embed [[${raw}]]`)
     const drawing = candidates[0]
-    return `![[${drawing.outputRelative}|${drawing.title}]]\n\n[[${drawing.pageRelative}|Open interactive drawing]]`
+    const pageDirectory = path.posix.dirname(pageRelative)
+    const image = path.posix.relative(pageDirectory, drawing.outputRelative)
+    const interactive = path.posix.relative(pageDirectory, drawing.pageRelative)
+    return `![${drawing.title}](${image})\n\n[Open interactive drawing](${interactive})`
   })
 }
 
@@ -129,7 +132,7 @@ export async function renderDrawings(rootDirectory) {
 
   for (const page of walk(root).filter((filename) => pagePattern.test(filename) && !drawingPattern.test(filename))) {
     const before = fs.readFileSync(page, "utf8")
-    const after = rewriteDrawingEmbeds(before, drawings)
+    const after = rewriteDrawingEmbeds(before, drawings, normalize(path.relative(root, page)))
     if (after !== before) fs.writeFileSync(page, after)
   }
   return drawings

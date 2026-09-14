@@ -126,6 +126,7 @@ export async function auditOutput(rootDirectory) {
   for (const page of files.filter((filename) => filename.endsWith(".html"))) {
     const html = fs.readFileSync(page, "utf8")
     for (const match of html.matchAll(/\b(?:src|poster)=["']([^"']+)["']/gi)) references.push([page, match[1]])
+    for (const match of html.matchAll(/<object\b[^>]*\bdata=["']([^"']+)["']/gi)) references.push([page, match[1]])
     for (const match of html.matchAll(/\bsrcset=["']([^"']+)["']/gi))
       for (const candidate of match[1].split(",")) references.push([page, candidate.trim().split(/\s+/)[0]])
     for (const match of html.matchAll(/\bhref=["']([^"']+)["']/gi))

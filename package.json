@@ -24,6 +24,7 @@
     "setup:browser": "agent-browser install",
     "sync-theme": "node tools/sync-theme.mjs",
     "build": "node tools/build-site.mjs",
+    "build:internal": "tools/build-private-site.sh",
     "serve": "node tools/build-site.mjs --serve",
     "test:site": "node --test tools/site-model.test.mjs",
     "compare:site": "node tools/compare-site.mjs",

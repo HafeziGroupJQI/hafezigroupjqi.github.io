@@ -1,6 +1,6 @@
 import { QuartzComponent, QuartzComponentConstructor, QuartzComponentProps } from "../types"
 import { FullSlug, joinSegments, pathToRoot, resolveRelative } from "../../util/path"
-import { footerNav, mainSite } from "./nav"
+import { configuredC2Url, footerNav, mainSite } from "./nav"
 
 // Reproduces the hafezi.jqi.umd.edu footer: partner logos, footer nav,
 // contact block, social links, legal strip.
@@ -10,6 +10,7 @@ const JqiFooter: QuartzComponent = ({ fileData }: QuartzComponentProps) => {
   const logo = (file: string) => joinSegments(root, `static/theme/${file}`)
   const year = new Date().getFullYear()
   if (process.env.SITE_MODE === "internal") {
+    const c2Url = configuredC2Url() ?? "/instruments"
     return (
       <footer class="site-footer site-footer--internal">
         <div class="site-footer__legal">
@@ -17,7 +18,7 @@ const JqiFooter: QuartzComponent = ({ fileData }: QuartzComponentProps) => {
           <nav class="site-footer__legal-nav" aria-label="Member links">
             <ul>
               <li><a href={mainSite}>Public website</a></li>
-              <li><a href="/instruments">Instruments</a></li>
+              <li><a href={c2Url}>Instruments</a></li>
               <li><a href="/auth/logout">Sign out</a></li>
             </ul>
           </nav>

@@ -17,7 +17,7 @@ export const publicNav: NavItem[] = [
   { label: "Theses", slug: "theses" },
 ]
 
-export const internalNav: NavItem[] = [
+const defaultInternalNav: NavItem[] = [
   { label: "Vault", href: "/" },
   { label: "Journal Club", slug: "journal-club" },
   { label: "Notes", slug: "notes" },
@@ -39,12 +39,32 @@ export function configuredInternalUrl(value = process.env.INTERNAL_SITE_URL): st
   }
 }
 
+export function configuredC2Url(value = process.env.INTERNAL_C2_URL): string | undefined {
+  if (!value) return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return undefined
+    return url.toString().replace(/\/$/, "")
+  } catch {
+    return undefined
+  }
+}
+
+export function internalNavigation(value = process.env.INTERNAL_C2_URL): NavItem[] {
+  const c2Url = configuredC2Url(value)
+  return defaultInternalNav.map((item) =>
+    item.label === "Instruments" && c2Url ? { ...item, href: c2Url } : item,
+  )
+}
+
+export const internalNav: NavItem[] = internalNavigation()
+
 export function navigation(mode = process.env.SITE_MODE): NavItem[] {
-  if (mode === "internal") return internalNav
+  if (mode === "internal") return internalNavigation()
   const internalUrl = configuredInternalUrl()
   return internalUrl ? [...publicNav, { label: "Internal", href: internalUrl }] : publicNav
 }
 
 export const footerNav: NavItem[] = publicNav
 
-export const mainSite = "https://hafezi.jqi.umd.edu"
+export const mainSite = process.env.PUBLIC_SITE_URL ?? "https://hafezigroupjqi.github.io"

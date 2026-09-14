@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { configuredInternalUrl, internalNav, navigation, publicNav } from "./nav"
+import { configuredC2Url, configuredInternalUrl, internalNavigation, navigation, publicNav } from "./nav"
 
 test("public navigation adds a configured HTTPS member site", () => {
   process.env.INTERNAL_SITE_URL = "https://members.example.edu/"
@@ -17,7 +17,15 @@ test("public navigation omits unsafe member URLs", () => {
 })
 
 test("internal navigation exposes vault tools and logout", () => {
+  const internalNav = internalNavigation()
   assert.deepEqual(navigation("internal"), internalNav)
   assert.ok(internalNav.some((item) => item.href === "/instruments"))
   assert.ok(internalNav.some((item) => item.href === "/auth/logout"))
+})
+
+test("internal navigation links to a separate local c2 service", () => {
+  process.env.INTERNAL_C2_URL = "http://127.0.0.1:8000/"
+  assert.equal(configuredC2Url(), "http://127.0.0.1:8000")
+  assert.ok(navigation("internal").some((item) => item.href === "http://127.0.0.1:8000"))
+  delete process.env.INTERNAL_C2_URL
 })

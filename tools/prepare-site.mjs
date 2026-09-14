@@ -3,7 +3,15 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { cards, peoplePage, publicationList, rewriteLinks, profileContact } from "./site-model.mjs"
+import {
+  alumniPage,
+  cards,
+  peoplePage,
+  placesPage,
+  publicationList,
+  rewriteLinks,
+  profileContact,
+} from "./site-model.mjs"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const walk = (dir) =>
@@ -34,7 +42,10 @@ export function prepareSite(source, yaml, { mode = "public" } = {}) {
     fs.cpSync(freeze, path.join(stage, "_freeze", "content"), { recursive: true })
     fs.rmSync(path.join(output, "_freeze"), { recursive: true, force: true })
   }
-  const config = [path.join(input, "_quarto.yml"), path.join(path.dirname(input), "_quarto.yml")].find(fs.existsSync)
+  const config = [
+    path.join(input, "_quarto.yml"),
+    path.join(path.dirname(input), "_quarto.yml"),
+  ].find(fs.existsSync)
   if (config) fs.copyFileSync(config, path.join(stage, "_quarto.yml"))
   const records = walk(output)
     .filter((f) => f.endsWith(".md"))
@@ -53,10 +64,24 @@ export function prepareSite(source, yaml, { mode = "public" } = {}) {
   }
   // These are website landing pages, so suppress Quartz's automatic file listing.
   const page = (slug, title, body, extra = {}) =>
-    write(slug, { title, type: "page", tags: mode === "internal" ? ["internal"] : [], ...(mode === "public" ? { site_public: true } : { site_internal: true }), ...extra }, body)
+    write(
+      slug,
+      {
+        title,
+        type: "page",
+        tags: mode === "internal" ? ["internal"] : [],
+        ...(mode === "public" ? { site_public: true } : { site_internal: true }),
+        ...extra,
+      },
+      body,
+    )
   if (mode === "internal") {
     const sections = [
-      ["Journal club", "journal-club", "Session write-ups, discussion notes, drawings, recordings, and papers."],
+      [
+        "Journal club",
+        "journal-club",
+        "Session write-ups, discussion notes, drawings, recordings, and papers.",
+      ],
       ["Notes", "notes", "Internal meeting notes, planning documents, and handoffs."],
       ["Projects", "projects", "Current project logs, priorities, and recovered plans."],
       ["Code", "code", "Runnable analyses and notes for the lab's software repositories."],
@@ -72,7 +97,10 @@ export function prepareSite(source, yaml, { mode = "public" } = {}) {
         "Search working notes, code, project records, and session material from one authenticated place.",
         "</div>",
         '<div class="internal-portal-grid">',
-        ...sections.map(([title, slug, description]) => `<a class="internal-portal-card" href="${slug}/"><strong>${title}</strong><span>${description}</span></a>`),
+        ...sections.map(
+          ([title, slug, description]) =>
+            `<a class="internal-portal-card" href="${slug}/"><strong>${title}</strong><span>${description}</span></a>`,
+        ),
         "</div>",
       ].join("\n\n"),
       { site_home: true },
@@ -97,32 +125,20 @@ export function prepareSite(source, yaml, { mode = "public" } = {}) {
   const people = records.filter((r) => r.fm.type === "person")
   if (people.length) {
     page("people/index", "People", peoplePage(records))
+    page("people/alumni/index", "Alumni", alumniPage(records), {
+      tags: ["people", "people/alumni"],
+    })
+  }
+  const placesSource = get("places/index")
+  const placesFile = path.join(output, "places/places.yml")
+  if (placesSource && fs.existsSync(placesFile)) {
+    const directory = placesPage(yaml.parse(fs.readFileSync(placesFile, "utf8")), records)
     page(
-      "people/directory/index",
-      "Contact directory",
-      [
-        "[[people/index|People and photos]] · [[onboarding/directions|Who is doing what]]",
-        "Contact information, offices, and research interests. Choose a view below to browse current members, projects, or alumni.",
-        "> [!warning] Needs verification\n> Office numbers and research interests marked TBD have not yet been confirmed.",
-        "![[people/directory/contacts.base]]",
-      ].join("\n\n"),
+      "places/index",
+      "Places",
+      placesSource.body.replace("<!-- places-directory -->", directory),
+      { tags: placesSource.fm.tags },
     )
-    const oldBase = path.join(output, "people/Directory.base")
-    if (fs.existsSync(oldBase)) {
-      const base = yaml.parse(fs.readFileSync(oldBase, "utf8"))
-      base.views = base.views.filter((v) => v.type !== "cards")
-      fs.writeFileSync(path.join(output, "people/directory/contacts.base"), yaml.stringify(base))
-      // Keep legacy incoming URLs working without a duplicate sidebar entry.
-      fs.unlinkSync(oldBase)
-      const canonical = parse(
-        fs.readFileSync(path.join(output, "people/directory/index.md"), "utf8"),
-      )
-      write(
-        "people/directory/index",
-        { ...canonical.fm, aliases: ["people/Directory"] },
-        canonical.body,
-      )
-    }
   }
   const research = records.filter((r) => r.fm.type === "research")
   const newest = (a, b) =>
@@ -144,43 +160,42 @@ export function prepareSite(source, yaml, { mode = "public" } = {}) {
       "[[publications/Publications.base|Filter and sort publications]]\n\n" +
         publicationList(publications, "publications/index"),
     )
-  const about = get("about")
-  if (!about) throw new Error("The vault must include about.md to build the public homepage")
-  const hero = about.body.match(/!\[\[[^\]]+\]\]/)?.[0] ?? ""
-  const aboutText = about.body
-    .replace(hero, "")
-    .replace(/\nGroup lead:[\s\S]*$/, "")
-    .trim()
+  const home = get("index")
+  if (!home) throw new Error("The vault must include index.md to build the public homepage")
   page(
     "index",
-    "Hafezi Group",
+    home.fm.title,
     [
-      hero,
-      "## About",
-      aboutText,
+      home.body,
       "## Research",
       cards(research, "index"),
-      "## Research Publications",
+      "## Recent publications",
       publicationList(publications.slice(0, 3), "index"),
-      "[[publications/index|View All Group Publications]]",
-      "## News",
+      "[[publications/index|View all publications]]",
+      "## Recent news",
       cards(news.slice(0, 3), "index"),
-      "[[news/index|View All Group News]]",
+      "[[news/index|View all news]]",
     ].join("\n\n"),
-    { site_home: true },
+    { site_home: true, tags: home.fm.tags, description: home.fm.description },
   )
   // Preserve individual records and resources, adding only presentation metadata.
   for (const record of records) {
     if (
-      ["index", "people/index", "research/index", "news/index", "publications/index"].includes(
-        record.slug,
-      ) ||
+      [
+        "index",
+        "people/index",
+        "people/alumni/index",
+        "places/index",
+        "research/index",
+        "news/index",
+        "publications/index",
+      ].includes(record.slug) ||
       (record.slug === "onboarding/index" && welcome?.fm.title === "Welcome")
     )
       continue
     const publicPage =
-      /^(people|research|news|publications)\//.test(record.slug) ||
-      ["about", "positions", "theses", "lab-facilities"].includes(record.slug)
+      /^(people|places|research|news|publications)\//.test(record.slug) ||
+      ["positions", "theses", "lab-facilities"].includes(record.slug)
     let body = record.body
     if (record.fm.type === "person") {
       const contact = profileContact(record.fm)

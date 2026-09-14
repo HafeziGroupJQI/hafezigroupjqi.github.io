@@ -1,6 +1,6 @@
 import { QuartzComponent, QuartzComponentConstructor, QuartzComponentProps } from "../types"
 import { FullSlug, joinSegments, pathToRoot, resolveRelative } from "../../util/path"
-import { mainNav } from "./nav"
+import { navigation, NavItem } from "./nav"
 
 const searchIcon = (
   <svg class="icon icon-search" aria-hidden="true" height="22" width="22" viewBox="0 0 23 23">
@@ -18,6 +18,7 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
   const slug = fileData.slug!
   const root = pathToRoot(slug)
   const current = (target: string) => slug === target || slug.startsWith(target + "/")
+  const href = (item: NavItem) => item.href ?? resolveRelative(slug, item.slug! as FullSlug)
   return (
     <header class="site-header">
       <div class="site-header__inner">
@@ -43,9 +44,9 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
         </div>
         <nav class="site-header__nav" aria-label="Main" aria-hidden="false">
           <ul>
-            {mainNav.map((item) => (
+            {navigation().map((item) => (
               <li>
-                <a href={resolveRelative(slug, item.slug as FullSlug)} aria-current={current(item.slug) ? "page" : undefined}>
+                <a href={href(item)} aria-current={item.slug && current(item.slug) ? "page" : undefined}>
                   {item.label}
                 </a>
               </li>

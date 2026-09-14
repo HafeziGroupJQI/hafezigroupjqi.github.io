@@ -3,10 +3,11 @@
 // site works under any base path (GitHub Pages subpath or a custom domain).
 export interface NavItem {
   label: string
-  slug: string
+  slug?: string
+  href?: string
 }
 
-export const mainNav: NavItem[] = [
+export const publicNav: NavItem[] = [
   { label: "Research", slug: "research" },
   { label: "People", slug: "people" },
   { label: "Positions", slug: "positions" },
@@ -16,6 +17,34 @@ export const mainNav: NavItem[] = [
   { label: "Theses", slug: "theses" },
 ]
 
-export const footerNav: NavItem[] = mainNav.slice(0, 7)
+export const internalNav: NavItem[] = [
+  { label: "Vault", href: "/" },
+  { label: "Journal Club", slug: "journal-club" },
+  { label: "Notes", slug: "notes" },
+  { label: "Projects", slug: "projects" },
+  { label: "Code", slug: "code" },
+  { label: "Drive", slug: "drive" },
+  { label: "Instruments", href: "/instruments" },
+  { label: "Sign Out", href: "/auth/logout" },
+]
+
+export function configuredInternalUrl(value = process.env.INTERNAL_SITE_URL): string | undefined {
+  if (!value) return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return undefined
+    return url.toString().replace(/\/$/, "")
+  } catch {
+    return undefined
+  }
+}
+
+export function navigation(mode = process.env.SITE_MODE): NavItem[] {
+  if (mode === "internal") return internalNav
+  const internalUrl = configuredInternalUrl()
+  return internalUrl ? [...publicNav, { label: "Internal", href: internalUrl }] : publicNav
+}
+
+export const footerNav: NavItem[] = publicNav
 
 export const mainSite = "https://hafezi.jqi.umd.edu"

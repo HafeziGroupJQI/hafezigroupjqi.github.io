@@ -1,6 +1,6 @@
 import { QuartzComponentProps } from "../types"
 import { FullSlug, resolveRelative } from "../../util/path"
-import { mainNav } from "./nav"
+import { publicNav } from "./nav"
 
 export default function SectionNav({ fileData, allFiles }: QuartzComponentProps) {
   const slug = fileData.slug!
@@ -13,8 +13,8 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
     <a href={resolveRelative(slug, target as FullSlug)} aria-current={slug === target || slug === target + "/index" ? "page" : undefined}>{label}</a>
   )
   return <nav class="section-nav" aria-label="Section navigation">
-    <ul>{mainNav.map((item) => <li key={item.slug}>
-      {link(item.slug, item.label)}
+    <ul>{publicNav.map((item) => <li key={item.slug}>
+      {link(item.slug!, item.label)}
       {item.slug === section && children.length > 0 && <ul>{children.map((f) => <li key={f.slug}>{link(f.slug!, String(f.frontmatter?.title))}</li>)}</ul>}
       {item.slug === "people" && section === "people" && <ul>
         <li>{link("people/directory/index", "Contact directory")}</li>

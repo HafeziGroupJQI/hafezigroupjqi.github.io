@@ -29,6 +29,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -r vault-src/requirements.txt
       - run: npm run build
+        env:
+          INTERNAL_SITE_URL: ${{ vars.INTERNAL_SITE_URL }}
       - uses: actions/upload-artifact@v4
         with:
           name: site-preview

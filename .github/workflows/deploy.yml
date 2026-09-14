@@ -48,6 +48,8 @@ jobs:
       - run: pip install -r vault-src/requirements.txt
       - name: build site
         run: npm run build
+        env:
+          INTERNAL_SITE_URL: ${{ vars.INTERNAL_SITE_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

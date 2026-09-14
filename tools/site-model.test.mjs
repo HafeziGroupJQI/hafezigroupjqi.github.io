@@ -91,3 +91,17 @@ test("preparation preserves vault files, relocates welcome, and keeps a legacy d
     if (stage) fs.rmSync(stage, { recursive: true })
   }
 })
+
+test("preparation removes source-control ignores from the staged site", () => {
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), "hafezi-vault-"))
+  const codec = { parse: JSON.parse, stringify: (value) => JSON.stringify(value) + "\n" }
+  fs.writeFileSync(path.join(source, ".gitignore"), "**/*_files/\n")
+  fs.writeFileSync(path.join(source, "index.md"), '---\n{"title":"Private"}\n---\n')
+  const prepared = prepareSite(source, codec, { mode: "internal" })
+  try {
+    assert.equal(fs.existsSync(path.join(prepared.output, ".gitignore")), false)
+  } finally {
+    fs.rmSync(prepared.stage, { recursive: true, force: true })
+    fs.rmSync(source, { recursive: true, force: true })
+  }
+})

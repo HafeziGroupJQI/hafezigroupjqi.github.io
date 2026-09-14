@@ -1,18 +1,28 @@
 # yaml-language-server: $schema=./quartz/plugins/quartz-plugins.schema.json
 configuration:
-  pageTitle: Hafezi Group
-  pageTitleSuffix: " | Hafezi Group"
+  pageTitle: Hafezi Members Vault
+  pageTitleSuffix: " | Hafezi Members Vault"
   enableSPA: true
   enablePopovers: true
   analytics: null
   locale: en-US
-  baseUrl: hafezigroupjqi.github.io
+  baseUrl: internal.example.invalid
   ignorePatterns:
-    - private
     - templates
     - .obsidian
+    - .github
+    - .cache
+    - .venv
+    - .venv312
+    - node_modules
+    - schema
+    - tools
+    - README.md
+    - package.json
+    - package-lock.json
+    - requirements.txt
+    - _quarto.yml
     - "**/*.qmd"
-    - "**/*.pdf"
     - _freeze
   theme:
     fontOrigin: googleFonts
@@ -115,8 +125,8 @@ plugins:
   - source: "@quartz-community/content-index"
     enabled: true
     options:
-      enableSiteMap: true
-      enableRSS: true
+      enableSiteMap: false
+      enableRSS: false
   - source: "@quartz-community/favicon"
     enabled: true
   - source: "@quartz-community/og-image"

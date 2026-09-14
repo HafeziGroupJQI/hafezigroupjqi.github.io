@@ -3,14 +3,19 @@ import path from "node:path"
 import fs from "node:fs"
 import { prepareSite } from "./prepare-site.mjs"
 import { auditOutput, auditSource } from "./audit-assets.mjs"
+import { parseBuildOptions } from "./build-options.mjs"
 import { renderDrawings } from "./render-excalidraw.mjs"
 import yaml from "yaml"
 
-const { stage, output, manifest } = prepareSite(process.env.CONTENT_DIR ?? "content", yaml)
-const env = { ...process.env, CONTENT_DIR: output }
-const quartzArgs = process.argv.slice(2)
-const outputIndex = quartzArgs.findIndex((argument) => argument === "--output" || argument === "-o")
-const siteOutput = path.resolve(outputIndex >= 0 ? quartzArgs[outputIndex + 1] : "public")
+const options = parseBuildOptions(process.argv.slice(2))
+const { stage, output, manifest } = prepareSite(options.content, yaml, { mode: options.mode })
+const env = {
+  ...process.env,
+  CONTENT_DIR: output,
+  SITE_MODE: options.mode,
+  QUARTZ_CONFIG_PATH: path.resolve(options.config),
+  ...(options.quartzBaseUrl ? { QUARTZ_BASE_URL: options.quartzBaseUrl } : {}),
+}
 try {
   fs.mkdirSync(".cache", { recursive: true })
   fs.writeFileSync(".cache/site-source-map.json", JSON.stringify(manifest, null, 2))
@@ -25,11 +30,11 @@ try {
       "build",
       "--directory",
       path.relative(process.cwd(), output),
-      ...quartzArgs,
+      ...options.quartzArgs,
     ],
     { stdio: "inherit", env },
   )
-  const outputAudit = await auditOutput(siteOutput)
+  const outputAudit = await auditOutput(options.output)
   if (outputAudit.errors.length) throw new Error(outputAudit.errors.join("\n"))
 } finally {
   fs.rmSync(stage, { recursive: true })

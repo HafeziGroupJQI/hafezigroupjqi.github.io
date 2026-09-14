@@ -10,7 +10,7 @@ const walk = (dir) =>
   fs
     .readdirSync(dir, { withFileTypes: true })
     .flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]))
-export function prepareSite(source, yaml) {
+export function prepareSite(source, yaml, { mode = "public" } = {}) {
   const parse = (text) => {
     const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
     return {
@@ -24,8 +24,12 @@ export function prepareSite(source, yaml) {
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), "hafezi-site-"))
   const output = path.join(stage, "content")
   fs.cpSync(input, output, { recursive: true })
-  const config = path.join(path.dirname(input), "_quarto.yml")
-  if (fs.existsSync(config)) fs.copyFileSync(config, path.join(stage, "_quarto.yml"))
+  // Source-control ignores are useful in the vault, but Quartz also reads them
+  // after Quarto runs. Keeping this file would hide freshly generated *_files
+  // figure directories from the asset emitter.
+  fs.rmSync(path.join(output, ".gitignore"), { force: true })
+  const config = [path.join(input, "_quarto.yml"), path.join(path.dirname(input), "_quarto.yml")].find(fs.existsSync)
+  if (config) fs.copyFileSync(config, path.join(stage, "_quarto.yml"))
   const records = walk(output)
     .filter((f) => f.endsWith(".md"))
     .map((file) => ({
@@ -43,7 +47,32 @@ export function prepareSite(source, yaml) {
   }
   // These are website landing pages, so suppress Quartz's automatic file listing.
   const page = (slug, title, body, extra = {}) =>
-    write(slug, { title, type: "page", site_public: true, ...extra }, body)
+    write(slug, { title, type: "page", tags: mode === "internal" ? ["internal"] : [], ...(mode === "public" ? { site_public: true } : { site_internal: true }), ...extra }, body)
+  if (mode === "internal") {
+    const sections = [
+      ["Journal club", "journal-club", "Session write-ups, discussion notes, drawings, recordings, and papers."],
+      ["Notes", "notes", "Internal meeting notes, planning documents, and handoffs."],
+      ["Projects", "projects", "Current project logs, priorities, and recovered plans."],
+      ["Code", "code", "Runnable analyses and notes for the lab's software repositories."],
+      ["Drive", "drive", "The indexed catalogue of shared-drive content."],
+    ].filter(([, slug]) => fs.existsSync(path.join(output, slug)))
+    page(
+      "index",
+      "Members vault",
+      [
+        '<div class="internal-portal-intro">',
+        '<p class="internal-kicker">Hafezi Group · members only</p>',
+        "# Shared knowledge for the lab",
+        "Search working notes, code, project records, and session material from one authenticated place.",
+        "</div>",
+        '<div class="internal-portal-grid">',
+        ...sections.map(([title, slug, description]) => `<a class="internal-portal-card" href="${slug}/"><strong>${title}</strong><span>${description}</span></a>`),
+        "</div>",
+      ].join("\n\n"),
+      { site_home: true },
+    )
+    return { stage, output, manifest }
+  }
   const welcome = get("index")
   if (welcome?.fm.title === "Welcome") {
     write(

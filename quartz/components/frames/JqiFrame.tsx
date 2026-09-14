@@ -29,8 +29,9 @@ export const JqiFrame: PageFrame = {
     const publicPage = componentData.fileData.frontmatter?.site_public === true
     const home = componentData.fileData.frontmatter?.site_home === true
     const person = componentData.fileData.frontmatter?.type === "person"
+    const internal = process.env.SITE_MODE === "internal"
     return (
-      <div class={`base-layout${publicPage ? " site-public" : " site-handbook"}${home ? " site-home" : ""}${person ? " site-person" : ""}`}>
+      <div class={`base-layout${publicPage ? " site-public" : " site-handbook"}${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}`}>
         <a href="#main-content" class="skip-nav-link">
           Skip to main content
         </a>

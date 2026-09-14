@@ -297,6 +297,16 @@ article.popover-hint > *:first-child { margin-top: 0; }
 .site-home .page-content__sidebar, .site-home .page-content__header { display: none; }
 .site-home .page-content__main { max-width: 1280px; }
 .site-home .text-content article p:first-child img { width: 100%; max-height: 480px; object-fit: contain; }
+.site-home .text-content > article > p:first-of-type { max-width: 840px; font-size: clamp(20px, 2.5vw, 30px); line-height: 1.4; }
+.site-home .text-content #explore + ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 28px;
+  padding: 24px;
+  border-top: 3px solid #e21833;
+  background: #f5f7f8;
+  list-style-position: inside;
+}
 .site-internal.site-home .text-content article p:first-child img { width: auto; max-height: none; }
 .site-internal.site-home .page-content__main { width: 100%; }
 .site-internal.site-home .page-content__aside { display: none; }
@@ -355,7 +365,11 @@ article.popover-hint > *:first-child { margin-top: 0; }
 .text-content .feature-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; margin: 0 0 16px; }
 .text-content :is(.person-card, .feature-card) h3 { font: 700 20px/1.35 Roboto, sans-serif; margin: 0 0 8px; }
 .text-content :is(.person-card, .feature-card) p { margin: 0; font-size: 16px; line-height: 1.5; }
+.text-content .feature-card > p:last-child { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .text-content .feature-card .news-date { margin: 0 0 8px; color: #555; font-size: 14px; }
+@media (min-width: 1000px) {
+  .site-home #research + .feature-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .profile-contact { margin: 24px 0; }
 .profile-contact dl > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 16px; margin: 8px 0; }
 .profile-contact dt { font-weight: 700; }
@@ -364,6 +378,20 @@ article.popover-hint > *:first-child { margin-top: 0; }
 .text-content .publication-list li { padding: 20px 0; margin: 0; border-bottom: 1px solid #ddd; }
 .text-content .publication-list h3 { margin: 0 0 8px; }
 .text-content .publication-list p { margin: 0; }
+.alumni-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+.text-content .alumni-list article { padding: 18px 0; border-bottom: 1px solid #ddd; }
+.text-content .alumni-list h2 { margin: 0 0 4px; font: 700 19px/1.35 Roboto, sans-serif; }
+.text-content .alumni-list p { margin: 0; color: #555; }
+.place-group { margin: 38px 0 52px; }
+.place-group > h2 { padding-bottom: 12px; border-bottom: 2px solid #e6e6e6; }
+.place-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.text-content .place-card { min-width: 0; padding: 20px; border: 1px solid #d9dfe2; border-top: 4px solid #e21833; background: #fff; }
+.place-card__heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.text-content .place-card h3 { margin: 0; font: 700 20px/1.35 Roboto, sans-serif; }
+.text-content .place-card p, .text-content .place-card address { margin: 9px 0 0; font-style: normal; line-height: 1.45; }
+.text-content .place-card .place-location { color: #465865; font-weight: 700; }
+.place-status { flex: none; padding: 3px 7px; border-radius: 3px; background: #fdf0db; color: #704409; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.place-occupants a { white-space: nowrap; }
 .site-person .text-content article > p:first-child img { max-width: 320px; max-height: 360px; object-fit: contain; margin-top: 0; }
 .popover .popover-inner { max-height: min(520px, 80vh); overflow-y: auto; }
 .popover h1 { font: 700 24px/1.25 Roboto, sans-serif; margin: 12px 0; }
@@ -371,6 +399,7 @@ article.popover-hint > *:first-child { margin-top: 0; }
 :is(a, button, input, select):focus-visible { outline: 3px solid #e21833; outline-offset: 3px; }
 @media (max-width: 799px) {
   .people-grid, .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .site-home .text-content #explore + ul, .place-grid, .alumni-list { grid-template-columns: 1fr; }
   .page-content__sidebar .explorer { height: auto; max-height: none; flex: none; }
   .page-content__sidebar .explorer .explorer-content {
     position: static; width: 100%; height: auto; max-height: 50vh; padding: 0;

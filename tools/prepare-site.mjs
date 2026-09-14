@@ -28,6 +28,12 @@ export function prepareSite(source, yaml, { mode = "public" } = {}) {
   // after Quarto runs. Keeping this file would hide freshly generated *_files
   // figure directories from the asset emitter.
   fs.rmSync(path.join(output, ".gitignore"), { force: true })
+  const freeze = path.join(input, "_freeze")
+  if (fs.existsSync(freeze)) {
+    fs.mkdirSync(path.join(stage, "_freeze"), { recursive: true })
+    fs.cpSync(freeze, path.join(stage, "_freeze", "content"), { recursive: true })
+    fs.rmSync(path.join(output, "_freeze"), { recursive: true, force: true })
+  }
   const config = [path.join(input, "_quarto.yml"), path.join(path.dirname(input), "_quarto.yml")].find(fs.existsSync)
   if (config) fs.copyFileSync(config, path.join(stage, "_quarto.yml"))
   const records = walk(output)

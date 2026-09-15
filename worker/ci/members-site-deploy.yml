@@ -58,7 +58,16 @@ jobs:
             vault/requirements.txt
             vault-private/requirements.txt
       - run: pip install -r vault/requirements.txt -r vault-private/requirements.txt
+      - name: register the jupyter kernels the vault notes declare
+        # The notes' outputs are frozen in vault-private/_freeze, so quarto only needs the
+        # kernel names to resolve; nothing executes here.
+        run: |
+          python -m ipykernel install --user --name py314
+          python -m ipykernel install --user --name py312
       - run: npm ci && npm run install-plugins
+        working-directory: website
+      - name: install the headless browser that renders Excalidraw drawings
+        run: npm run setup:browser -- --with-deps
         working-directory: website
       - run: npm ci
         working-directory: website/worker
@@ -71,6 +80,8 @@ jobs:
           MEMBERS_BASE_URL: ${{ vars.MEMBERS_BASE_URL }}
           SITE_LOGIN_ORIGIN: ${{ vars.MEMBERS_BASE_URL }}
           C2_PUBLIC_URL: ${{ vars.C2_PUBLIC_URL }}
+      - run: npm run check
+        working-directory: website/worker
       - run: npm test
         working-directory: website/worker
       - name: apply calendar migrations

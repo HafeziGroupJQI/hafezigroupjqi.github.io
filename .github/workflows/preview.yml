@@ -21,6 +21,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: install the headless browser that renders Excalidraw drawings
+        run: npm run setup:browser -- --with-deps
       - uses: quarto-dev/quarto-actions/setup@v2
         with:
           version: 1.10.18

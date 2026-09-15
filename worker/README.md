@@ -7,16 +7,16 @@ site stays on GitHub Pages and only links here.
 
 ## Routes
 
-| Route | Purpose |
-|---|---|
-| `GET /api/health` | liveness, no login |
-| `GET /auth/login?next=` | GitHub OAuth (`read:org`); `AUTH_MODE=dev` signs in a local owner instead |
-| `GET /auth/callback` | exchanges the code, checks org ownership or `lab-members` membership, sets the session cookie |
-| `GET /auth/logout` | clears the session and returns to the public site |
-| `GET /api/session` | `{ user, csrf }` |
-| `GET /api/calendar/events?start&end` | occurrences in an aware range of at most 370 days |
-| `GET/POST/PUT/DELETE /api/calendar/events[/:id]` | series and single-occurrence edits with optimistic `version` (409 on conflict); writes need `Origin` equal to the site and `X-CSRF-Token` |
-| everything else | requires a session (anonymous page requests are redirected to the login, other requests get 401); served from the static assets, or streamed from GitHub when the path is a private document |
+| Route                                            | Purpose                                                                                                                                                                                      |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                                | liveness, no login                                                                                                                                                                           |
+| `GET /auth/login?next=`                          | GitHub OAuth (`read:org`); `AUTH_MODE=dev` signs in a local owner instead                                                                                                                    |
+| `GET /auth/callback`                             | exchanges the code, checks org ownership or `lab-members` membership, sets the session cookie                                                                                                |
+| `GET /auth/logout`                               | clears the session and returns to the public site                                                                                                                                            |
+| `GET /api/session`                               | `{ user, csrf }`                                                                                                                                                                             |
+| `GET /api/calendar/events?start&end`             | occurrences in an aware range of at most 370 days                                                                                                                                            |
+| `GET/POST/PUT/DELETE /api/calendar/events[/:id]` | series and single-occurrence edits with optimistic `version` (409 on conflict); writes need `Origin` equal to the site and `X-CSRF-Token`                                                    |
+| everything else                                  | requires a session (anonymous page requests are redirected to the login, other requests get 401); served from the static assets, or streamed from GitHub when the path is a private document |
 
 Every response is marked `private` and `noindex`.
 
@@ -37,11 +37,11 @@ the build on purpose: the Worker could never fetch them.
 `PUBLIC_SITE_URL`, `AUTH_MODE=github`) and the D1 binding. Secrets, set with
 `wrangler secret put`:
 
-| Secret | Value |
-|---|---|
-| `SESSION_SECRET` | 32 or more random characters; signs the session cookie |
+| Secret                                     | Value                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------- |
+| `SESSION_SECRET`                           | 32 or more random characters; signs the session cookie                       |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | the GitHub OAuth app whose callback is `https://<worker-host>/auth/callback` |
-| `GITHUB_DOCS_TOKEN` | fine-grained PAT with contents:read on `vault-private` |
+| `GITHUB_DOCS_TOKEN`                        | fine-grained PAT with contents:read on `vault-private`                       |
 
 ## Local development
 

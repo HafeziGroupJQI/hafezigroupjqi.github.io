@@ -12,7 +12,7 @@
     "binding": "ASSETS",
     "run_worker_first": true,
     "html_handling": "auto-trailing-slash",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
   },
   "d1_databases": [
     {
@@ -20,16 +20,16 @@
       "database_name": "hafezi-members",
       // Fill in from `wrangler d1 create hafezi-members`.
       "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
-    }
+      "migrations_dir": "migrations",
+    },
   ],
   "vars": {
     "AUTH_MODE": "github",
     "GITHUB_ORG": "HafeziGroupJQI",
     "GITHUB_TEAM": "lab-members",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
-    "PUBLIC_SITE_URL": "https://hafezigroupjqi.github.io"
-  }
+    "PUBLIC_SITE_URL": "https://hafezigroupjqi.github.io",
+  },
   // Secrets (wrangler secret put): SESSION_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
   // GITHUB_DOCS_TOKEN.
 }

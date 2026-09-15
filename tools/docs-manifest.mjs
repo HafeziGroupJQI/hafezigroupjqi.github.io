@@ -120,9 +120,7 @@ export function pruneDocuments(outputDir, manifest, prefix = "resources") {
 }
 
 export const documentExtensions = (manifest) =>
-  [...new Set(Object.keys(manifest).map((key) => path.extname(key)))].filter(
-    Boolean,
-  )
+  [...new Set(Object.keys(manifest).map((key) => path.extname(key)))].filter(Boolean)
 
 export function writeDocsManifest(manifest, file = "worker/generated/docs-manifest.json") {
   fs.mkdirSync(path.dirname(file), { recursive: true })

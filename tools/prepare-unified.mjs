@@ -44,8 +44,7 @@ export function privateLink(raw, filename, privateRoot) {
 }
 
 export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" } = {}) {
-  if (c2Url && !/^https:\/\//.test(c2Url))
-    throw new Error("C2_PUBLIC_URL must be an https:// URL")
+  if (c2Url && !/^https:\/\//.test(c2Url)) throw new Error("C2_PUBLIC_URL must be an https:// URL")
   const prepared = prepareSite(publicSource, yaml)
   try {
     const root = fs.realpathSync(privateSource)

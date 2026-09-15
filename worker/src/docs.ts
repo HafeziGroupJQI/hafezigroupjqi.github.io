@@ -28,14 +28,17 @@ export async function serveDocument(
   const cached = await cache.match(new Request(key, { headers: range ? { range } : {} }))
   if (cached) return finish(cached)
   if (!env.GITHUB_DOCS_TOKEN) return problem(503, "document store not configured")
-  const blob = await upstream(`https://api.github.com/repos/${env.DOCS_REPO}/git/blobs/${entry.sha}`, {
-    headers: {
-      accept: "application/vnd.github.raw+json",
-      authorization: `Bearer ${env.GITHUB_DOCS_TOKEN}`,
-      "x-github-api-version": "2022-11-28",
-      "user-agent": USER_AGENT,
+  const blob = await upstream(
+    `https://api.github.com/repos/${env.DOCS_REPO}/git/blobs/${entry.sha}`,
+    {
+      headers: {
+        accept: "application/vnd.github.raw+json",
+        authorization: `Bearer ${env.GITHUB_DOCS_TOKEN}`,
+        "x-github-api-version": "2022-11-28",
+        "user-agent": USER_AGENT,
+      },
     },
-  })
+  )
   if (!blob.ok || !blob.body) return problem(502, "document store unavailable")
   const headers = {
     "content-type": entry.contentType,

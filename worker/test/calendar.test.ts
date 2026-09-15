@@ -22,7 +22,11 @@ describe("calendar", () => {
     const training = events.find((event) => event.title === "Laser Safety Training")
     expect(training.start).toBe("2026-09-17T09:00:00-04:00")
     expect(training.end).toBe("2026-09-17T10:00:00-04:00")
-    const winter = await occurrences(client, "2026-11-01T00:00:00-04:00", "2026-11-12T00:00:00-05:00")
+    const winter = await occurrences(
+      client,
+      "2026-11-01T00:00:00-04:00",
+      "2026-11-12T00:00:00-05:00",
+    )
     expect(winter.length).toBeGreaterThan(0)
     for (const event of winter) expect(event.start.endsWith("12:00:00-05:00")).toBe(true)
   })
@@ -54,7 +58,11 @@ describe("calendar", () => {
     })
     expect(moved.status, JSON.stringify(moved.body)).toBe(200)
     expect((await occurrences(client)).filter((item) => item.title === "Series")).toHaveLength(2)
-    const october = await occurrences(client, "2026-10-01T00:00:00-04:00", "2026-10-03T00:00:00-04:00")
+    const october = await occurrences(
+      client,
+      "2026-10-01T00:00:00-04:00",
+      "2026-10-03T00:00:00-04:00",
+    )
     expect(october.map((item) => item.title)).toEqual(["Moved meeting"])
     const removed = await client.json(`${EVENT}?version=2&occurrence=2026-09-23T12:00:00`, {
       method: "DELETE",
@@ -73,7 +81,12 @@ describe("calendar", () => {
     expect(notInSeries.status).toBe(422)
     const rescheduled = await client.json(EVENT, {
       method: "PUT",
-      body: JSON.stringify({ ...event, start: "2026-09-16T14:00:00", end: "2026-09-16T15:00:00", version: 3 }),
+      body: JSON.stringify({
+        ...event,
+        start: "2026-09-16T14:00:00",
+        end: "2026-09-16T15:00:00",
+        version: 3,
+      }),
     })
     expect(rescheduled.status).toBe(200)
     expect((await client.json(EVENT)).body.exceptions).toEqual({})
@@ -101,7 +114,9 @@ describe("calendar", () => {
       until: null,
       version: 1,
     })
-    const naive = await client.fetch("/api/calendar/events?start=2026-09-01T00:00:00&end=2026-10-01T00:00:00")
+    const naive = await client.fetch(
+      "/api/calendar/events?start=2026-09-01T00:00:00&end=2026-10-01T00:00:00",
+    )
     expect(naive.status).toBe(422)
   })
 
@@ -122,7 +137,11 @@ describe("calendar", () => {
         }),
       })
       expect(created.status).toBe(201)
-      const events = await occurrences(client, "2026-10-01T00:00:00-04:00", "2026-12-01T00:00:00-05:00")
+      const events = await occurrences(
+        client,
+        "2026-10-01T00:00:00-04:00",
+        "2026-12-01T00:00:00-05:00",
+      )
       expect(events.filter((event) => event.title === repeat)).toHaveLength(expected)
     }
   })
@@ -139,8 +158,14 @@ describe("calendar", () => {
       }),
     })
     expect(monthly.status).toBe(201)
-    const events = await occurrences(client, "2027-01-01T00:00:00-05:00", "2027-06-01T00:00:00-04:00")
-    expect(events.filter((event) => event.title === "month-end").map((event) => event.start)).toEqual([
+    const events = await occurrences(
+      client,
+      "2027-01-01T00:00:00-05:00",
+      "2027-06-01T00:00:00-04:00",
+    )
+    expect(
+      events.filter((event) => event.title === "month-end").map((event) => event.start),
+    ).toEqual([
       "2027-01-31T02:30:00-05:00",
       "2027-03-31T02:30:00-04:00",
       "2027-05-31T02:30:00-04:00",
@@ -156,7 +181,11 @@ describe("calendar", () => {
       }),
     })
     expect(weekly.status).toBe(201)
-    const spring = await occurrences(client, "2027-03-01T00:00:00-05:00", "2027-04-01T00:00:00-04:00")
+    const spring = await occurrences(
+      client,
+      "2027-03-01T00:00:00-05:00",
+      "2027-04-01T00:00:00-04:00",
+    )
     expect(spring.filter((event) => event.title === "spring").map((event) => event.start)).toEqual([
       "2027-03-07T02:30:00-05:00",
       "2027-03-21T02:30:00-04:00",
@@ -173,7 +202,9 @@ describe("calendar", () => {
     expect((await put(updated)).status).toBe(409)
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
     expect((await client.json(EVENT)).body.title).toBe("Weekly Group Meeting")
-    const remove = await client.json("/api/calendar/events/laser-safety-2026?version=1", { method: "DELETE" })
+    const remove = await client.json("/api/calendar/events/laser-safety-2026?version=1", {
+      method: "DELETE",
+    })
     expect(remove.status).toBe(200)
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
     expect((await client.json("/api/calendar/events/laser-safety-2026")).status).toBe(404)

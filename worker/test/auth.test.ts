@@ -29,7 +29,10 @@ describe("request gate", () => {
     expect((await SELF.fetch(`${ORIGIN}/resources/assets/figure.svg`)).status).toBe(401)
     expect((await SELF.fetch(`${ORIGIN}/static/contentIndex.json`)).status).toBe(401)
     expect((await SELF.fetch(`${ORIGIN}/api/calendar/events`)).status).toBe(401)
-    expect(await (await SELF.fetch(`${ORIGIN}/api/session`)).json()).toEqual({ user: null, csrf: null })
+    expect(await (await SELF.fetch(`${ORIGIN}/api/session`)).json()).toEqual({
+      user: null,
+      csrf: null,
+    })
     expect(await (await SELF.fetch(`${ORIGIN}/api/health`)).json()).toMatchObject({ ok: true })
   })
 
@@ -48,7 +51,9 @@ describe("request gate", () => {
       expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive")
       expect(response.headers.get("cache-control")).toBe("private, no-store")
     }
-    expect((await client.fetch("/resources/notes.html")).headers.get("location")).toBe("/resources/notes")
+    expect((await client.fetch("/resources/notes.html")).headers.get("location")).toBe(
+      "/resources/notes",
+    )
     expect(await (await client.fetch("/static/contentIndex.json")).json()).toBe("secret")
     expect((await client.fetch("/vault")).headers.get("location")).toBe("/resources/")
     expect((await client.fetch("/nowhere")).status).toBe(404)
@@ -61,9 +66,13 @@ describe("request gate", () => {
   it("rejects tampered sessions and unsafe next targets", async () => {
     const client = await member()
     const tampered = client.cookie.slice(0, -2) + "xx"
-    const response = await SELF.fetch(`${ORIGIN}/api/calendar/events`, { headers: { cookie: tampered } })
+    const response = await SELF.fetch(`${ORIGIN}/api/calendar/events`, {
+      headers: { cookie: tampered },
+    })
     expect(response.status).toBe(401)
-    const login = await SELF.fetch(`${ORIGIN}/auth/login?next=//evil.example`, { redirect: "manual" })
+    const login = await SELF.fetch(`${ORIGIN}/auth/login?next=//evil.example`, {
+      redirect: "manual",
+    })
     expect(login.headers.get("location")).toBe("/")
     const returning = await SELF.fetch(`${ORIGIN}/auth/login?next=%2Fresources%2Fnotes`, {
       redirect: "manual",

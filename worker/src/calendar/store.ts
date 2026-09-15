@@ -74,7 +74,8 @@ export class CalendarStore {
       }
       for (const start of starts(event, first.minus(duration), last)) {
         const key = start.toFormat(WALL)
-        if (!(key in exceptions) && exists(key, zone)) append(start, start.plus(duration), event, key)
+        if (!(key in exceptions) && exists(key, zone))
+          append(start, start.plus(duration), event, key)
       }
       for (const [key, override] of Object.entries(exceptions))
         if (override) append(wall(override.start), wall(override.end), override, key)
@@ -113,7 +114,10 @@ export class CalendarStore {
     }
     const result =
       event === null && !occurrence
-        ? await this.db.prepare("DELETE FROM events WHERE id = ? AND version = ?").bind(id, version).run()
+        ? await this.db
+            .prepare("DELETE FROM events WHERE id = ? AND version = ?")
+            .bind(id, version)
+            .run()
         : await this.db
             .prepare(
               "UPDATE events SET data = ?, exceptions = ?, version = version + 1, updated_by = ? WHERE id = ? AND version = ?",

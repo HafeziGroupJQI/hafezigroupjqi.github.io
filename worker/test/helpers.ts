@@ -9,7 +9,9 @@ export async function member() {
   const login = await SELF.fetch(`${ORIGIN}/auth/login`, { redirect: "manual" })
   expect(login.status).toBe(302)
   const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]
-  const session = (await (await SELF.fetch(`${ORIGIN}/api/session`, { headers: { cookie } })).json()) as {
+  const session = (await (
+    await SELF.fetch(`${ORIGIN}/api/session`, { headers: { cookie } })
+  ).json()) as {
     csrf: string
   }
   const headers = {

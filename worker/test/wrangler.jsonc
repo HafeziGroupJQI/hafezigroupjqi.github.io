@@ -7,10 +7,15 @@
     "binding": "ASSETS",
     "run_worker_first": true,
     "html_handling": "auto-trailing-slash",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "hafezi-members", "database_id": "test", "migrations_dir": "../migrations" }
+    {
+      "binding": "DB",
+      "database_name": "hafezi-members",
+      "database_id": "test",
+      "migrations_dir": "../migrations",
+    },
   ],
   "vars": {
     "AUTH_MODE": "dev",
@@ -21,6 +26,6 @@
     "GITHUB_TEAM": "lab-members",
     "GITHUB_DOCS_TOKEN": "test-docs-token",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
-    "PUBLIC_SITE_URL": "https://public.example"
-  }
+    "PUBLIC_SITE_URL": "https://public.example",
+  },
 }

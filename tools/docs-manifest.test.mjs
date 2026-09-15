@@ -51,7 +51,10 @@ test("manifest keys documents by their slugified site path with git blob shas", 
     )
     assert.equal(laser.size, "%PDF-1.4 laser".length)
     assert.equal(laser.contentType, "application/pdf")
-    assert.equal(manifest["resources/files/scripts/run.py"].contentType, "text/x-python; charset=utf-8")
+    assert.equal(
+      manifest["resources/files/scripts/run.py"].contentType,
+      "text/x-python; charset=utf-8",
+    )
     assert.deepEqual(documentExtensions(manifest).sort(), [".PDF", ".pdf", ".py"])
     const file = path.join(root, "out", "manifest.json")
     writeDocsManifest(manifest, file)

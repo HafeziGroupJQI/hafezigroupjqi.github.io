@@ -62,13 +62,20 @@ const github = async (path: string, token: string) =>
 export async function login(request: Request, url: URL, env: Env): Promise<Response> {
   const next = safeNext(url.searchParams.get("next"))
   if (env.AUTH_MODE === "dev") {
-    const cookie = await sessionCookie({ login: "dev", name: "Local member", role: "owner" }, url, env)
+    const cookie = await sessionCookie(
+      { login: "dev", name: "Local member", role: "owner" },
+      url,
+      env,
+    )
     return redirect(next, 302, { "set-cookie": cookie })
   }
   if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET)
     return problem(503, "GitHub login is not configured")
   const state = randomToken()
-  const pending = await sign({ state, next, exp: Math.floor(Date.now() / 1000) + 600 }, env.SESSION_SECRET)
+  const pending = await sign(
+    { state, next, exp: Math.floor(Date.now() / 1000) + 600 },
+    env.SESSION_SECRET,
+  )
   const authorize = new URL("https://github.com/login/oauth/authorize")
   authorize.searchParams.set("client_id", env.GITHUB_CLIENT_ID)
   authorize.searchParams.set("redirect_uri", `${url.origin}/auth/callback`)
@@ -91,7 +98,11 @@ export async function callback(request: Request, url: URL, env: Env): Promise<Re
     return problem(400, "login attempt expired; start again")
   const exchange = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json", "user-agent": USER_AGENT },
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "user-agent": USER_AGENT,
+    },
     body: JSON.stringify({
       client_id: env.GITHUB_CLIENT_ID,
       client_secret: env.GITHUB_CLIENT_SECRET,
@@ -99,7 +110,9 @@ export async function callback(request: Request, url: URL, env: Env): Promise<Re
       redirect_uri: `${url.origin}/auth/callback`,
     }),
   })
-  const token = exchange.ok ? ((await exchange.json()) as { access_token?: string }).access_token : null
+  const token = exchange.ok
+    ? ((await exchange.json()) as { access_token?: string }).access_token
+    : null
   if (!token) return problem(502, "GitHub did not issue a token")
   const userResponse = await github("/user", token)
   if (!userResponse.ok) return problem(502, "GitHub did not identify the user")
@@ -118,7 +131,11 @@ export async function callback(request: Request, url: URL, env: Env): Promise<Re
       status: 403,
       headers: { "content-type": "text/plain; charset=utf-8", "set-cookie": clear },
     })
-  const cookie = await sessionCookie({ login: user.login, name: user.name ?? user.login, role }, url, env)
+  const cookie = await sessionCookie(
+    { login: user.login, name: user.name ?? user.login, role },
+    url,
+    env,
+  )
   const headers = new Headers({ location: safeNext(pending.next) })
   headers.append("set-cookie", cookie)
   headers.append("set-cookie", clear)

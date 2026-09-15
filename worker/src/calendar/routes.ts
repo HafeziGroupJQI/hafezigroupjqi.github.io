@@ -11,7 +11,9 @@ const AWARE = /(?:Z|[+-]\d\d:?\d\d)$/i
 function range(url: URL): [DateTime, DateTime] {
   const raw = [url.searchParams.get("start"), url.searchParams.get("end")]
   const [start, end] = raw.map((value) =>
-    value && AWARE.test(value) ? DateTime.fromISO(value, { setZone: true }) : DateTime.invalid("naive"),
+    value && AWARE.test(value)
+      ? DateTime.fromISO(value, { setZone: true })
+      : DateTime.invalid("naive"),
   )
   if (!start.isValid || !end.isValid || end <= start || end.diff(start, "days").days > 370)
     throw new HttpError(422, "request an aware date range of at most 370 days")
@@ -48,7 +50,8 @@ export async function calendarRoutes(
   }
   if (request.method === "DELETE" && id) {
     const version = Number(url.searchParams.get("version"))
-    if (!Number.isInteger(version) || version < 1) throw new HttpError(422, "version must be at least 1")
+    if (!Number.isInteger(version) || version < 1)
+      throw new HttpError(422, "version must be at least 1")
     return json(await store.change(id, null, version, session.login, occurrence))
   }
   throw new HttpError(405, "method not allowed")

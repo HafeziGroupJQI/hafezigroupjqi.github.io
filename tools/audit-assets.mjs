@@ -151,7 +151,8 @@ export async function auditOutput(rootDirectory, { external = new Set(), limits 
   if (limits) {
     const maxBytes = limits.maxBytes ?? MAX_ASSET_BYTES
     const maxFiles = limits.maxFiles ?? MAX_ASSET_FILES
-    if (files.length > maxFiles) errors.push(`${files.length} files exceed the ${maxFiles} file limit`)
+    if (files.length > maxFiles)
+      errors.push(`${files.length} files exceed the ${maxFiles} file limit`)
     for (const file of files)
       if (fs.statSync(file).size > maxBytes)
         errors.push(

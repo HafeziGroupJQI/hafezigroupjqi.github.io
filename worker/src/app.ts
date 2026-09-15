@@ -16,7 +16,10 @@ export interface HandlerOptions {
   upstream?: Upstream
 }
 
-export function createHandler(manifest: DocsManifest, options: HandlerOptions = {}): ExportedHandler<Env> {
+export function createHandler(
+  manifest: DocsManifest,
+  options: HandlerOptions = {},
+): ExportedHandler<Env> {
   const documents = manifest.documents
   const upstream: Upstream = options.upstream ?? ((input, init) => fetch(input, init))
   return {
@@ -25,14 +28,20 @@ export function createHandler(manifest: DocsManifest, options: HandlerOptions = 
       try {
         return await route(request, url, env, ctx)
       } catch (error) {
-        if (error instanceof HttpError) return withPrivateHeaders(problem(error.status, error.detail))
+        if (error instanceof HttpError)
+          return withPrivateHeaders(problem(error.status, error.detail))
         console.error(error)
         return withPrivateHeaders(problem(500, "internal error"))
       }
     },
   }
 
-  async function route(request: Request, url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async function route(
+    request: Request,
+    url: URL,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const path = url.pathname
     if (path === "/api/health") return json({ ok: true, version: VERSION })
     if (path === "/auth/login") return withPrivateHeaders(await login(request, url, env))
@@ -49,12 +58,16 @@ export function createHandler(manifest: DocsManifest, options: HandlerOptions = 
     }
     if (path === "/api/session")
       return withPrivateHeaders(
-        json({ user: { login: session.login, name: session.name, role: session.role }, csrf: session.csrf }),
+        json({
+          user: { login: session.login, name: session.name, role: session.role },
+          csrf: session.csrf,
+        }),
       )
     const calendar = await calendarRoutes(request, url, env, session)
     if (calendar) return withPrivateHeaders(calendar)
     if (path.startsWith("/api/")) return withPrivateHeaders(problem(404, "not found"))
-    if (path === "/vault" || path === "/vault/") return withPrivateHeaders(redirect("/resources/", 308))
+    if (path === "/vault" || path === "/vault/")
+      return withPrivateHeaders(redirect("/resources/", 308))
     if (request.method !== "GET" && request.method !== "HEAD")
       return withPrivateHeaders(problem(405, "method not allowed"))
 

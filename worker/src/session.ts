@@ -22,7 +22,8 @@ const base64url = (bytes: ArrayBuffer | Uint8Array) => {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
 const fromBase64url = (text: string) => {
-  const padded = text.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (text.length % 4)) % 4)
+  const padded =
+    text.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (text.length % 4)) % 4)
   return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0))
 }
 
@@ -92,5 +93,10 @@ export async function sessionCookie(
     csrf: randomToken(),
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE,
   }
-  return serializeCookie(SESSION_COOKIE, await sign(session, env.SESSION_SECRET), url, SESSION_MAX_AGE)
+  return serializeCookie(
+    SESSION_COOKIE,
+    await sign(session, env.SESSION_SECRET),
+    url,
+    SESSION_MAX_AGE,
+  )
 }

@@ -52,8 +52,10 @@ export function parseEvent(input: unknown): { event: Event; version: number } {
   const body = input as Record<string, unknown>
   const title = text(body.title, "title", 200).trim()
   if (!title) throw invalid("title is required")
-  const timezone = body.timezone === undefined || body.timezone === null ? DEFAULT_ZONE : body.timezone
-  if (typeof timezone !== "string" || !IANAZone.isValidZone(timezone)) throw invalid("unknown timezone")
+  const timezone =
+    body.timezone === undefined || body.timezone === null ? DEFAULT_ZONE : body.timezone
+  if (typeof timezone !== "string" || !IANAZone.isValidZone(timezone))
+    throw invalid("unknown timezone")
   const start = toWall(body.start, timezone, "start")
   const end = toWall(body.end, timezone, "end")
   const span = wall(end).diff(wall(start), "days").days
@@ -62,7 +64,11 @@ export function parseEvent(input: unknown): { event: Event; version: number } {
   if (typeof repeat !== "string" || !REPEATS.has(repeat as Repeat)) throw invalid("unknown repeat")
   let until: string | null = null
   if (body.until !== undefined && body.until !== null && body.until !== "") {
-    if (typeof body.until !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.until) || !wall(body.until).isValid)
+    if (
+      typeof body.until !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(body.until) ||
+      !wall(body.until).isValid
+    )
       throw invalid("recurrence end must be a date")
     until = body.until
     if (until < start.slice(0, 10)) throw invalid("recurrence end must not precede start")

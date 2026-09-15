@@ -29,7 +29,11 @@
     "GITHUB_TEAM": "lab-members",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
     "PUBLIC_SITE_URL": "https://hafezigroupjqi.github.io",
+    // Instrument service behind its Cloudflare Tunnel public hostname. Leave empty until the
+    // tunnel exists: the instruments page then reports "Not configured" instead of failing.
+    "C2_URL": "",
   },
   // Secrets (wrangler secret put): SESSION_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
-  // GITHUB_DOCS_TOKEN.
+  // GITHUB_DOCS_TOKEN, and for the instrument gateway C2_GATEWAY_SECRET,
+  // CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET.
 }

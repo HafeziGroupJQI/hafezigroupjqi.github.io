@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url"
 process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."))
 if (fs.existsSync("members/.env")) process.loadEnvFile("members/.env")
 const env = process.env
+// --edition public|members|both: rebuild one edition after a small change (the gateway
+// serves the output directories directly, so no restart is needed).
+const editionIndex = process.argv.indexOf("--edition")
+const edition = editionIndex > 0 ? process.argv[editionIndex + 1] : "both"
+if (!["public", "members", "both"].includes(edition))
+  throw new Error("--edition must be public, members, or both")
 const baseUrl = env.MEMBERS_BASE_URL ?? "http://127.0.0.1:8100"
 const publicSource = env.VAULT_PUBLIC_DIR ?? "content"
 const privateSource = env.VAULT_PRIVATE_DIR ?? "../vault-private"
@@ -19,9 +25,10 @@ if (
   publicPath.startsWith(privatePath + path.sep)
 )
   throw new Error("Public and member build directories must be separate, non-nested paths")
-for (const args of [
-  ["--content", publicSource, "--output", publicOutput],
-  [
+const builds = []
+if (edition !== "members") builds.push(["--content", publicSource, "--output", publicOutput])
+if (edition !== "public")
+  builds.push([
     "--mode",
     "internal",
     "--public-content",
@@ -30,10 +37,12 @@ for (const args of [
     privateSource,
     "--output",
     privateOutput,
-  ],
-])
+  ])
+for (const args of builds)
   execFileSync(process.execPath, ["tools/build-site.mjs", ...args, "--base-url", baseUrl], {
     stdio: "inherit",
     env,
   })
-console.log("Unified website built. Start the gateway with members/.venv/bin/hafezi-members.")
+console.log(
+  `${edition === "both" ? "Unified website" : edition + " edition"} built. The gateway (members/.venv/bin/hafezi-members) serves it directly.`,
+)

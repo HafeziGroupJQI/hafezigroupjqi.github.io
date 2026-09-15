@@ -29,7 +29,9 @@
     "test:site": "node --test tools/site-model.test.mjs",
     "compare:site": "node tools/compare-site.mjs",
     "clean-qmd": "node tools/clean-qmd.mjs",
-    "build:unified": "node tools/build-unified.mjs"
+    "build:unified": "node tools/build-unified.mjs",
+    "build:public": "node tools/build-unified.mjs --edition public",
+    "build:members": "node tools/build-unified.mjs --edition members"
   },
   "engines": {
     "npm": ">=10.9.2",

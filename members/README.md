@@ -24,7 +24,9 @@ local member session. This mode is restricted to a localhost base URL. For GitHu
 client ID, secret and a random session secret (32+ characters), with the callback
 `MEMBERS_BASE_URL/auth/callback`. Never use development authentication on a public host.
 
-`build:unified` loads `members/.env` and builds both editions. `build:internal` is a compatibility
+`build:unified` loads `members/.env` and builds both editions; `build:public` and
+`build:members` rebuild one edition after a small change (about one and two minutes). The
+gateway serves the output directories directly, so a rebuild shows up without a restart. `build:internal` is a compatibility
 alias for this unified build. `build` still builds a public-only static preview. Both editions
 use `quartz.config.yaml`; the authenticated build disables feeds/sitemaps and includes private PDFs.
 Build processes stage copies of the source vaults without modifying them.

@@ -293,7 +293,7 @@ article.popover-hint > *:first-child { margin-top: 0; }
 .handbook-links h2 { font: 700 16px/1.5 Roboto, sans-serif; margin: 0 0 10px; }
 .public-breadcrumbs { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
 .public-breadcrumbs a { color: #222; }
-.site-public .page-content__aside { display: none; }
+.site-public:not(.site-handbook) .page-content__aside { display: none !important; }
 .site-public .page-content__main { max-width: 1090px; }
 .site-public .page-listing { display: none; }
 .site-home .page-content__sidebar, .site-home .page-content__header { display: none; }

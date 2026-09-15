@@ -23,6 +23,15 @@ const sectionLabels: Record<string, string> = Object.fromEntries([
   ["lab", "Lab notes"],
 ])
 
+const handbookSections = new Set([
+  "onboarding",
+  "equipment",
+  "setups",
+  "materials",
+  "lab",
+  "places",
+])
+
 const humanize = (segment: string) =>
   segment.replace(/[-_]+/g, " ").replace(/^\w/, (letter) => letter.toUpperCase())
 
@@ -46,13 +55,17 @@ function breadcrumbs(slug: FullSlug, allFiles: PageFrameProps["componentData"]["
 /** The public Hafezi layout is shared by every page and both authentication editions. */
 export const JqiFrame: PageFrame = {
   name: "jqi",
-  render({ componentData, header, pageBody: Content, afterBody, footer }: PageFrameProps) {
+  render({ componentData, header, pageBody: Content, afterBody, right, footer }: PageFrameProps) {
     const slug = componentData.fileData.slug!
     const frontmatter = componentData.fileData.frontmatter
     const home = frontmatter?.site_home === true
     const person = frontmatter?.type === "person"
     const internal = process.env.SITE_MODE === "internal"
     const crumbs = breadcrumbs(slug, componentData.allFiles)
+    // Handbook and member pages get the graph, backlinks, and table of contents column;
+    // pages mirrored from hafezi.jqi.umd.edu keep the live site's two-column look.
+    const handbook =
+      handbookSections.has(slug.split("/")[0]) || (internal && slug.startsWith("resources/"))
     // Private resources carry topic tags; public pages keep the live site's untagged look.
     const tags =
       internal && slug.startsWith("resources/")
@@ -60,7 +73,7 @@ export const JqiFrame: PageFrame = {
         : []
     return (
       <div
-        class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}`}
+        class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}`}
       >
         <a href="#main-content" class="skip-nav-link">
           Skip to main content
@@ -117,7 +130,9 @@ export const JqiFrame: PageFrame = {
                 </div>
               </div>
             </div>
-            <aside class="page-content__aside" />
+            <aside class="page-content__aside">
+              {handbook && right.map((RightComponent) => <RightComponent {...componentData} />)}
+            </aside>
           </div>
         </main>
         <JqiFooter {...componentData} />

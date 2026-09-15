@@ -295,14 +295,12 @@ layout:
         right: []
     content:
       template: jqi
+    # Folder and tag pages keep the right column; the jqi frame only renders it on handbook
+    # and member resource pages.
     folder:
       template: jqi
-      positions:
-        right: []
     tag:
       template: jqi
-      positions:
-        right: []
     canvas: {}
     bases:
       template: jqi

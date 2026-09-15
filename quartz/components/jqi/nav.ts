@@ -4,7 +4,7 @@ export interface NavItem {
   href?: string
   children?: NavItem[]
   /** Identifies a dropdown so the header can attach live status to it. */
-  menu?: "resources" | "tools"
+  menu?: "resources"
 }
 
 export const publicNav: NavItem[] = [
@@ -33,11 +33,7 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
     ? [
         ...publicNav,
         { label: "Resources", menu: "resources", children: [...resourceNav, calendarNav] },
-        {
-          label: "Tools",
-          menu: "tools",
-          children: [{ label: "Instruments", href: "/instruments" }],
-        },
+        { label: "Tools", children: [{ label: "Instruments", href: "/instruments" }] },
         { label: "Sign out", href: "/auth/logout" },
       ]
     : [

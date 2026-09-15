@@ -402,8 +402,6 @@ article.popover-hint > *:first-child { margin-top: 0; }
 .member-tools .fc-event { color: #fff; }
 .member-tools .fc-toolbar { flex-wrap: wrap; gap: 10px; }
 .member-tools .fc-toolbar-title { font-size: 24px; }
-.instrument-card { border-top: 1px solid #ddd; margin: 22px 0; padding-top: 18px; }
-.instrument-card dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 20px; }
 @media (max-width: 1199px) {
   .member-menu { padding: 6px 24px; }
   .member-menu__panel { position: static; width: auto; box-shadow: none; border: 0; }

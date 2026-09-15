@@ -49,7 +49,6 @@ function showError(parent, error) {
 
 async function updateMenu() {
   const upcoming = document.querySelector("[data-upcoming-events]")
-  const status = document.querySelector("[data-instrument-status]")
   const start = DateTime.now().setZone(zone)
   if (upcoming) {
     try {
@@ -66,13 +65,6 @@ async function updateMenu() {
         )
     } catch {
       upcoming.textContent = "Calendar unavailable"
-    }
-  }
-  if (status) {
-    try {
-      status.textContent = `Instruments: ${(await api("/api/c2/status")).message}`
-    } catch {
-      status.textContent = "Instrument status unavailable"
     }
   }
 }
@@ -249,85 +241,6 @@ function setupCalendar(root) {
   if (location.hash === "#add-event") editor(calendar)
 }
 
-async function setupInstruments(root) {
-  root.replaceChildren()
-  const bar = element("div", "", root, { class: "tools-toolbar" })
-  const refresh = element("button", "Refresh status", bar, { type: "button" })
-  refresh.onclick = () => setupInstruments(root)
-  const status = await api("/api/c2/status")
-  element("p", status.message, root, { role: "status" })
-  if (status.state !== "connected") {
-    element(
-      "p",
-      status.state === "not_configured"
-        ? "Lab instrument control will be available here once the service is configured."
-        : "The instrument service cannot be reached. Try refreshing in a moment.",
-      root,
-    )
-    element("button", "Poll instruments", root, { type: "button", disabled: "" })
-    return
-  }
-  const instruments = await api("/api/c2/instruments")
-  if (!instruments.length) element("p", "No instruments configured.", root)
-  for (const item of instruments) {
-    const card = element("section", "", root, { class: "instrument-card" })
-    element("h2", item.name || item.title || item.id, card)
-    element(
-      "p",
-      `Status: ${item.status} · Setups: ${(item.setups ?? []).join(", ") || "None"}`,
-      card,
-    )
-    const readings = element("dl", "", card)
-    for (const [metric, latest] of Object.entries(item.latest ?? {})) {
-      element("dt", metric, readings)
-      element("dd", `${latest.value} (${latest.ts})`, readings)
-      const button = element("button", `View ${metric} history`, card, { type: "button" })
-      button.onclick = async () => {
-        button.disabled = true
-        try {
-          const data = await api(
-            `/api/c2/instruments/${encodeURIComponent(item.id)}/history?${new URLSearchParams({ metric })}`,
-          )
-          const table = element("table", "", card)
-          const heading = element("tr", "", element("thead", "", table))
-          element("th", "Time", heading)
-          element("th", metric, heading)
-          const body = element("tbody", "", table)
-          for (const row of data) {
-            const tr = element("tr", "", body)
-            element("td", row.ts, tr)
-            element("td", String(row.value), tr)
-          }
-          if (!data.length) element("caption", "No readings in the last 24 hours.", table)
-        } catch (error) {
-          showError(card, error)
-          button.disabled = false
-        }
-      }
-    }
-    const poll = element("button", "Poll now", card, { type: "button" })
-    poll.disabled = !item.controllable
-    poll.onclick = async () => {
-      poll.disabled = true
-      try {
-        await api(`/api/c2/instruments/${encodeURIComponent(item.id)}/poll`, { method: "POST" })
-        await setupInstruments(root)
-      } catch (error) {
-        showError(card, error)
-        poll.disabled = false
-      }
-    }
-  }
-  const events = await api("/api/c2/events")
-  element("h2", "Recent activity", root)
-  const list = element("ul", "", root)
-  for (const event of events.slice(0, 20))
-    element("li", `${event.ts} · ${event.instrument}: ${event.message}`, list)
-  if (!events.length) element("p", "No recent activity.", root)
-}
-
 updateMenu()
 const calendar = document.querySelector("[data-calendar]")
 if (calendar) setupCalendar(calendar)
-const instruments = document.querySelector("[data-instruments]")
-if (instruments) setupInstruments(instruments).catch((error) => showError(instruments, error))

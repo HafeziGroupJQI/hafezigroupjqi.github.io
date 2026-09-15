@@ -76,11 +76,6 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
                           <p data-upcoming-events>Loading upcoming events…</p>
                         </div>
                       )}
-                      {item.menu === "tools" && (
-                        <div class="lab-menu-status">
-                          <p data-instrument-status>Checking instruments…</p>
-                        </div>
-                      )}
                     </div>
                   </details>
                 ) : (

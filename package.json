@@ -28,7 +28,8 @@
     "serve": "node tools/build-site.mjs --serve",
     "test:site": "node --test tools/site-model.test.mjs",
     "compare:site": "node tools/compare-site.mjs",
-    "clean-qmd": "node tools/clean-qmd.mjs"
+    "clean-qmd": "node tools/clean-qmd.mjs",
+    "build:unified": "node tools/build-unified.mjs"
   },
   "engines": {
     "npm": ">=10.9.2",
@@ -48,6 +49,11 @@
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@floating-ui/dom": "^1.7.4",
+    "@fullcalendar/core": "6.1.19",
+    "@fullcalendar/daygrid": "6.1.19",
+    "@fullcalendar/list": "6.1.19",
+    "@fullcalendar/luxon3": "6.1.19",
+    "@fullcalendar/timegrid": "6.1.19",
     "@myriaddreamin/rehype-typst": "^0.6.0",
     "@napi-rs/simple-git": "0.1.22",
     "@quartz-community/alias-redirects": "^0.1.0",
@@ -107,6 +113,7 @@
     "hast-util-to-jsx-runtime": "^2.3.6",
     "isomorphic-git": "^1.36.3",
     "lightningcss": "^1.31.1",
+    "luxon": "3.7.2",
     "lz-string": "^1.5.0",
     "micromorph": "^0.4.5",
     "minimatch": "^10.1.1",

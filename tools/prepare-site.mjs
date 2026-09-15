@@ -18,7 +18,7 @@ const walk = (dir) =>
   fs
     .readdirSync(dir, { withFileTypes: true })
     .flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]))
-export function prepareSite(source, yaml, { mode = "public" } = {}) {
+export function prepareSite(source, yaml) {
   const parse = (text) => {
     const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
     return {
@@ -69,44 +69,12 @@ export function prepareSite(source, yaml, { mode = "public" } = {}) {
       {
         title,
         type: "page",
-        tags: mode === "internal" ? ["internal"] : [],
-        ...(mode === "public" ? { site_public: true } : { site_internal: true }),
+        tags: [],
+        site_public: true,
         ...extra,
       },
       body,
     )
-  if (mode === "internal") {
-    const sections = [
-      [
-        "Journal club",
-        "journal-club",
-        "Session write-ups, discussion notes, drawings, recordings, and papers.",
-      ],
-      ["Notes", "notes", "Internal meeting notes, planning documents, and handoffs."],
-      ["Projects", "projects", "Current project logs, priorities, and recovered plans."],
-      ["Code", "code", "Runnable analyses and notes for the lab's software repositories."],
-      ["Drive", "drive", "The indexed catalogue of shared-drive content."],
-    ].filter(([, slug]) => fs.existsSync(path.join(output, slug)))
-    page(
-      "index",
-      "Members vault",
-      [
-        '<div class="internal-portal-intro">',
-        '<p class="internal-kicker">Hafezi Group · members only</p>',
-        "# Shared knowledge for the lab",
-        "Search working notes, code, project records, and session material from one authenticated place.",
-        "</div>",
-        '<div class="internal-portal-grid">',
-        ...sections.map(
-          ([title, slug, description]) =>
-            `<a class="internal-portal-card" href="${slug}/"><strong>${title}</strong><span>${description}</span></a>`,
-        ),
-        "</div>",
-      ].join("\n\n"),
-      { site_home: true },
-    )
-    return { stage, output, manifest }
-  }
   const welcome = get("index")
   if (welcome?.fm.title === "Welcome") {
     write(

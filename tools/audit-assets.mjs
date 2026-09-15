@@ -27,20 +27,22 @@ const walk = (directory, ignore = true) =>
   })
 
 const normalize = (value) => value.split(path.sep).join("/")
-const withoutCode = (text) =>
-  text.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]+`/g, "")
+const withoutCode = (text) => text.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]+`/g, "")
 
 const parsePage = (filename) => {
   const text = fs.readFileSync(filename, "utf8")
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
   return {
-    frontmatter: match ? yaml.parse(match[1]) ?? {} : {},
+    frontmatter: match ? (yaml.parse(match[1]) ?? {}) : {},
     body: withoutCode(match ? text.slice(match[0].length) : text),
   }
 }
 
 const localReference = (raw) => {
-  const trimmed = raw.trim().replace(/^<|>$/g, "").replace(/\s+["'][^"']*["']\s*$/, "")
+  const trimmed = raw
+    .trim()
+    .replace(/^<|>$/g, "")
+    .replace(/\s+["'][^"']*["']\s*$/, "")
   if (/^(?:data:|https?:|\/\/)/i.test(trimmed)) return null
   try {
     return decodeURIComponent(trimmed.split(/[?#]/)[0])
@@ -77,7 +79,12 @@ export async function auditSource(rootDirectory) {
   }
   for (const filename of files) {
     const relative = normalize(path.relative(root, filename))
-    for (const key of [relative, path.basename(relative), relative.replace(/\.(?:md|qmd)$/, ""), path.basename(relative).replace(/\.(?:md|qmd)$/, "")]) {
+    for (const key of [
+      relative,
+      path.basename(relative),
+      relative.replace(/\.(?:md|qmd)$/, ""),
+      path.basename(relative).replace(/\.(?:md|qmd)$/, ""),
+    ]) {
       register(key, filename)
     }
   }
@@ -85,10 +92,15 @@ export async function auditSource(rootDirectory) {
   const checkLocal = (page, raw, kind) => {
     const reference = localReference(raw)
     if (reference === null) {
-      if (/^(?:https?:|\/\/)/i.test(raw.trim())) errors.push(`${normalize(path.relative(root, page))}: remote ${kind} must be stored in the vault: ${raw}`)
+      if (/^(?:https?:|\/\/)/i.test(raw.trim()))
+        errors.push(
+          `${normalize(path.relative(root, page))}: remote ${kind} must be stored in the vault: ${raw}`,
+        )
       return
     }
-    const target = path.resolve(path.dirname(page), reference)
+    const target = reference.startsWith("/")
+      ? path.resolve(root, "." + reference)
+      : path.resolve(path.dirname(page), reference)
     if (!target.startsWith(root) || !fs.existsSync(target))
       errors.push(`${normalize(path.relative(root, page))}: missing ${kind} ${raw}`)
   }
@@ -103,19 +115,26 @@ export async function auditSource(rootDirectory) {
       if (matches.length === 0) errors.push(`${label}: missing embed [[${raw}]]`)
       if (matches.length > 1) errors.push(`${label}: ambiguous embed [[${raw}]]`)
     }
-    for (const match of body.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) checkLocal(page, match[1], "image")
-    for (const match of body.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["']/gi)) checkLocal(page, match[1], "image")
+    for (const match of body.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g))
+      checkLocal(page, match[1], "image")
+    for (const match of body.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["']/gi))
+      checkLocal(page, match[1], "image")
     for (const field of ["photo", "image", "cover", "thumbnail", "hero"]) {
       if (typeof frontmatter[field] !== "string") continue
       const target = path.resolve(root, frontmatter[field])
-      if (!target.startsWith(root) || !fs.existsSync(target)) errors.push(`${label}: missing ${field} ${frontmatter[field]}`)
+      if (!target.startsWith(root) || !fs.existsSync(target))
+        errors.push(`${label}: missing ${field} ${frontmatter[field]}`)
     }
   }
 
   for (const image of files.filter((filename) => imagePattern.test(filename)))
     await validateImage(image, normalize(path.relative(root, image)), errors)
 
-  return { errors, pages: pages.length, images: files.filter((filename) => imagePattern.test(filename)).length }
+  return {
+    errors,
+    pages: pages.length,
+    images: files.filter((filename) => imagePattern.test(filename)).length,
+  }
 }
 
 export async function auditOutput(rootDirectory) {
@@ -125,22 +144,28 @@ export async function auditOutput(rootDirectory) {
   const references = []
   for (const page of files.filter((filename) => filename.endsWith(".html"))) {
     const html = fs.readFileSync(page, "utf8")
-    for (const match of html.matchAll(/\b(?:src|poster)=["']([^"']+)["']/gi)) references.push([page, match[1]])
-    for (const match of html.matchAll(/<object\b[^>]*\bdata=["']([^"']+)["']/gi)) references.push([page, match[1]])
+    for (const match of html.matchAll(/\b(?:src|poster)=["']([^"']+)["']/gi))
+      references.push([page, match[1]])
+    for (const match of html.matchAll(/<object\b[^>]*\bdata=["']([^"']+)["']/gi))
+      references.push([page, match[1]])
     for (const match of html.matchAll(/\bsrcset=["']([^"']+)["']/gi))
-      for (const candidate of match[1].split(",")) references.push([page, candidate.trim().split(/\s+/)[0]])
+      for (const candidate of match[1].split(","))
+        references.push([page, candidate.trim().split(/\s+/)[0]])
     for (const match of html.matchAll(/\bhref=["']([^"']+)["']/gi))
       if (mediaPattern.test(match[1].split(/[?#]/)[0])) references.push([page, match[1]])
   }
   for (const stylesheet of files.filter((filename) => filename.endsWith(".css"))) {
     const css = fs.readFileSync(stylesheet, "utf8")
-    for (const match of css.matchAll(/url\(["']?([^"')]+)["']?\)/gi)) references.push([stylesheet, match[1]])
+    for (const match of css.matchAll(/url\(["']?([^"')]+)["']?\)/gi))
+      references.push([stylesheet, match[1]])
   }
 
   for (const [owner, raw] of references) {
     const reference = localReference(raw)
     if (reference === null || !reference) continue
-    const target = reference.startsWith("/") ? path.join(root, reference) : path.resolve(path.dirname(owner), reference)
+    const target = reference.startsWith("/")
+      ? path.join(root, reference)
+      : path.resolve(path.dirname(owner), reference)
     if (!target.startsWith(root) || !fs.existsSync(target))
       errors.push(`${normalize(path.relative(root, owner))}: emitted asset is missing: ${raw}`)
   }
@@ -164,4 +189,5 @@ async function main() {
   console.log(`asset audit ok: ${JSON.stringify({ ...result, errors: undefined })}`)
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href) await main()
+if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href)
+  await main()

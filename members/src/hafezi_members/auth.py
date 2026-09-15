@@ -27,9 +27,7 @@ async def authorize_github_user(token: str, settings: Settings) -> tuple[dict, s
         user_response.raise_for_status()
         user = user_response.json()
         org = await client.get(f"/user/memberships/orgs/{settings.github_org}")
-        team = await client.get(
-            f"/orgs/{settings.github_org}/teams/{settings.github_team}/memberships/{user['login']}"
-        )
+        team = await client.get(f"/orgs/{settings.github_org}/teams/{settings.github_team}/memberships/{user['login']}")
     allowed, role = decide(
         org.json() if org.status_code == 200 else None,
         team.json() if team.status_code == 200 else None,
@@ -69,3 +67,24 @@ def login_redirect(request: Request) -> RedirectResponse:
     if not target.startswith("/auth/"):
         request.session["next"] = safe_next(target)
     return RedirectResponse("/auth/login", status_code=302)
+
+
+def current_user(request: Request) -> dict:
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(401, "login required")
+    return user
+
+
+def require_mutation(request: Request):
+    """Cookie authentication requires both a same-origin request and a session CSRF token."""
+    import secrets
+
+    current_user(request)
+    expected = request.session.get("csrf", "")
+    supplied = request.headers.get("x-csrf-token", "")
+    origin = request.headers.get("origin")
+    if origin != request.app.state.settings.base_url.rstrip("/"):
+        raise HTTPException(403, "same-origin request required")
+    if not expected or not secrets.compare_digest(expected, supplied):
+        raise HTTPException(403, "invalid CSRF token")

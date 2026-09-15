@@ -25,3 +25,8 @@ def test_github_auth_requires_credentials():
 def test_remote_services_require_https():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, auth="dev", c2_url="http://instruments.example.edu")
+
+
+def test_unconfigured_legacy_c2_url_does_not_prevent_website_starting():
+    settings = Settings(_env_file=None, auth="dev", c2_url="http://127.0.0.1:8000")
+    assert not settings.c2_gateway_secret

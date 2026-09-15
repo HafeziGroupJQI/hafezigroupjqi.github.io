@@ -27,5 +27,7 @@
     "GITHUB_DOCS_TOKEN": "test-docs-token",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
     "PUBLIC_SITE_URL": "https://public.example",
+    "C2_URL": "https://c2.test",
+    "C2_GATEWAY_SECRET": "a-shared-gateway-secret-32-characters",
   },
 }

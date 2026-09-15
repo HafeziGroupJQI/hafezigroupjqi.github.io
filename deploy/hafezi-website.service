@@ -1,0 +1,16 @@
+[Unit]
+Description=Hafezi Group website and member tools
+After=network.target
+
+[Service]
+Type=simple
+User=hafezi
+WorkingDirectory=/srv/hafezi/website
+EnvironmentFile=/srv/hafezi/website/members/.env
+ExecStart=/srv/hafezi/website/members/.venv/bin/hafezi-members
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

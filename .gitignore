@@ -15,3 +15,10 @@ quartz/cli/tui/dist/
 # the vault checkout in CI (content is a committed symlink to ../vault/content; CI repoints it)
 vault-src/
 .cache/
+
+# Gateway runtime state and credentials
+members/.env
+members/.venv/
+members/data/
+**/__pycache__/
+**/.pytest_cache/

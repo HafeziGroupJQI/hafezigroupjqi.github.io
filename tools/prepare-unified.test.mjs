@@ -29,6 +29,20 @@ test("combined content keeps homepage, namespaces private links and aliases, and
       "---\ntitle: Other\n---\nOther note",
     )
     fs.writeFileSync(path.join(privateRoot, "notes", "file.txt"), "attachment")
+    fs.mkdirSync(path.join(publicRoot, "equipment"))
+    fs.writeFileSync(
+      path.join(publicRoot, "equipment", "laser.md"),
+      "---\ntitle: Laser\ntype: equipment\nid: laser\n---\nPublic record",
+    )
+    fs.writeFileSync(
+      path.join(publicRoot, "equipment", "index.md"),
+      "---\ntitle: Lab Equipment\n---\nOverview",
+    )
+    fs.mkdirSync(path.join(privateRoot, "equipment"))
+    fs.writeFileSync(
+      path.join(privateRoot, "equipment", "laser-manual.md"),
+      "---\ntitle: Laser manual\nequipment: [laser]\ntags: [internal, equipment]\n---\n![[files/laser.pdf]]\n[record](/equipment/laser)",
+    )
     built = prepareUnified(publicRoot, privateRoot, yaml)
     const read = (file) => fs.readFileSync(path.join(built.output, file), "utf8")
     assert.match(read("index.md"), /Public introduction/)
@@ -39,6 +53,13 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     assert.match(read("resources/index.md"), /resource-grid[\s\S]*\/resources\/notes\//)
     assert.match(read("resources/topics/index.md"), /href="\/tags\/private-tag"/)
     assert.match(read("resources/notes/index.md"), /tags:\n  - internal\n  - notes/)
+    assert.match(
+      read("equipment/laser.md"),
+      /## Documents \(members\)[\s\S]*\[\[resources\/equipment\/laser-manual\|Laser manual\]\]/,
+    )
+    assert.match(read("equipment/index.md"), /resources\/equipment\/index/)
+    assert.match(read("resources/equipment/laser-manual.md"), /\]\(\/equipment\/laser\)/)
+    assert.match(read("resources/index.md"), /\/resources\/equipment\//)
     assert.ok(fs.existsSync(path.join(built.output, "calendar.md")))
     assert.ok(!fs.existsSync(path.join(built.output, "resources/.git")))
     fs.mkdirSync(path.join(publicRoot, "resources"))

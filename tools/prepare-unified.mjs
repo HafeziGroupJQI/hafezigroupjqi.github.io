@@ -24,12 +24,12 @@ const walk = (dir) =>
 export function privateLink(raw, filename, privateRoot) {
   if (/^(?:[a-z]+:|\/\/|#)/i.test(raw)) return raw
   const [target, ...suffix] = raw.split(/(?=[#?])/)
-  if (!target || target.startsWith("/resources/")) return raw
-  const clean = target.replace(/^\//, "")
+  // Root-absolute links address the public website (private notes cite public equipment records).
+  if (!target || target.startsWith("/")) return raw
   const exists = (file) => [file, file + ".md", file + ".qmd", file + ".base"].some(fs.existsSync)
-  const local = path.resolve(path.dirname(filename), clean)
-  const rooted = path.resolve(privateRoot, clean)
-  const resolved = target.startsWith("/") ? rooted : exists(local) ? local : rooted
+  const local = path.resolve(path.dirname(filename), target)
+  const rooted = path.resolve(privateRoot, target)
+  const resolved = exists(local) ? local : rooted
   if (!resolved.startsWith(privateRoot + path.sep) && resolved !== privateRoot) return raw
   if (!exists(resolved)) return raw
   return (
@@ -107,6 +107,40 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       // Root-relative Markdown/HTML media resolve to the staged content root in the asset audit.
       fs.writeFileSync(filename, text)
     }
+    // Private notes name the public equipment records they document (frontmatter
+    // `equipment: [id]`); the member edition lists them on those records and on the
+    // equipment and lab-facilities pages. The public build never sees this section.
+    const documents = new Map()
+    for (const file of walk(destination)) {
+      if (!file.endsWith(".md") || file.endsWith(".excalidraw.md")) continue
+      const match = fs.readFileSync(file, "utf8").match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
+      const fm = match ? (yaml.parse(match[1]) ?? {}) : {}
+      const ids = Array.isArray(fm.equipment) ? fm.equipment : fm.equipment ? [fm.equipment] : []
+      for (const id of ids) {
+        if (!documents.has(id)) documents.set(id, [])
+        documents.get(id).push({
+          slug: path.relative(prepared.output, file).replace(/\.md$/, ""),
+          title: String(fm.title ?? path.basename(file, ".md")),
+        })
+      }
+    }
+    const memberSection = (links) =>
+      `\n\n## Documents (members)\n\n${links.map((link) => `- [[${link.slug}|${link.title}]]`).join("\n")}\n`
+    for (const file of walk(prepared.output)) {
+      if (!file.endsWith(".md") || file.startsWith(destination + path.sep)) continue
+      const text = fs.readFileSync(file, "utf8")
+      const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
+      if (!match) continue
+      const fm = yaml.parse(match[1]) ?? {}
+      const slug = path.relative(prepared.output, file).replace(/\.md$/, "")
+      let extra = ""
+      if (fm.type === "equipment" && documents.has(fm.id))
+        extra = memberSection(documents.get(fm.id))
+      else if (slug === "equipment/index" || slug === "lab-facilities")
+        extra =
+          "\n\n## Documents (members)\n\nManuals, datasheets, SOPs, logs, and calibrations for every instrument are in [[resources/equipment/index|equipment documents]].\n"
+      if (extra) fs.writeFileSync(file, text.replace(/\s*$/, "") + extra)
+    }
     const page = (slug, title, body, tags = []) => {
       fs.mkdirSync(path.dirname(path.join(prepared.output, slug)), { recursive: true })
       return fs.writeFileSync(
@@ -143,6 +177,11 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       ["Projects", "projects", "Project logs, plans, and recovered priorities."],
       ["Code", "code", "Runnable analyses and notes on the group's software repositories."],
       ["Drive", "drive", "The catalogue of the shared Google Drive and what was kept from it."],
+      [
+        "Equipment",
+        "equipment",
+        "Manuals, datasheets, SOPs, logs, and calibrations for every instrument.",
+      ],
       ...(drawings.length
         ? [["Drawings", "drawings", "Excalidraw sketches from sessions and notes."]]
         : []),

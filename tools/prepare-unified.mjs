@@ -49,7 +49,7 @@ export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" }
   try {
     const root = fs.realpathSync(privateSource)
     const destination = path.join(prepared.output, "resources")
-    for (const reserved of ["resources", "calendar", "instruments"]) {
+    for (const reserved of ["resources", "calendar", "instruments", "runs"]) {
       if (
         [reserved, reserved + ".md", reserved + ".qmd"].some((name) =>
           fs.existsSync(path.join(prepared.output, name)),
@@ -262,7 +262,7 @@ export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" }
       "resources/index",
       "Group resources",
       [
-        "Working notes, code, project records, Drive catalogues, and session material for lab members. Members can also [[calendar|manage the group calendar]] and [[instruments|check the lab instruments]].",
+        "Working notes, code, project records, Drive catalogues, and session material for lab members. Members can also [[calendar|manage the group calendar]], [[instruments|check the lab instruments]], and [[runs|review past experiments]].",
         '<div class="feature-grid resource-grid">',
         ...sections.map(
           ([title, slug, description]) =>
@@ -278,14 +278,25 @@ export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" }
       "Group calendar",
       '<div class="member-tools" data-calendar><p>Loading calendar…</p></div>',
     )
-    // Instrument control lives on the lab machine's command-and-control dashboard; the
-    // member site only links to it.
+    // Instruments and runs are served through the Worker's /api/c2/* gateway, so members
+    // need no second sign-in and no VPN. The direct dashboard link stays as a fallback for
+    // anyone already on the lab network.
     page(
       "instruments",
       "Lab instruments",
-      c2Url
-        ? `Lab instrument control runs on the group's command-and-control dashboard, which needs the lab network or VPN.\n\n<a class="external" href="${c2Url}" rel="noopener">Open the instrument dashboard</a> and sign in there with the same GitHub account.`
-        : "Lab instrument control is not configured yet. The command-and-control dashboard will be linked from this page once it is deployed.",
+      [
+        '<div class="member-tools" data-instruments><p>Loading instruments…</p></div>',
+        c2Url
+          ? `<p class="muted"><a class="external" href="${c2Url}" rel="noopener">Open the instrument dashboard directly</a> (needs the lab network or VPN).</p>`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    )
+    page(
+      "runs",
+      "Experiment log",
+      '<div class="member-tools" data-runs><p>Loading runs…</p></div>',
     )
     return prepared
   } catch (error) {

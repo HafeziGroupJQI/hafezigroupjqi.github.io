@@ -241,6 +241,112 @@ function setupCalendar(root) {
   if (location.hash === "#add-event") editor(calendar)
 }
 
+const escape = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character],
+  )
+
+const fail = (container, message) => {
+  container.innerHTML = `<p class="muted">${escape(message)}</p>`
+}
+
+// The instrument service is often simply off; that is a normal state to render, not an error.
+async function setupInstruments(container) {
+  let state
+  try {
+    state = await api("/api/c2/status")
+  } catch {
+    return fail(container, "Could not reach the member site API.")
+  }
+  if (state.state !== "connected")
+    return fail(
+      container,
+      state.state === "not_configured"
+        ? "The instrument service is not configured yet."
+        : "The instrument service is unavailable. The lab machine may be switched off.",
+    )
+
+  let instruments
+  try {
+    instruments = await api("/api/c2/instruments")
+  } catch (error) {
+    return fail(container, error.message)
+  }
+  if (!instruments.length) return fail(container, "No instruments are registered.")
+
+  container.innerHTML = `
+    <table class="instrument-table">
+      <thead><tr><th>Instrument</th><th>Status</th><th>Latest</th><th></th></tr></thead>
+      <tbody>${instruments
+        .map((instrument) => {
+          const latest = Object.entries(instrument.latest ?? {})
+            .map(([metric, value]) => `${escape(metric)} ${escape(Array.isArray(value) ? value[0] : value)}`)
+            .join(", ")
+          return `<tr data-id="${escape(instrument.id)}">
+            <td>${escape(instrument.title || instrument.id)}</td>
+            <td class="status status-${escape(instrument.status)}">${escape(instrument.status)}</td>
+            <td class="latest">${latest || "&mdash;"}</td>
+            <td>${instrument.controllable ? '<button type="button" data-poll>Poll now</button>' : ""}</td>
+          </tr>`
+        })
+        .join("")}</tbody>
+    </table>`
+
+  container.querySelectorAll("[data-poll]").forEach((button) => {
+    button.onclick = async () => {
+      const row = button.closest("tr")
+      button.disabled = true
+      button.textContent = "Polling…"
+      try {
+        const result = await api(`/api/c2/instruments/${encodeURIComponent(row.dataset.id)}/poll`, {
+          method: "POST",
+        })
+        row.querySelector(".latest").textContent =
+          Object.entries(result.metrics ?? {})
+            .map(([metric, value]) => `${metric} ${value}`)
+            .join(", ") || "\u2014"
+        row.querySelector(".status").textContent = result.status ?? "unknown"
+      } catch (error) {
+        row.querySelector(".latest").textContent = error.message
+      } finally {
+        button.disabled = false
+        button.textContent = "Poll now"
+      }
+    }
+  })
+}
+
+async function setupRuns(container) {
+  let runs
+  try {
+    runs = await api("/api/c2/runs")
+  } catch (error) {
+    return fail(container, error.message)
+  }
+  if (!runs.length) return fail(container, "No experiment runs recorded yet.")
+  container.innerHTML = `
+    <table class="run-table">
+      <thead><tr><th>Run</th><th>Procedure</th><th>Status</th><th>Operator</th><th>Started</th></tr></thead>
+      <tbody>${runs
+        .map(
+          (run) => `<tr>
+            <td><code>${escape(run.run_id)}</code></td>
+            <td>${escape(run.procedure)}</td>
+            <td class="status status-${escape(run.status)}">${escape(run.status)}</td>
+            <td>${escape(run.operator || "\u2014")}</td>
+            <td>${escape(new Date(run.started + "Z").toLocaleString("en-US", { timeZone: "America/New_York" }))}</td>
+          </tr>`,
+        )
+        .join("")}</tbody>
+    </table>`
+}
+
 updateMenu()
 const calendar = document.querySelector("[data-calendar]")
 if (calendar) setupCalendar(calendar)
+const instruments = document.querySelector("[data-instruments]")
+if (instruments) setupInstruments(instruments)
+const runs = document.querySelector("[data-runs]")
+if (runs) setupRuns(runs)

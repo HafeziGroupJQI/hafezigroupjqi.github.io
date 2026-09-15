@@ -61,11 +61,15 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     assert.match(read("resources/equipment/laser-manual.md"), /\]\(\/equipment\/laser\)/)
     assert.match(read("resources/index.md"), /\/resources\/equipment\//)
     assert.ok(fs.existsSync(path.join(built.output, "calendar.md")))
-    assert.match(read("instruments.md"), /not configured yet/)
+    assert.match(read("instruments.md"), /data-instruments/)
+    assert.match(read("runs.md"), /data-runs/)
+    // with no C2 configured there is nothing to link to directly
+    assert.ok(!read("instruments.md").includes("Open the instrument dashboard directly"))
     assert.ok(!fs.existsSync(path.join(built.output, "resources/.git")))
     fs.rmSync(built.stage, { recursive: true, force: true })
     built = prepareUnified(publicRoot, privateRoot, yaml, { c2Url: "https://c2.example.edu" })
     assert.match(read("instruments.md"), /href="https:\/\/c2\.example\.edu"/)
+    assert.match(read("instruments.md"), /data-instruments/)
     assert.throws(
       () => prepareUnified(publicRoot, privateRoot, yaml, { c2Url: "http://c2.example.edu" }),
       /https/,

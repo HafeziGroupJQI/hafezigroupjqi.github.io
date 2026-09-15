@@ -67,7 +67,14 @@ plugins:
     order: 30
   - source: "@quartz-community/github-flavored-markdown"
     enabled: true
+    options:
+      # No chain-link anchors on headings: the live site has none, and they double up
+      # on headings that are already links (publication, news, and people cards).
+      linkHeadings: false
     order: 40
+  - source: "./quartz/plugins/local/heading-ids"
+    enabled: true
+    order: 41
   - source: "@quartz-community/table-of-contents"
     enabled: true
     order: 50

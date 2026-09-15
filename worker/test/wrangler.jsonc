@@ -1,0 +1,26 @@
+{
+  "name": "hafezi-members-test",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-08-22",
+  "assets": {
+    "directory": "./site",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "hafezi-members", "database_id": "test", "migrations_dir": "../migrations" }
+  ],
+  "vars": {
+    "AUTH_MODE": "dev",
+    "SESSION_SECRET": "test-session-secret-with-at-least-32-characters",
+    "GITHUB_CLIENT_ID": "test-client",
+    "GITHUB_CLIENT_SECRET": "test-client-secret",
+    "GITHUB_ORG": "HafeziGroupJQI",
+    "GITHUB_TEAM": "lab-members",
+    "GITHUB_DOCS_TOKEN": "test-docs-token",
+    "DOCS_REPO": "HafeziGroupJQI/vault-private",
+    "PUBLIC_SITE_URL": "https://public.example"
+  }
+}

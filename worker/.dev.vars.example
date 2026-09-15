@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `npm run dev`. Dev auth signs you in as a local owner without GitHub.
+AUTH_MODE=dev
+SESSION_SECRET=replace-with-32-or-more-random-characters-for-local-use
+# Optional: a fine-grained PAT with contents:read on vault-private so embedded documents load.
+# GITHUB_DOCS_TOKEN=

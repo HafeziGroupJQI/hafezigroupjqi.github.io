@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { prepareSite } from "./prepare-site.mjs"
 
-const excluded = new Set([
+export const excluded = new Set([
   "node_modules",
   "schema",
   "tools",
@@ -43,7 +43,9 @@ export function privateLink(raw, filename, privateRoot) {
   )
 }
 
-export function prepareUnified(publicSource, privateSource, yaml) {
+export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" } = {}) {
+  if (c2Url && !/^https:\/\//.test(c2Url))
+    throw new Error("C2_PUBLIC_URL must be an https:// URL")
   const prepared = prepareSite(publicSource, yaml)
   try {
     const root = fs.realpathSync(privateSource)
@@ -277,10 +279,14 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "Group calendar",
       '<div class="member-tools" data-calendar><p>Loading calendar…</p></div>',
     )
+    // Instrument control lives on the lab machine's command-and-control dashboard; the
+    // member site only links to it.
     page(
       "instruments",
       "Lab instruments",
-      '<div class="member-tools" data-instruments><p>Loading instruments…</p></div>',
+      c2Url
+        ? `Lab instrument control runs on the group's command-and-control dashboard, which needs the lab network or VPN.\n\n<a class="external" href="${c2Url}" rel="noopener">Open the instrument dashboard</a> and sign in there with the same GitHub account.`
+        : "Lab instrument control is not configured yet. The command-and-control dashboard will be linked from this page once it is deployed.",
     )
     return prepared
   } catch (error) {

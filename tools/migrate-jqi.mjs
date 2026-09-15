@@ -149,7 +149,7 @@ if (ONLY.includes("publications")) {
     const kind = page.relationships?.referenceType?.label ?? null
     const areas = (page.relationships?.researchAreas ?? []).map((a) => a.title ?? a.name).filter(Boolean)
     const fm = {
-      title: page.title.trim(), type: "publication", year, authors, venue, doi: page.doi ?? null, url: page.url ?? null,
+      title: page.title.trim(), type: "publication", year, authors, venue, doi: page.doi?.trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, "") || null, url: page.url ?? null,
       pub_type: kind, volume: page.volume ?? null, issue: page.issue ?? null, pages: page.startPage ?? null,
       // sortable date: MM/YYYY from Drupal when present, else January of the year
       date: (page.datePublished?.match(/^(\d{2})\/(\d{4})$/) ? `${page.datePublished.slice(3)}-${page.datePublished.slice(0, 2)}-01` : year ? `${year}-01-01` : null),
@@ -157,7 +157,11 @@ if (ONLY.includes("publications")) {
       research_areas: areas, source: `${SITE}${u}`, migrated: TODAY,
       tags: ["publications", ...(year ? [`pub/${year}`] : []), ...areas.map((a) => `research/${slugify(a)}`)],
     }
-    const links = [page.doi ? `[doi:${page.doi}](https://doi.org/${page.doi})` : null, page.url ? `[link](${page.url})` : null].filter(Boolean).join(" · ")
+    // One link per record: the DOI when there is one, otherwise the source named by host.
+    // (A second generic "[link]" next to the DOI read as a stray "[Link]" on the page.)
+    const doi = page.doi?.trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, "") || null
+    const host = (url) => { try { return new URL(url).hostname.replace(/^www\./, "") } catch { return "source" } }
+    const links = doi ? `[doi:${doi}](https://doi.org/${doi})` : page.url ? `[Read on ${host(page.url)}](${page.url})` : ""
     const body = [
       `${authors.join(", ")}${venue ? ". *" + venue + "*" : ""}${year ? " (" + year + ")" : ""}.`,
       links, html2md(page.abstract?.processed ?? page.abstract ?? ""),

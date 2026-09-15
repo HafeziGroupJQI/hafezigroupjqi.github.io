@@ -5,7 +5,10 @@ import sharp from "sharp"
 import yaml from "yaml"
 
 const imagePattern = /\.(?:avif|gif|jpe?g|png|svg|webp)$/i
-const mediaPattern = /\.(?:avif|gif|jpe?g|mp3|mp4|pdf|png|svg|vtt|wav|webm|webp)$/i
+const mediaPattern =
+  /\.(?:avif|gif|jpe?g|mp3|mp4|pdf|png|svg|vtt|wav|webm|webp|docx?|pptx?|xlsx?|csv|txt|py|ipynb|zip)$/i
+const MAX_ASSET_BYTES = 25 * 1024 * 1024
+const MAX_ASSET_FILES = 20000
 const pagePattern = /\.(?:md|qmd)$/
 const ignoredDirectories = new Set([
   ".cache",
@@ -137,11 +140,24 @@ export async function auditSource(rootDirectory) {
   }
 }
 
-export async function auditOutput(rootDirectory) {
+// `external` lists site paths served on demand (private documents streamed by the Worker),
+// so a reference to one of them is not a missing asset. `limits` are the Workers Static
+// Assets caps; the public Pages build passes nothing and keeps the defaults.
+export async function auditOutput(rootDirectory, { external = new Set(), limits } = {}) {
   const root = fs.realpathSync(rootDirectory)
   const files = walk(root, false)
   const errors = []
   const references = []
+  if (limits) {
+    const maxBytes = limits.maxBytes ?? MAX_ASSET_BYTES
+    const maxFiles = limits.maxFiles ?? MAX_ASSET_FILES
+    if (files.length > maxFiles) errors.push(`${files.length} files exceed the ${maxFiles} file limit`)
+    for (const file of files)
+      if (fs.statSync(file).size > maxBytes)
+        errors.push(
+          `${normalize(path.relative(root, file))}: exceeds the ${maxBytes / 1024 / 1024} MiB asset limit`,
+        )
+  }
   for (const page of files.filter((filename) => filename.endsWith(".html"))) {
     const html = fs.readFileSync(page, "utf8")
     for (const match of html.matchAll(/\b(?:src|poster)=["']([^"']+)["']/gi))
@@ -166,8 +182,10 @@ export async function auditOutput(rootDirectory) {
     const target = reference.startsWith("/")
       ? path.join(root, reference)
       : path.resolve(path.dirname(owner), reference)
-    if (!target.startsWith(root) || !fs.existsSync(target))
+    if (!target.startsWith(root) || !fs.existsSync(target)) {
+      if (target.startsWith(root) && external.has(normalize(path.relative(root, target)))) continue
       errors.push(`${normalize(path.relative(root, owner))}: emitted asset is missing: ${raw}`)
+    }
   }
   for (const image of files.filter((filename) => imagePattern.test(filename)))
     await validateImage(image, normalize(path.relative(root, image)), errors)

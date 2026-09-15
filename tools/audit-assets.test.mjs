@@ -33,3 +33,22 @@ test("output audit rejects an emitted image target that does not exist", async (
     fs.rmSync(root, { recursive: true })
   }
 })
+
+test("output audit accepts streamed documents and enforces static asset limits", async () => {
+  const root = fixture()
+  try {
+    fs.writeFileSync(
+      path.join(root, "index.html"),
+      '<iframe src="resources/files/manual.pdf" class="pdf"></iframe><a href="resources/files/data.docx">data</a>',
+    )
+    assert.match((await auditOutput(root)).errors.join("\n"), /manual\.pdf[\s\S]*data\.docx/)
+    const external = new Set(["resources/files/manual.pdf", "resources/files/data.docx"])
+    assert.deepEqual((await auditOutput(root, { external })).errors, [])
+    fs.writeFileSync(path.join(root, "big.bin"), Buffer.alloc(11))
+    const errors = (await auditOutput(root, { external, limits: { maxBytes: 10, maxFiles: 1 } })).errors
+    assert.match(errors.join("\n"), /big\.bin: exceeds/)
+    assert.match(errors.join("\n"), /2 files exceed the 1 file limit/)
+  } finally {
+    fs.rmSync(root, { recursive: true })
+  }
+})

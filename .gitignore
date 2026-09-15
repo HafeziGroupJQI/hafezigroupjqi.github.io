@@ -22,3 +22,10 @@ members/.venv/
 members/data/
 **/__pycache__/
 **/.pytest_cache/
+
+# Cloudflare Worker (member site) local state and build products
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars
+worker/generated/
+worker/worker-configuration.d.ts

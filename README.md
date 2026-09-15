@@ -2,7 +2,23 @@
 
 Public website and authenticated lab resources, built from Markdown vaults with one shared Hafezi layout.
 
-Run `npm run build:unified` and serve both editions through the Python gateway. See [gateway setup and deployment](members/README.md) for GitHub login, the member calendar, and instrument integration.
+Two editions come out of one build: `npm run build:public` is the GitHub Pages site and
+`npm run build:members` is the member edition, served by the Cloudflare Worker in
+[`worker/`](worker/README.md) together with GitHub sign-in, the group calendar, and the
+private documents streamed from `vault-private`.
+
+## Rebuild triggers
+
+```
+vault push ───────(validate)──┬─► hafezigroupjqi.github.io: deploy.yml ─► GitHub Pages
+                              │        └─ dispatch website-updated ─┐
+vault-private push (validate) ┼──────────────────────────────────────┼─► members-site: deploy.yml
+website push ─────────────────┘  (vault-updated, vault-private-updated, website-updated,
+                                  daily schedule, manual) ─► build:members ─► wrangler deploy
+```
+
+Each dispatch uses the `MEMBERS_DISPATCH_TOKEN` secret (contents: write on `members-site`);
+the members-site workflow itself is kept in `worker/ci/members-site-deploy.yml`.
 
 ## How it fits together
 

@@ -1,4 +1,4 @@
-name: public static preview
+name: public site
 
 on:
   push:
@@ -63,3 +63,17 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # the member site (private repo members-site, Cloudflare Worker) shares this layout, so a
+  # website change rebuilds it too; vault changes reach it through the vault's own dispatch
+  dispatch-members:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.MEMBERS_DISPATCH_TOKEN }}
+          repository: HafeziGroupJQI/members-site
+          event-type: website-updated
+          client-payload: '{"sha": "${{ github.sha }}"}'

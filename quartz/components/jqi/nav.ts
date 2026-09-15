@@ -1,10 +1,8 @@
-// Site navigation, shared by the header and footer. Slugs are content paths
-// (folder pages or index pages) resolved relative to the current page so the
-// site works under any base path (GitHub Pages subpath or a custom domain).
 export interface NavItem {
   label: string
   slug?: string
   href?: string
+  children?: NavItem[]
 }
 
 export const publicNav: NavItem[] = [
@@ -17,54 +15,33 @@ export const publicNav: NavItem[] = [
   { label: "Theses", slug: "theses" },
 ]
 
-const defaultInternalNav: NavItem[] = [
-  { label: "Vault", href: "/" },
-  { label: "Journal Club", slug: "journal-club" },
-  { label: "Notes", slug: "notes" },
-  { label: "Projects", slug: "projects" },
-  { label: "Code", slug: "code" },
-  { label: "Drive", slug: "drive" },
-  { label: "Instruments", href: "/instruments" },
-  { label: "Sign Out", href: "/auth/logout" },
+export const resourceNav: NavItem[] = [
+  { label: "All resources", href: "/resources/" },
+  ...["Journal Club", "Notes", "Projects", "Code", "Drive"].map((label) => ({
+    label,
+    href: `/resources/${label.toLowerCase().replace(/ /g, "-")}/`,
+  })),
 ]
 
-export function configuredInternalUrl(value = process.env.INTERNAL_SITE_URL): string | undefined {
-  if (!value) return undefined
-  try {
-    const url = new URL(value)
-    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return undefined
-    return url.toString().replace(/\/$/, "")
-  } catch {
-    return undefined
-  }
-}
-
-export function configuredC2Url(value = process.env.INTERNAL_C2_URL): string | undefined {
-  if (!value) return undefined
-  try {
-    const url = new URL(value)
-    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return undefined
-    return url.toString().replace(/\/$/, "")
-  } catch {
-    return undefined
-  }
-}
-
-export function internalNavigation(value = process.env.INTERNAL_C2_URL): NavItem[] {
-  const c2Url = configuredC2Url(value)
-  return defaultInternalNav.map((item) =>
-    item.label === "Instruments" && c2Url ? { ...item, href: c2Url } : item,
-  )
-}
-
-export const internalNav: NavItem[] = internalNavigation()
-
 export function navigation(mode = process.env.SITE_MODE): NavItem[] {
-  if (mode === "internal") return internalNavigation()
-  const internalUrl = configuredInternalUrl()
-  return internalUrl ? [...publicNav, { label: "Internal", href: internalUrl }] : publicNav
+  return mode === "internal"
+    ? [
+        ...publicNav,
+        { label: "Resources", children: resourceNav },
+        {
+          label: "Lab tools",
+          children: [
+            { label: "Calendar", href: "/calendar" },
+            { label: "Add event", href: "/calendar#add-event" },
+            { label: "Instruments", href: "/instruments" },
+            { label: "Sign out", href: "/auth/logout" },
+          ],
+        },
+      ]
+    : [
+        ...publicNav,
+        { label: "Sign in with GitHub", href: `${process.env.SITE_LOGIN_ORIGIN ?? ""}/auth/login` },
+      ]
 }
 
-export const footerNav: NavItem[] = publicNav
-
-export const mainSite = process.env.PUBLIC_SITE_URL ?? "https://hafezigroupjqi.github.io"
+export const footerNav = publicNav

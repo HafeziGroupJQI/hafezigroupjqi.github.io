@@ -1,31 +1,26 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { configuredC2Url, configuredInternalUrl, internalNavigation, navigation, publicNav } from "./nav"
+import { navigation, publicNav } from "./nav"
 
-test("public navigation adds a configured HTTPS member site", () => {
-  process.env.INTERNAL_SITE_URL = "https://members.example.edu/"
-  assert.deepEqual(navigation("public").at(-1), {
-    label: "Internal",
-    href: "https://members.example.edu",
-  })
-  delete process.env.INTERNAL_SITE_URL
+test("public navigation preserves the site and exposes GitHub login", () => {
+  assert.deepEqual(navigation("public"), [
+    ...publicNav,
+    { label: "Sign in with GitHub", href: "/auth/login" },
+  ])
 })
 
-test("public navigation omits unsafe member URLs", () => {
-  assert.equal(configuredInternalUrl("http://members.example.edu"), undefined)
-  assert.deepEqual(navigation("public"), publicNav)
-})
-
-test("internal navigation exposes vault tools and logout", () => {
-  const internalNav = internalNavigation()
-  assert.deepEqual(navigation("internal"), internalNav)
-  assert.ok(internalNav.some((item) => item.href === "/instruments"))
-  assert.ok(internalNav.some((item) => item.href === "/auth/logout"))
-})
-
-test("internal navigation links to a separate local c2 service", () => {
-  process.env.INTERNAL_C2_URL = "http://127.0.0.1:8000/"
-  assert.equal(configuredC2Url(), "http://127.0.0.1:8000")
-  assert.ok(navigation("internal").some((item) => item.href === "http://127.0.0.1:8000"))
-  delete process.env.INTERNAL_C2_URL
+test("members keep public navigation and gain native resource and tool menus", () => {
+  const items = navigation("internal")
+  assert.deepEqual(items.slice(0, publicNav.length), publicNav)
+  const resources = items.find((item) => item.label === "Resources")!
+  assert.ok(resources.children?.every((item) => item.href?.startsWith("/resources/")))
+  assert.ok(
+    items
+      .find((item) => item.label === "Lab tools")
+      ?.children?.some((item) => item.href === "/calendar"),
+  )
+  assert.ok(
+    items.flatMap((item) => item.children ?? []).some((item) => item.href === "/auth/logout"),
+  )
+  assert.ok(!items.some((item) => item.href?.startsWith("http")))
 })

@@ -1,6 +1,6 @@
 import { QuartzComponentProps } from "../types"
 import { FullSlug, resolveRelative } from "../../util/path"
-import { publicNav } from "./nav"
+import { publicNav, resourceNav } from "./nav"
 
 export default function SectionNav({ fileData, allFiles }: QuartzComponentProps) {
   const slug = fileData.slug!
@@ -45,6 +45,15 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
       </ul>
       <div class="handbook-links">
         <h2>Group resources</h2>
+        {process.env.SITE_MODE === "internal" && (
+          <ul>
+            {resourceNav.map((item) => (
+              <li>
+                <a href={item.href}>{item.label}</a>
+              </li>
+            ))}
+          </ul>
+        )}
         <ul>
           <li>{link("onboarding/index", "Onboarding")}</li>
           <li>{link("places/index", "Places")}</li>

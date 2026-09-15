@@ -2,7 +2,7 @@
 configuration:
   pageTitle: Hafezi Group
   pageTitleSuffix: " | Hafezi Group"
-  enableSPA: true
+  enableSPA: false
   enablePopovers: true
   analytics: null
   locale: en-US

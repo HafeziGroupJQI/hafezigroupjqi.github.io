@@ -24,15 +24,29 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
       <div class="site-header__inner">
         <div class="site-header__logo">
           <a href={resolveRelative(slug, "index" as FullSlug)}>
-            <img src={joinSegments(root, "static/theme/logo_hafezi.svg")} alt="Joint Quantum Institute Research - Hafezi Group" width="350" height="60" />
+            <img
+              src={joinSegments(root, "static/theme/logo_hafezi.svg")}
+              alt="Joint Quantum Institute Research - Hafezi Group"
+              width="350"
+              height="60"
+            />
           </a>
         </div>
         <div class="site-header__mobile-controls">
-          <button class="site-header__search site-header__search-mobile" type="button" data-jqi-search>
+          <button
+            class="site-header__search site-header__search-mobile"
+            type="button"
+            data-jqi-search
+          >
             <span class="sr-only">Search</span>
             {searchIcon}
           </button>
-          <button class="site-header__nav-toggle" aria-expanded="false" type="button" data-jqi-nav-toggle>
+          <button
+            class="site-header__nav-toggle"
+            aria-expanded="false"
+            type="button"
+            data-jqi-nav-toggle
+          >
             <span class="sr-only">Show Main Menu</span>
             <span class="site-header__hamburger-icon" aria-hidden="true">
               <span class="site-header__hamburger-icon-bar"></span>
@@ -46,9 +60,36 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
           <ul>
             {navigation().map((item) => (
               <li>
-                <a href={href(item)} aria-current={item.slug && current(item.slug) ? "page" : undefined}>
-                  {item.label}
-                </a>
+                {item.children ? (
+                  <details
+                    class="member-menu"
+                    data-lab-menu={item.label === "Lab tools" ? "true" : undefined}
+                  >
+                    <summary>{item.label}</summary>
+                    <div class="member-menu__panel">
+                      <ul>
+                        {item.children.map((child) => (
+                          <li>
+                            <a href={href(child)}>{child.label}</a>
+                          </li>
+                        ))}
+                      </ul>
+                      {item.label === "Lab tools" && (
+                        <div class="lab-menu-status">
+                          <p data-upcoming-events>Loading upcoming events…</p>
+                          <p data-instrument-status>Checking instruments…</p>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                ) : (
+                  <a
+                    href={href(item)}
+                    aria-current={item.slug && current(item.slug) ? "page" : undefined}
+                  >
+                    {item.label}
+                  </a>
+                )}
               </li>
             ))}
           </ul>
@@ -58,6 +99,5 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
     </header>
   )
 }
-
 
 export default (() => JqiHeader) satisfies QuartzComponentConstructor

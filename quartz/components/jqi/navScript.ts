@@ -29,6 +29,16 @@ export const navScript = `(function () {
     if (toggle) toggle.setAttribute("aria-expanded", "false");
     sync();
   });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") document.querySelectorAll(".member-menu[open]").forEach(function (menu) { menu.open = false; menu.querySelector("summary").focus(); });
+  });
+  document.addEventListener("click", function (event) {
+    document.querySelectorAll(".member-menu[open]").forEach(function (menu) { if (!menu.contains(event.target)) menu.open = false; });
+    if (event.target.closest('a[href="/auth/logout"]')) { sessionStorage.clear(); }
+    var login = event.target.closest('a[href$="/auth/login"]');
+    if (login) login.href = login.href.split("?")[0] + "?next=" + encodeURIComponent(location.pathname + location.search);
+  });
+  window.addEventListener("pageshow", function (event) { if (event.persisted) location.reload(); });
   sync();
 })();
 `

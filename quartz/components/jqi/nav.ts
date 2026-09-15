@@ -3,6 +3,8 @@ export interface NavItem {
   slug?: string
   href?: string
   children?: NavItem[]
+  /** Identifies a dropdown so the header can attach live status to it. */
+  menu?: "resources" | "tools"
 }
 
 export const publicNav: NavItem[] = [
@@ -17,27 +19,26 @@ export const publicNav: NavItem[] = [
 
 export const resourceNav: NavItem[] = [
   { label: "All resources", href: "/resources/" },
-  ...["Journal Club", "Notes", "Projects", "Code", "Drive"].map((label) => ({
+  ...["Journal Club", "Notes", "Projects", "Code", "Drive", "Equipment"].map((label) => ({
     label,
     href: `/resources/${label.toLowerCase().replace(/ /g, "-")}/`,
   })),
   { label: "Topics", href: "/resources/topics/" },
 ]
 
+export const calendarNav: NavItem = { label: "Calendar", href: "/calendar" }
+
 export function navigation(mode = process.env.SITE_MODE): NavItem[] {
   return mode === "internal"
     ? [
         ...publicNav,
-        { label: "Resources", children: resourceNav },
+        { label: "Resources", menu: "resources", children: [...resourceNav, calendarNav] },
         {
-          label: "Lab tools",
-          children: [
-            { label: "Calendar", href: "/calendar" },
-            { label: "Add event", href: "/calendar#add-event" },
-            { label: "Instruments", href: "/instruments" },
-            { label: "Sign out", href: "/auth/logout" },
-          ],
+          label: "Tools",
+          menu: "tools",
+          children: [{ label: "Instruments", href: "/instruments" }],
         },
+        { label: "Sign out", href: "/auth/logout" },
       ]
     : [
         ...publicNav,

@@ -61,10 +61,7 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
             {navigation().map((item) => (
               <li>
                 {item.children ? (
-                  <details
-                    class="member-menu"
-                    data-lab-menu={item.label === "Lab tools" ? "true" : undefined}
-                  >
+                  <details class="member-menu" data-menu={item.menu}>
                     <summary>{item.label}</summary>
                     <div class="member-menu__panel">
                       <ul>
@@ -74,9 +71,13 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
                           </li>
                         ))}
                       </ul>
-                      {item.label === "Lab tools" && (
+                      {item.menu === "resources" && (
                         <div class="lab-menu-status">
                           <p data-upcoming-events>Loading upcoming events…</p>
+                        </div>
+                      )}
+                      {item.menu === "tools" && (
+                        <div class="lab-menu-status">
                           <p data-instrument-status>Checking instruments…</p>
                         </div>
                       )}

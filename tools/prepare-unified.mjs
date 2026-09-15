@@ -107,11 +107,13 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       // Root-relative Markdown/HTML media resolve to the staged content root in the asset audit.
       fs.writeFileSync(filename, text)
     }
-    const page = (slug, title, body, tags = []) =>
-      fs.writeFileSync(
+    const page = (slug, title, body, tags = []) => {
+      fs.mkdirSync(path.dirname(path.join(prepared.output, slug)), { recursive: true })
+      return fs.writeFileSync(
         path.join(prepared.output, slug + ".md"),
         `---\n${yaml.stringify({ title, site_public: true, site_internal: true, tags })}---\n\n${body}\n`,
       )
+    }
     const drawings = walk(destination).filter((file) => file.endsWith(".excalidraw.md"))
     if (drawings.length) {
       fs.mkdirSync(path.join(destination, "drawings"), { recursive: true })
@@ -128,16 +130,22 @@ export function prepareUnified(publicSource, privateSource, yaml) {
             return `- [${title}](/${slug})`
           })
           .join("\n"),
-        ["excalidraw"],
+        ["internal", "excalidraw"],
       )
     }
     const sections = [
-      ["Journal Club", "journal-club"],
-      ["Notes", "notes"],
-      ["Projects", "projects"],
-      ["Code", "code"],
-      ["Drive", "drive"],
-      ...(drawings.length ? [["Drawings", "drawings"]] : []),
+      [
+        "Journal Club",
+        "journal-club",
+        "Session write-ups, discussion notes, drawings, and papers.",
+      ],
+      ["Notes", "notes", "Meeting notes, planning documents, and handoffs."],
+      ["Projects", "projects", "Project logs, plans, and recovered priorities."],
+      ["Code", "code", "Runnable analyses and notes on the group's software repositories."],
+      ["Drive", "drive", "The catalogue of the shared Google Drive and what was kept from it."],
+      ...(drawings.length
+        ? [["Drawings", "drawings", "Excalidraw sketches from sessions and notes."]]
+        : []),
     ]
     fs.mkdirSync(destination, { recursive: true })
     for (const [title, slug] of sections) {
@@ -150,13 +158,80 @@ export function prepareUnified(publicSource, privateSource, yaml) {
             const relative = path.relative(prepared.output, file).replace(/\.(md|qmd)$/, "")
             return `- [[${relative}|${path.basename(file).replace(/\.(md|qmd)$/, "")}]]`
           })
-        page(`resources/${slug}/index`, title, links.join("\n") || "No resources added yet.")
+        page(`resources/${slug}/index`, title, links.join("\n") || "No resources added yet.", [
+          "internal",
+          slug,
+        ])
       }
     }
+    // Every topic tag used by private notes, grouped by its root, so members can browse
+    // by function (code/simulation), tool, equipment, project, research area, or person.
+    const topicLabels = {
+      code: "Code",
+      tool: "Tools",
+      equipment: "Equipment",
+      project: "Projects",
+      research: "Research areas",
+      people: "People",
+      drive: "Drive folders",
+      data: "Data",
+      "journal-club": "Journal club",
+      planning: "Planning",
+      automation: "Automation",
+    }
+    const humanize = (value) =>
+      value.replace(/-/g, " ").replace(/(^|\s)\w/g, (letter) => letter.toUpperCase())
+    const counts = new Map()
+    for (const file of walk(destination)) {
+      if (!file.endsWith(".md") || file.endsWith(".excalidraw.md")) continue
+      const match = fs.readFileSync(file, "utf8").match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
+      const tags = match ? (yaml.parse(match[1]) ?? {}).tags : []
+      for (const tag of Array.isArray(tags) ? tags : [])
+        if (tag !== "internal") counts.set(String(tag), (counts.get(String(tag)) ?? 0) + 1)
+    }
+    const roots = new Map()
+    for (const tag of [...counts.keys()].sort()) {
+      const root = tag.split("/")[0]
+      if (!roots.has(root)) roots.set(root, [])
+      roots.get(root).push(tag)
+    }
+    const topics = [...roots.entries()]
+      .sort(([a], [b]) =>
+        (topicLabels[a] ?? humanize(a)).localeCompare(topicLabels[b] ?? humanize(b)),
+      )
+      .map(([root, tags]) => {
+        const items = tags.map((tag) => {
+          const label = tag.includes("/")
+            ? humanize(tag.slice(root.length + 1))
+            : `All ${(topicLabels[root] ?? humanize(root)).toLowerCase()}`
+          const n = counts.get(tag)
+          return `<li><a class="internal" href="/tags/${tag}">${label}</a> · ${n} ${n === 1 ? "page" : "pages"}</li>`
+        })
+        return `## ${topicLabels[root] ?? humanize(root)}\n\n<ul class="topic-list">\n${items.join("\n")}\n</ul>`
+      })
+    page(
+      "resources/topics/index",
+      "Browse by topic",
+      topics.length
+        ? "Every private note is tagged by what it is about. Pick a topic to see all pages that share it.\n\n" +
+            topics.join("\n\n")
+        : "No topics yet.",
+      ["internal"],
+    )
     page(
       "resources/index",
       "Group resources",
-      sections.map(([title, slug]) => `- [[resources/${slug}/index|${title}]]`).join("\n"),
+      [
+        "Working notes, code, project records, Drive catalogues, and session material for lab members. Members can also [[calendar|manage the group calendar]] and [[instruments|check the lab instruments]].",
+        '<div class="feature-grid resource-grid">',
+        ...sections.map(
+          ([title, slug, description]) =>
+            `<article class="feature-card"><a class="internal card-link" href="/resources/${slug}/"><h3>${title}</h3></a><p>${description}</p></article>`,
+        ),
+        '<article class="feature-card"><a class="internal card-link" href="/resources/topics/"><h3>Topics</h3></a><p>Browse every note by function, tool, equipment, project, research area, or person.</p></article>',
+        "</div>",
+      ].join("\n\n"),
+      ["internal"],
     )
     page(
       "calendar",

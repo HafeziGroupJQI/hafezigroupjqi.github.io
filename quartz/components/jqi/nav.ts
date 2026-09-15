@@ -21,6 +21,7 @@ export const resourceNav: NavItem[] = [
     label,
     href: `/resources/${label.toLowerCase().replace(/ /g, "-")}/`,
   })),
+  { label: "Topics", href: "/resources/topics/" },
 ]
 
 export function navigation(mode = process.env.SITE_MODE): NavItem[] {

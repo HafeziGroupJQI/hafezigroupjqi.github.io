@@ -1,4 +1,5 @@
 import { callback, login, loginUrl, logout } from "./auth"
+import { c2Routes } from "./c2"
 import { calendarRoutes } from "./calendar/routes"
 import { type Upstream, serveDocument } from "./docs"
 import type { DocsManifest, Env } from "./env"
@@ -65,6 +66,8 @@ export function createHandler(
       )
     const calendar = await calendarRoutes(request, url, env, session)
     if (calendar) return withPrivateHeaders(calendar)
+    const c2 = await c2Routes(request, url, env, session, upstream)
+    if (c2) return withPrivateHeaders(c2)
     if (path.startsWith("/api/")) return withPrivateHeaders(problem(404, "not found"))
     if (path === "/vault" || path === "/vault/")
       return withPrivateHeaders(redirect("/resources/", 308))

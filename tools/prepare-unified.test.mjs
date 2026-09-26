@@ -61,19 +61,15 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     assert.match(read("resources/equipment/laser-manual.md"), /\]\(\/equipment\/laser\)/)
     assert.match(read("resources/index.md"), /\/resources\/equipment\//)
     assert.ok(fs.existsSync(path.join(built.output, "calendar.md")))
-    assert.match(read("instruments.md"), /data-instruments/)
-    assert.match(read("runs.md"), /data-runs/)
-    // with no C2 configured there is nothing to link to directly
-    assert.ok(!read("instruments.md").includes("Open the instrument dashboard directly"))
+    // The devices dashboard renders full-bleed; the legacy pages still exist and redirect to it.
+    assert.match(read("devices.md"), /layout: dashboard/)
+    assert.match(read("devices.md"), /data-dashboard/)
+    assert.match(read("device.md"), /data-device/)
+    assert.match(read("instrument.md"), /data-instrument/)
+    assert.match(read("experiment-builder.md"), /data-experiment-builder/)
+    assert.match(read("experiments.md"), /data-experiments/)
+    assert.match(read("device.md"), /Redirecting to the devices dashboard/)
     assert.ok(!fs.existsSync(path.join(built.output, "resources/.git")))
-    fs.rmSync(built.stage, { recursive: true, force: true })
-    built = prepareUnified(publicRoot, privateRoot, yaml, { c2Url: "https://c2.example.edu" })
-    assert.match(read("instruments.md"), /href="https:\/\/c2\.example\.edu"/)
-    assert.match(read("instruments.md"), /data-instruments/)
-    assert.throws(
-      () => prepareUnified(publicRoot, privateRoot, yaml, { c2Url: "http://c2.example.edu" }),
-      /https/,
-    )
     fs.mkdirSync(path.join(publicRoot, "resources"))
     assert.throws(() => prepareUnified(publicRoot, privateRoot, yaml), /collides/)
   } finally {

@@ -46,7 +46,9 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
       <div class="handbook-links">
         <h2>Group resources</h2>
         {process.env.SITE_MODE === "internal" && (
-          <ul>
+          // Private resource links: rendered only in the member build, and hidden until signed in
+          // (the session script reveals [data-member]). Keeps them out of the logged-out sidebar.
+          <ul data-member="" hidden>
             {resourceNav.map((item) => (
               <li>
                 <a href={item.href}>{item.label}</a>

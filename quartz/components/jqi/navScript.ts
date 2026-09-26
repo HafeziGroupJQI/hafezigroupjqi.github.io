@@ -39,6 +39,31 @@ export const navScript = `(function () {
     if (login) login.href = login.href.split("?")[0] + "?next=" + encodeURIComponent(location.pathname + location.search);
   });
   window.addEventListener("pageshow", function (event) { if (event.persisted) location.reload(); });
+  // One unified site keyed on the live session: reveal member entries ([data-member]) and "Sign
+  // out" ([data-auth="out"]) and hide "Sign in" ([data-auth="in"]) when /api/session returns a
+  // user; do the reverse when logged out. Degrades to the logged-out default where there is no API
+  // (e.g. the GitHub Pages public deployment), so nothing member-only ever leaks into the markup.
+  function applyAuth(loggedIn, login) {
+    document.body.classList.toggle("is-authed", !!loggedIn);
+    document.querySelectorAll('[data-member], [data-auth="out"]').forEach(function (el) {
+      if (loggedIn) el.removeAttribute("hidden"); else el.setAttribute("hidden", "");
+    });
+    document.querySelectorAll('[data-auth="in"]').forEach(function (el) {
+      if (loggedIn) el.setAttribute("hidden", ""); else el.removeAttribute("hidden");
+    });
+    if (loggedIn && login)
+      document.querySelectorAll('[data-auth="out"] > a').forEach(function (a) {
+        a.textContent = "Sign out (" + login + ")";
+      });
+  }
+  function updateAuthNav() {
+    fetch("/api/session", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (s) { applyAuth(!!(s && s.user), s && s.user && s.user.login); })
+      .catch(function () { applyAuth(false); });
+  }
+  document.addEventListener("nav", updateAuthNav);
+  updateAuthNav();
   sync();
 })();
 `

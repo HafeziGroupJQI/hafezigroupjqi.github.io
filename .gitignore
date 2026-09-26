@@ -29,3 +29,4 @@ worker/.wrangler/
 worker/.dev.vars
 worker/generated/
 worker/worker-configuration.d.ts
+dashboard-shots/

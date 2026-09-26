@@ -60,6 +60,9 @@ export const JqiFrame: PageFrame = {
     const frontmatter = componentData.fileData.frontmatter
     const home = frontmatter?.site_home === true
     const person = frontmatter?.type === "person"
+    // The members' devices dashboard is a full-bleed app: no sidebar, no breadcrumbs or second
+    // <h1>, no prose wrapper. It renders its own chrome (frontend/dashboard/).
+    const dashboard = frontmatter?.layout === "dashboard"
     const internal = process.env.SITE_MODE === "internal"
     const crumbs = breadcrumbs(slug, componentData.allFiles)
     // Handbook and member pages get the graph, backlinks, and table of contents column;
@@ -73,7 +76,7 @@ export const JqiFrame: PageFrame = {
         : []
     return (
       <div
-        class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}`}
+        class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}${dashboard ? " site-dashboard" : ""}`}
       >
         <a href="#main-content" class="skip-nav-link">
           Skip to main content
@@ -84,56 +87,64 @@ export const JqiFrame: PageFrame = {
           ))}
         </JqiHeader>
         <main id="main-content">
-          <div class="page-content">
-            <div class="page-content__sidebar">
-              <SectionNav {...componentData} />
+          {dashboard ? (
+            <div class="page-content">
+              <div class="page-content__main">
+                <Content {...componentData} />
+              </div>
             </div>
-            <div class="page-content__main">
-              <div class="page-content__header popover-hint">
-                <>
-                  <nav class="public-breadcrumbs" aria-label="Breadcrumb">
-                    <a href={resolveRelative(slug, "index" as FullSlug)}>Home</a>
-                    {crumbs.map((crumb) => (
-                      <>
-                        <span aria-hidden="true">›</span>
-                        <a href={resolveRelative(slug, crumb.target)}>{crumb.label}</a>
-                      </>
-                    ))}
-                    <span aria-hidden="true">›</span>
-                    <span>{frontmatter?.title}</span>
-                  </nav>
-                  <h1>{frontmatter?.title}</h1>
-                  {tags.length > 0 && (
-                    <ul class="tags" aria-label="Topics">
-                      {tags.map((tag) => (
-                        <li>
-                          <a
-                            class="internal tag-link"
-                            href={resolveRelative(slug, `tags/${tag}` as FullSlug)}
-                          >
-                            {tag}
-                          </a>
-                        </li>
+          ) : (
+            <div class="page-content">
+              <div class="page-content__sidebar">
+                <SectionNav {...componentData} />
+              </div>
+              <div class="page-content__main">
+                <div class="page-content__header popover-hint">
+                  <>
+                    <nav class="public-breadcrumbs" aria-label="Breadcrumb">
+                      <a href={resolveRelative(slug, "index" as FullSlug)}>Home</a>
+                      {crumbs.map((crumb) => (
+                        <>
+                          <span aria-hidden="true">›</span>
+                          <a href={resolveRelative(slug, crumb.target)}>{crumb.label}</a>
+                        </>
                       ))}
-                    </ul>
-                  )}
-                </>
-              </div>
-              <div class="page-content__body">
-                <div class="text-content page-body">
-                  <Content {...componentData} />
+                      <span aria-hidden="true">›</span>
+                      <span>{frontmatter?.title}</span>
+                    </nav>
+                    <h1>{frontmatter?.title}</h1>
+                    {tags.length > 0 && (
+                      <ul class="tags" aria-label="Topics">
+                        {tags.map((tag) => (
+                          <li>
+                            <a
+                              class="internal tag-link"
+                              href={resolveRelative(slug, `tags/${tag}` as FullSlug)}
+                            >
+                              {tag}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
                 </div>
-                <div class="page-content__after">
-                  {afterBody.map((BodyComponent) => (
-                    <BodyComponent {...componentData} />
-                  ))}
+                <div class="page-content__body">
+                  <div class="text-content page-body">
+                    <Content {...componentData} />
+                  </div>
+                  <div class="page-content__after">
+                    {afterBody.map((BodyComponent) => (
+                      <BodyComponent {...componentData} />
+                    ))}
+                  </div>
                 </div>
               </div>
+              <aside class="page-content__aside">
+                {handbook && right.map((RightComponent) => <RightComponent {...componentData} />)}
+              </aside>
             </div>
-            <aside class="page-content__aside">
-              {handbook && right.map((RightComponent) => <RightComponent {...componentData} />)}
-            </aside>
-          </div>
+          )}
         </main>
         <JqiFooter {...componentData} />
         {footer.map((FooterComponent) => (

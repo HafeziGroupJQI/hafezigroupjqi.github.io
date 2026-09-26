@@ -5,6 +5,10 @@ export interface NavItem {
   children?: NavItem[]
   /** Identifies a dropdown so the header can attach live status to it. */
   menu?: "resources"
+  /** Member-only entry: hidden until the visitor is signed in (toggled client-side). */
+  member?: boolean
+  /** Auth control: "in" shows only when logged out, "out" shows only when logged in. */
+  auth?: "in" | "out"
 }
 
 export const publicNav: NavItem[] = [
@@ -29,12 +33,29 @@ export const resourceNav: NavItem[] = [
 export const calendarNav: NavItem = { label: "Calendar", href: "/calendar" }
 
 export function navigation(mode = process.env.SITE_MODE): NavItem[] {
+  // The internal edition is one unified site: public entries for everyone, member entries and the
+  // Sign out control revealed only once signed in, and a Sign in control shown only when logged
+  // out. The header marks each so the client can toggle them from the live session.
   return mode === "internal"
     ? [
         ...publicNav,
-        { label: "Resources", menu: "resources", children: [...resourceNav, calendarNav] },
-        { label: "Tools", children: [{ label: "Instruments", href: "/instruments" }] },
-        { label: "Sign out", href: "/auth/logout" },
+        {
+          label: "Resources",
+          menu: "resources",
+          member: true,
+          children: [...resourceNav, calendarNav],
+        },
+        {
+          label: "Tools",
+          member: true,
+          children: [
+            { label: "Devices", href: "/devices" },
+            { label: "Experiments", href: "/devices?tab=experiments" },
+            { label: "Experiment builder", href: "/devices?tab=builder" },
+          ],
+        },
+        { label: "Sign in with GitHub", href: "/auth/login", auth: "in" },
+        { label: "Sign out", href: "/auth/logout", auth: "out" },
       ]
     : [
         ...publicNav,

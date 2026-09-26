@@ -43,13 +43,20 @@ export function privateLink(raw, filename, privateRoot) {
   )
 }
 
-export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" } = {}) {
-  if (c2Url && !/^https:\/\//.test(c2Url)) throw new Error("C2_PUBLIC_URL must be an https:// URL")
+export function prepareUnified(publicSource, privateSource, yaml) {
   const prepared = prepareSite(publicSource, yaml)
   try {
     const root = fs.realpathSync(privateSource)
     const destination = path.join(prepared.output, "resources")
-    for (const reserved of ["resources", "calendar", "instruments", "runs"]) {
+    for (const reserved of [
+      "resources",
+      "calendar",
+      "devices",
+      "device",
+      "instrument",
+      "experiment-builder",
+      "experiments",
+    ]) {
       if (
         [reserved, reserved + ".md", reserved + ".qmd"].some((name) =>
           fs.existsSync(path.join(prepared.output, name)),
@@ -142,11 +149,11 @@ export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" }
           "\n\n## Documents (members)\n\nManuals, datasheets, SOPs, logs, and calibrations for every instrument are in [[resources/equipment/index|equipment documents]].\n"
       if (extra) fs.writeFileSync(file, text.replace(/\s*$/, "") + extra)
     }
-    const page = (slug, title, body, tags = []) => {
+    const page = (slug, title, body, tags = [], extra = {}) => {
       fs.mkdirSync(path.dirname(path.join(prepared.output, slug)), { recursive: true })
       return fs.writeFileSync(
         path.join(prepared.output, slug + ".md"),
-        `---\n${yaml.stringify({ title, site_public: true, site_internal: true, tags })}---\n\n${body}\n`,
+        `---\n${yaml.stringify({ title, site_public: true, site_internal: true, tags, ...extra })}---\n\n${body}\n`,
       )
     }
     const drawings = walk(destination).filter((file) => file.endsWith(".excalidraw.md"))
@@ -262,7 +269,7 @@ export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" }
       "resources/index",
       "Group resources",
       [
-        "Working notes, code, project records, Drive catalogues, and session material for lab members. Members can also [[calendar|manage the group calendar]], [[instruments|check the lab instruments]], and [[runs|review past experiments]].",
+        "Working notes, code, project records, Drive catalogues, and session material for lab members. Members can also [[calendar|manage the group calendar]], [[devices|see every lab PC and its instruments live]], and [[experiments|build and review experiments]].",
         '<div class="feature-grid resource-grid">',
         ...sections.map(
           ([title, slug, description]) =>
@@ -278,26 +285,29 @@ export function prepareUnified(publicSource, privateSource, yaml, { c2Url = "" }
       "Group calendar",
       '<div class="member-tools" data-calendar><p>Loading calendar…</p></div>',
     )
-    // Instruments and runs are served through the Worker's /api/c2/* gateway, so members
-    // need no second sign-in and no VPN. The direct dashboard link stays as a fallback for
-    // anyone already on the lab network.
+    // The device-scoped instrument platform: every lab PC runs a HafeziAgent that streams its
+    // instruments up to the Worker's DeviceHub, and members see and control them on one tabbed
+    // dashboard (frontend/dashboard/). `layout: dashboard` makes JqiFrame render it full-bleed,
+    // without the sidebar or a second <h1>. The dashboard routes in the query string
+    // (/devices?tab=device&code=bec-main), so the static site needs no per-device routes.
     page(
-      "instruments",
-      "Lab instruments",
-      [
-        '<div class="member-tools" data-instruments><p>Loading instruments…</p></div>',
-        c2Url
-          ? `<p class="muted"><a class="external" href="${c2Url}" rel="noopener">Open the instrument dashboard directly</a> (needs the lab network or VPN).</p>`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
+      "devices",
+      "Lab devices",
+      '<div class="member-tools dashboard" data-dashboard><h1 class="dash-title">Lab devices</h1><p class="muted">Loading…</p></div>',
+      [],
+      { layout: "dashboard" },
     )
-    page(
-      "runs",
-      "Experiment log",
-      '<div class="member-tools" data-runs><p>Loading runs…</p></div>',
-    )
+    // The old per-view pages stay (bookmarks, links in notes) and forward to the dashboard.
+    const legacy = (slug, title, attribute) =>
+      page(
+        slug,
+        title,
+        `<div class="member-tools" ${attribute}><p>Redirecting to the devices dashboard…</p><noscript><a href="/devices">Open the devices dashboard</a></noscript></div>`,
+      )
+    legacy("device", "Device", "data-device")
+    legacy("instrument", "Instrument", "data-instrument")
+    legacy("experiment-builder", "Experiment builder", "data-experiment-builder")
+    legacy("experiments", "Experiments", "data-experiments")
     return prepared
   } catch (error) {
     fs.rmSync(prepared.stage, { recursive: true, force: true })

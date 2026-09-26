@@ -18,7 +18,7 @@ test("members keep public navigation and gain native resource and tool menus", (
   const tools = items.find((item) => item.label === "Tools")!
   assert.deepEqual(
     tools.children?.map((item) => item.href),
-    ["/instruments"],
+    ["/devices", "/devices?tab=experiments", "/devices?tab=builder"],
   )
   assert.ok(items.some((item) => item.label === "Sign out" && item.href === "/auth/logout"))
   assert.ok(

@@ -27,9 +27,7 @@ const manifest =
 if (options.mode === "internal") {
   const rendered = await renderPrivateSource(options.content)
   try {
-    prepared = prepareUnified(options.publicContent, rendered.content, yaml, {
-      c2Url: process.env.C2_PUBLIC_URL,
-    })
+    prepared = prepareUnified(options.publicContent, rendered.content, yaml)
   } finally {
     fs.rmSync(rendered.stage, { recursive: true, force: true })
   }

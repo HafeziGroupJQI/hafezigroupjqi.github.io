@@ -59,7 +59,13 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
         <nav class="site-header__nav" aria-label="Main" aria-hidden="false">
           <ul>
             {navigation().map((item) => (
-              <li>
+              <li
+                data-member={item.member ? "" : undefined}
+                data-auth={item.auth ?? undefined}
+                // Member entries and "Sign out" start hidden (logged-out default, no flash); the
+                // session script reveals them and hides "Sign in" once a session is present.
+                hidden={item.member || item.auth === "out" ? true : undefined}
+              >
                 {item.children ? (
                   <details class="member-menu" data-menu={item.menu}>
                     <summary>{item.label}</summary>
@@ -82,6 +88,10 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
                   <a
                     href={href(item)}
                     aria-current={item.slug && current(item.slug) ? "page" : undefined}
+                    // Auth links leave the app (server redirect to GitHub / cookie clear), so the
+                    // SPA router must not intercept them — it would fetch a cross-origin redirect
+                    // and the click would appear to do nothing.
+                    data-router-ignore={href(item).includes("/auth/") ? "" : undefined}
                   >
                     {item.label}
                   </a>

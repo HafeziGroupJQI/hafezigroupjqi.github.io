@@ -59,7 +59,9 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
       ]
     : [
         ...publicNav,
-        { label: "Sign in with GitHub", href: `${process.env.SITE_LOGIN_ORIGIN ?? ""}/auth/login` },
+        // Same-origin: /auth/login is a static page of this site that signs in through the
+        // members API (frontend/members/pages.js); members never leave hafezigroupjqi.github.io.
+        { label: "Sign in with GitHub", href: "/auth/login" },
       ]
 }
 

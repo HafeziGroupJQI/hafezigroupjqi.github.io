@@ -8,12 +8,12 @@ import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
 
 const zone = "America/New_York"
-const session = await fetch("/api/session", { cache: "no-store" }).then((response) =>
-  response.json(),
-)
-// Public pages carry this script too (one unified site). Only the member tool widgets below need a
-// session; if a logged-out visitor lands on a gated tool page the server has already redirected
-// them, so we do not force a redirect here and public browsing keeps working.
+// Member pages are served at hafezigroupjqi.github.io by the members service worker, which also
+// forwards these same-origin /api/* calls to the Worker with the member's bearer token. Signed out
+// (no service worker answer), /api/session is simply not a user and the widgets stay unmounted.
+const session = await fetch("/api/session", { cache: "no-store" })
+  .then((response) => (response.ok ? response.json() : { user: null }))
+  .catch(() => ({ user: null }))
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -21,7 +21,6 @@ async function api(path, options = {}) {
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",
-      "X-CSRF-Token": session.csrf,
       ...options.headers,
     },
   })

@@ -10,7 +10,8 @@ const editionIndex = process.argv.indexOf("--edition")
 const edition = editionIndex > 0 ? process.argv[editionIndex + 1] : "both"
 if (!["public", "members", "both"].includes(edition))
   throw new Error("--edition must be public, members, or both")
-const baseUrl = env.MEMBERS_BASE_URL ?? "http://localhost:8787"
+// Both editions are served at the github.io origin (the member one through the service worker).
+const baseUrl = env.MEMBERS_BASE_URL || "https://hafezigroupjqi.github.io"
 const publicSource = env.VAULT_PUBLIC_DIR ?? "content"
 const privateSource = env.VAULT_PRIVATE_DIR ?? "../vault-private"
 const publicOutput = env.MEMBERS_PUBLIC_SITE_PATH ?? "public"

@@ -7,7 +7,6 @@ import { parseBuildOptions } from "./build-options.mjs"
 import { renderDrawings } from "./render-excalidraw.mjs"
 import yaml from "yaml"
 import { prepareUnified } from "./prepare-unified.mjs"
-import { build as bundle } from "esbuild"
 import { renderPrivateSource } from "./render-private-source.mjs"
 import {
   docsManifest,
@@ -17,8 +16,13 @@ import {
   writeDocsManifest,
 } from "./docs-manifest.mjs"
 import { excluded } from "./prepare-unified.mjs"
+import { writeAuthPages } from "./members-pages.mjs"
+import { DEFAULT_API, bundleMembers } from "./members-bundles.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
+// The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
+// member edition to signed-in browsers. Baked into the members bundles (tools/members-bundles.mjs).
+const membersApi = process.env.MEMBERS_API_ORIGIN || DEFAULT_API
 let prepared
 // Private documents are never bundled: the member build records their git blobs and the
 // Worker streams them from GitHub. Quartz ignores their extensions so the site stays small.
@@ -78,19 +82,19 @@ try {
     { stdio: "inherit", env },
   )
   if (options.mode === "internal") {
-    await bundle({
-      entryPoints: ["frontend/member-tools.js"],
-      outfile: path.join(options.output, "static/member-tools.js"),
-      bundle: true,
-      minify: true,
-      format: "esm",
-    })
+    await bundleMembers(options.output, "internal", membersApi)
     fs.writeFileSync(path.join(options.output, "robots.txt"), "User-agent: *\nDisallow: /\n")
     const pruned = pruneDocuments(options.output, manifest)
     const written = writeDocsManifest(manifest)
     console.log(
       `${Object.keys(manifest).length} private documents recorded in ${written}${pruned ? ` (${pruned} pruned from the site)` : ""}`,
     )
+  }
+  if (options.mode !== "internal") {
+    // The public site carries the members entry points: the service worker that serves signed-in
+    // browsers the member edition, and the sign-in pages. No member content is in this build.
+    await bundleMembers(options.output, "public", membersApi)
+    writeAuthPages(options.output)
   }
   const outputAudit = await auditOutput(
     options.output,

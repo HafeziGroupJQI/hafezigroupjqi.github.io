@@ -2,10 +2,19 @@
 
 Public website and authenticated lab resources, built from Markdown vaults with one shared Hafezi layout.
 
-Two editions come out of one build: `npm run build:public` is the GitHub Pages site and
-`npm run build:members` is the member edition, served by the Cloudflare Worker in
-[`worker/`](worker/README.md) together with GitHub sign-in, the group calendar, and the
-private documents streamed from `vault-private`.
+Everything lives at **https://hafezigroupjqi.github.io**. Two editions come out of one build:
+
+- **Public edition** (`npm run build:public`): the GitHub Pages site everyone sees. It also
+  carries the members entry points: the `/auth/login`, `/auth/callback` and `/auth/logout`
+  pages, and the service worker `/sw.js`.
+- **Member edition** (`npm run build:members`): the same site plus `/resources`, the calendar and
+  the `/devices` dashboard. It is deployed only as the static assets of the members API (the
+  Cloudflare Worker in [`worker/`](worker/README.md)), never to Pages.
+
+When a lab member signs in with GitHub, the service worker serves them the member edition of
+every page at the same github.io URLs. It fetches each page from the Worker in the background
+with a bearer token, so members never visit the Worker. Signed out, the service worker stays
+out of the way.
 
 ## Rebuild triggers
 

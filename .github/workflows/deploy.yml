@@ -51,7 +51,8 @@ jobs:
       - name: build site
         run: npm run build
         env:
-          SITE_LOGIN_ORIGIN: ${{ vars.SITE_LOGIN_ORIGIN }}
+          # the members API the site signs in with (service worker + /auth pages)
+          MEMBERS_API_ORIGIN: ${{ vars.MEMBERS_API_ORIGIN }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

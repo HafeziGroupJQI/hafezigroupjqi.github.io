@@ -2,8 +2,10 @@
 # .github/workflows/deploy.yml. It is kept here so changes are reviewed with the Worker.
 #
 # Secrets in members-site: VAULT_PRIVATE_READ_TOKEN (fine-grained PAT, contents:read on
-# vault-private), CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
-# Variables in members-site: MEMBERS_BASE_URL (the Worker origin), C2_PUBLIC_URL (optional).
+# vault-private), CLOUDFLARE_API_TOKEN (Workers scripts, D1, R2 edit), CLOUDFLARE_ACCOUNT_ID.
+# Variables in members-site: MEMBERS_BASE_URL (the Worker origin).
+# It builds the website repo's main branch, so only enable it once main carries the Worker
+# you want deployed.
 name: deploy member site
 
 on:
@@ -79,12 +81,11 @@ jobs:
           VAULT_PRIVATE_DIR: ../vault-private
           MEMBERS_BASE_URL: ${{ vars.MEMBERS_BASE_URL }}
           SITE_LOGIN_ORIGIN: ${{ vars.MEMBERS_BASE_URL }}
-          C2_PUBLIC_URL: ${{ vars.C2_PUBLIC_URL }}
       - run: npm run check
         working-directory: website/worker
       - run: npm test
         working-directory: website/worker
-      - name: apply calendar migrations
+      - name: apply D1 migrations
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

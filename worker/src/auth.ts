@@ -142,8 +142,10 @@ export async function callback(request: Request, url: URL, env: Env): Promise<Re
   return new Response(null, { status: 302, headers })
 }
 
-export function logout(url: URL, env: Env): Response {
-  return redirect(env.PUBLIC_SITE_URL, 302, {
+export function logout(url: URL): Response {
+  // Return to this deployment's own root so logout behaves the same on localhost and the
+  // published Worker. With no session, the root bounces the visitor to the login page.
+  return redirect(`${url.origin}/`, 302, {
     "set-cookie": clearCookie(SESSION_COOKIE, url),
     "clear-site-data": '"cache", "storage"',
   })

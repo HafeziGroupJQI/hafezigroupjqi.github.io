@@ -17,6 +17,11 @@
       "migrations_dir": "../migrations",
     },
   ],
+  "durable_objects": {
+    "bindings": [{ "name": "DEVICE_HUB", "class_name": "DeviceHub" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceHub"] }],
+  "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
   "vars": {
     "AUTH_MODE": "dev",
     "SESSION_SECRET": "test-session-secret-with-at-least-32-characters",
@@ -27,7 +32,5 @@
     "GITHUB_DOCS_TOKEN": "test-docs-token",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
     "PUBLIC_SITE_URL": "https://public.example",
-    "C2_URL": "https://c2.test",
-    "C2_GATEWAY_SECRET": "a-shared-gateway-secret-32-characters",
   },
 }

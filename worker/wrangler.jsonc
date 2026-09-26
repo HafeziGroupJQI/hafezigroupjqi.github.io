@@ -6,7 +6,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
   "workers_dev": true,
-  "observability": { "enabled": true },
+  "observability": {
+    "enabled": true,
+  },
   "assets": {
     "directory": "../.cache/private-site",
     "binding": "ASSETS",
@@ -19,21 +21,27 @@
       "binding": "DB",
       "database_name": "hafezi-members",
       // Fill in from `wrangler d1 create hafezi-members`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "55ccb561-e424-45b7-b186-6c29973fdc1f",
       "migrations_dir": "migrations",
     },
   ],
+  "durable_objects": {
+    "bindings": [{ "name": "DEVICE_HUB", "class_name": "DeviceHub" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceHub"] }],
+  "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
   "vars": {
     "AUTH_MODE": "github",
+    // Unified site: public pages render for everyone; private paths (/resources/*, the member
+    // tool pages) and every member API stay gated. See isPrivatePath in src/app.ts.
+    "ALLOW_PUBLIC_BROWSING": "1",
     "GITHUB_ORG": "HafeziGroupJQI",
     "GITHUB_TEAM": "lab-members",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
     "PUBLIC_SITE_URL": "https://hafezigroupjqi.github.io",
-    // Instrument service behind its Cloudflare Tunnel public hostname. Leave empty until the
-    // tunnel exists: the instruments page then reports "Not configured" instead of failing.
-    "C2_URL": "",
   },
   // Secrets (wrangler secret put): SESSION_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
-  // GITHUB_DOCS_TOKEN, and for the instrument gateway C2_GATEWAY_SECRET,
-  // CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET.
+  // GITHUB_DOCS_TOKEN, and ANTHROPIC_API_KEY for cloud experiment generation. Instrument
+  // control now runs through the per-device HafeziAgent + DeviceHub, so the old C2 quick-tunnel
+  // gateway secrets (C2_URL, C2_GATEWAY_SECRET, CF_ACCESS_*) are retired.
 }

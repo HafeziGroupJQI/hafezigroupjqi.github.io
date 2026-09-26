@@ -3,3 +3,11 @@ AUTH_MODE=dev
 SESSION_SECRET=replace-with-32-or-more-random-characters-for-local-use
 # Optional: a fine-grained PAT with contents:read on vault-private so embedded documents load.
 # GITHUB_DOCS_TOKEN=
+# Cloud experiment generation. Unset = the offline template generator (no cost, no network).
+# To generate on your Claude subscription with no API key, run ~/src/claude-bridge (uv run bridge.py)
+# and point the Worker at it — the key is a dummy the bridge ignores:
+# ANTHROPIC_API_KEY=bridge
+# ANTHROPIC_BASE_URL=http://127.0.0.1:8788
+# Or use a real key against Anthropic directly (leave ANTHROPIC_BASE_URL unset):
+# ANTHROPIC_API_KEY=sk-ant-...
+# ANTHROPIC_MODEL=claude-opus-5

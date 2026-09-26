@@ -36,7 +36,7 @@ describe("request gate", () => {
     expect(await (await SELF.fetch(`${ORIGIN}/api/health`)).json()).toMatchObject({ ok: true })
   })
 
-  it("serves member pages with private headers and returns to the public site on logout", async () => {
+  it("serves member pages with private headers and returns to this origin on logout", async () => {
     const client = await member()
     expect((await client.json("/api/session")).body.user).toEqual({
       login: "dev",
@@ -59,7 +59,7 @@ describe("request gate", () => {
     expect((await client.fetch("/nowhere")).status).toBe(404)
     const logout = await client.fetch("/auth/logout")
     expect(logout.status).toBe(302)
-    expect(logout.headers.get("location")).toBe("https://public.example")
+    expect(logout.headers.get("location")).toBe(`${ORIGIN}/`)
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0")
   })
 

@@ -2,6 +2,8 @@
 interface TestEnv {
   ASSETS: Fetcher
   DB: D1Database
+  DEVICE_HUB: DurableObjectNamespace
+  ARTIFACTS: R2Bucket
   TEST_MIGRATIONS: D1Migration[]
 }
 declare namespace Cloudflare {

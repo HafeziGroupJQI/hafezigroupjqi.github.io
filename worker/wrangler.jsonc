@@ -1,5 +1,7 @@
-// Member site: one Worker serves the built member edition (static assets), the GitHub
-// login, the D1 calendar API, and streams private documents from vault-private on GitHub.
+// Members API for https://hafezigroupjqi.github.io. Browsers never visit this Worker: the site's
+// service worker fetches the member edition (the static assets below) through GET /api/site/*
+// with a bearer token, alongside the calendar/device APIs and private documents streamed from
+// vault-private. Lab PCs call /api/agent/* with device keys.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hafezi-members",
@@ -32,9 +34,6 @@
   "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
   "vars": {
     "AUTH_MODE": "github",
-    // Unified site: public pages render for everyone; private paths (/resources/*, the member
-    // tool pages) and every member API stay gated. See isPrivatePath in src/app.ts.
-    "ALLOW_PUBLIC_BROWSING": "1",
     "GITHUB_ORG": "HafeziGroupJQI",
     "GITHUB_TEAM": "lab-members",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",

@@ -6,9 +6,6 @@ export interface Env {
   /** Experiment result artifacts (CSV, plot PNGs). */
   ARTIFACTS: R2Bucket
   AUTH_MODE: "github" | "dev"
-  /** "1" serves pages to logged-out visitors (public edition). Unset = every page requires login
-   *  (the private members edition). Private document streaming and member APIs stay gated either way. */
-  ALLOW_PUBLIC_BROWSING?: string
   SESSION_SECRET: string
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string
@@ -16,7 +13,11 @@ export interface Env {
   GITHUB_TEAM: string
   GITHUB_DOCS_TOKEN?: string
   DOCS_REPO: string
+  /** The github.io site: the only browser origin (besides ALLOWED_ORIGINS), the OAuth callback
+   *  host, and where non-API requests to the Worker are redirected. */
   PUBLIC_SITE_URL: string
+  /** Extra comma-separated browser origins allowed by CORS (local development, e.g. http://localhost:8080). */
+  ALLOWED_ORIGINS?: string
   /** Cloud experiment generation. When set, the Worker calls the Claude Messages API to write the
    *  control script; unset, it falls back to a deterministic offline template (used in tests). */
   ANTHROPIC_API_KEY?: string

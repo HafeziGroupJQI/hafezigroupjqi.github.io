@@ -1,21 +1,36 @@
-# Member site Worker
+# Members API Worker
 
-One Cloudflare Worker serves everything members see: the built member edition of the site
-as static assets, GitHub sign-in restricted to the lab team, the group calendar on a D1
-database, and the private documents streamed from `vault-private` on GitHub. The public
-site stays on GitHub Pages and only links here.
+The members API behind **https://hafezigroupjqi.github.io**. Members never visit this Worker:
+the site is the only thing they see. After a member signs in, the site's service worker
+(`frontend/members/sw.js`, emitted as `/sw.js` by the public build) answers every request.
+It serves the **member edition** of each page (the static assets of this Worker, built by
+`npm run build:members`) from `GET /api/site/<path>`, and forwards same-origin `/api/*` calls
+here, adding a bearer token. The dashboard's live stream calls the Worker directly with
+`fetch()`.
+
+Sign-in is GitHub OAuth, restricted to the lab team. GitHub returns to the static page
+`/auth/callback` on github.io, which trades the code here for an 8-hour bearer token. The Worker
+also holds the group calendar on D1, and streams the private documents from `vault-private` on
+GitHub. Lab PCs call `/api/agent/*` with device keys. Any non-API URL on the Worker redirects
+to the same path on github.io.
+
+```
+member @ github.io ─ /sw.js ─ bearer ─► /api/site/* (member edition) · /api/* (calendar, devices, session)
+/auth/login (github.io) ─► POST /api/auth/start ─► GitHub ─► /auth/callback (github.io) ─► POST /api/auth/exchange
+lab PC ─ device key ─► /api/agent/*
+```
 
 ## Routes
 
 | Route                                                   | Purpose                                                                                                                                                                                                               |
 | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/health`                                       | liveness, no login                                                                                                                                                                                                    |
-| `GET /auth/login?next=`                                 | GitHub OAuth (`read:org`); `AUTH_MODE=dev` signs in a local owner instead                                                                                                                                             |
-| `GET /auth/callback`                                    | exchanges the code, checks org ownership or `lab-members` membership, sets the session cookie                                                                                                                         |
-| `GET /auth/logout`                                      | clears the session and returns to the public site                                                                                                                                                                     |
-| `GET /api/session`                                      | `{ user, csrf }`                                                                                                                                                                                                      |
+| `POST /api/auth/start {next}`                          | returns GitHub's authorize URL with `redirect_uri` = `PUBLIC_SITE_URL/auth/callback` and a signed 10-minute state bound to a nonce; `AUTH_MODE=dev` returns `{dev:true, state, nonce}` instead |
+| `POST /api/auth/exchange {code, state, nonce}`          | verifies the state and nonce, trades the code, checks org ownership or `lab-members` membership, returns `{token, exp, user, next}` (8 h bearer token)                                          |
+| `GET /api/session`                                      | `{ user }` for the bearer token (`{ user: null }` without one)                                                                                                                                       |
+| `GET /api/site/<path>`                                  | the member edition of a github.io path: pages and assets from the static assets, private documents streamed from GitHub (Range supported); a trailing-slash/`.html` redirect comes back as `204` + `x-canonical-path` |
 | `GET /api/calendar/events?start&end`                    | occurrences in an aware range of at most 370 days                                                                                                                                                                     |
-| `GET/POST/PUT/DELETE /api/calendar/events[/:id]`        | series and single-occurrence edits with optimistic `version` (409 on conflict); writes need `Origin` equal to the site and `X-CSRF-Token`                                                                             |
+| `GET/POST/PUT/DELETE /api/calendar/events[/:id]`        | series and single-occurrence edits with optimistic `version` (409 on conflict); writes from a browser must come from an allowed origin                                                                             |
 | `POST /api/agent/enroll`                                | an agent exchanges a one-time enrollment token for its device key (the only agent call without a device key)                                                                                                          |
 | `POST /api/agent/{instruments,readings,logs,heartbeat}` | device-key ingest: replace-set the instrument declaration, the reading/log firehose (routed through the DeviceHub DO), and per-instrument status                                                                      |
 | `GET /api/agent/command-channel`                        | the agent's persistent WebSocket to its DeviceHub (hibernated): commands out, results back                                                                                                                            |
@@ -23,15 +38,19 @@ site stays on GitHub Pages and only links here.
 | `GET/POST /api/devices`, `DELETE /api/devices/:code`    | list devices; owner-only create (returns a one-time enrollment token) and revoke                                                                                                                                      |
 | `GET /api/devices/:code[/instruments[/:local_id]]`      | device detail, its instruments with latest readings, and one instrument's ports/capabilities/history                                                                                                                  |
 | _liveness fields_                                       | `GET /api/devices` rows and `GET /api/devices/:code` carry `liveness` (`online` ≤ 45 s · `stale` ≤ 300 s · `offline` · `pending` = never enrolled/seen) and `last_seen_age_ms`, from the **server-stamped** heartbeat; the list adds `instruments_online`. Instrument rows add `effective_status` (`offline` unless the device is `online`) — `instrument_status` never expires, so views must use it |
-| `GET /api/devices/:code/stream`                         | Server-Sent Events: the DeviceHub's live reading/log fan-out (member session cookie authenticates it)                                                                                                                 |
+| `GET /api/devices/:code/stream`                         | Server-Sent Events: the DeviceHub's live reading/log fan-out (bearer token; the dashboard reads it with `fetch()`)                                                                                                                 |
 | `GET/POST /api/devices/:code/commands`                  | the command audit log; enqueue a `poll`/`reconfigure`/`experiment.stop` command (mutation headers required)                                                                                                           |
 | `GET/POST /api/devices/:code/experiments`               | list experiments; `POST` a `Setup.json` spec → cloud-generate `Runexp.py` → dispatch `experiment.start` (mutation headers)                                                                                            |
 | `POST /api/devices/:code/experiments/:id/stop`          | stop a running experiment                                                                                                                                                                                             |
 | `GET /api/experiments/:id[/datasets]`                   | one experiment (spec, generated script, status) and its dataset artifacts                                                                                                                                             |
 | `GET /api/catalog`                                      | instrument families (ports, capabilities) for the builder                                                                                                                                                             |
-| everything else                                         | requires a session (anonymous page requests are redirected to the login, other requests get 401); served from the static assets, or streamed from GitHub when the path is a private document                          |
+| any other `/api/*`                                      | requires the bearer token (401 without it)                                                                                                                                                          |
+| anything outside `/api/`                                | `302` to the same path on `PUBLIC_SITE_URL`                                                                                                                                                          |
 
-Every response is marked `private` and `noindex`.
+Every response is marked `private` and `noindex`. Browser access is limited by CORS to
+`PUBLIC_SITE_URL` plus any `ALLOWED_ORIGINS` (comma-separated; e.g. `http://localhost:8080` for
+local development). There are no cookies. Bearer tokens are never sent automatically, so there
+is nothing for CSRF to exploit. Rotating `SESSION_SECRET` signs everyone out.
 
 ## Documents
 
@@ -52,8 +71,8 @@ the build on purpose: the Worker could never fetch them.
 
 | Secret                                     | Value                                                                           |
 | ------------------------------------------ | ------------------------------------------------------------------------------- |
-| `SESSION_SECRET`                           | 32 or more random characters; signs the session cookie                          |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | the GitHub OAuth app whose callback is `https://<worker-host>/auth/callback`    |
+| `SESSION_SECRET`                           | 32 or more random characters; signs the bearer tokens and login states          |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | the GitHub OAuth app whose callback is `https://hafezigroupjqi.github.io/auth/callback` |
 | `GITHUB_DOCS_TOKEN`                        | fine-grained PAT with contents:read on `vault-private`                          |
 | `ANTHROPIC_API_KEY`                        | cloud experiment generation; unset falls back to the offline template generator |
 | `ANTHROPIC_MODEL`                          | optional generation model override (defaults to a current, capable model)       |
@@ -75,10 +94,22 @@ cd worker
 cp .dev.vars.example .dev.vars   # AUTH_MODE=dev; add GITHUB_DOCS_TOKEN to open documents
 npm ci
 npm run migrate:local
-npm run dev                      # http://localhost:8787
+npm run dev                      # the API on http://localhost:8787
 npm test                         # vitest inside the Workers runtime
 npm run check                    # tsc
 ```
+
+The API has no pages of its own. To use the site locally, build both editions pointing at the
+local API, and serve the public one the way GitHub Pages does:
+
+```sh
+MEMBERS_API_ORIGIN=http://localhost:8787 npm run build:unified   # website root
+node tools/serve-pages.mjs public 8080                          # then open http://localhost:8080
+```
+
+`tools/verify-members.sh --build` does all of this, simulates a lab PC, and signs in with a
+headless browser to walk the member pages. `ALLOWED_ORIGINS=http://localhost:8080` in
+`.dev.vars` lets the local site call the local API.
 
 ## Deployment
 
@@ -100,7 +131,7 @@ token to get a per-device key, declares its instruments, streams readings/logs u
 persistent WebSocket for commands. The Worker is the relay and the site; it stores and forwards,
 and never controls anything.
 
-- **Three auth tiers.** Member (GitHub session + CSRF) governs the browser; device (a per-device
+- **Three auth tiers.** Member (GitHub sign-in → bearer token) governs the browser; device (a per-device
   key, stored only as a SHA-256 hash) authenticates agent ingest; enrollment (a one-time,
   short-TTL token an owner issues) bootstraps a device's key once.
 - **`DeviceHub` Durable Object**, one per device code-name, is the live plane: the reading/log

@@ -92,13 +92,13 @@ describe("calendar", () => {
     expect((await client.json(EVENT)).body.exceptions).toEqual({})
   })
 
-  it("validates schedules and enforces origin and CSRF checks", async () => {
+  it("validates schedules and enforces the origin and bearer checks", async () => {
     const client = await member()
     const event = { title: "Test", start: "2026-09-20T10:00:00", end: "2026-09-20T11:00:00" }
     const post = (body: unknown, headers: Record<string, string> = {}) =>
       client.json("/api/calendar/events", { method: "POST", body: JSON.stringify(body), headers })
     expect((await post(event, { origin: "https://evil.example" })).status).toBe(403)
-    expect((await post(event, { "x-csrf-token": "wrong" })).status).toBe(403)
+    expect((await post(event, { authorization: "Bearer not-a-token" })).status).toBe(401)
     expect((await post({ ...event, end: event.start })).status).toBe(422)
     expect((await post({ ...event, timezone: "invalid" })).status).toBe(422)
     const gap = { ...event, start: "2027-03-14T02:30:00", end: "2027-03-14T03:30:00" }

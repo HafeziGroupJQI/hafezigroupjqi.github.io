@@ -39,7 +39,7 @@ export async function calendarRoutes(
     const row = await store.get(id)
     return json({ ...store.public(row), exceptions: JSON.parse(row.exceptions) })
   }
-  requireMutation(request, url, session)
+  requireMutation(request, env)
   if (request.method === "POST" && !id) {
     const { event } = parseEvent(await readJson(request))
     return json(await store.create(event, session.login), 201)

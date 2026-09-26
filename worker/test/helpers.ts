@@ -5,19 +5,31 @@ export const ORIGIN = "https://members.test"
 
 type Init = RequestInit & { headers?: Record<string, string> }
 
-export async function member() {
-  const login = await SELF.fetch(`${ORIGIN}/auth/login`, { redirect: "manual" })
-  expect(login.status).toBe(302)
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]
-  const session = (await (
-    await SELF.fetch(`${ORIGIN}/api/session`, { headers: { cookie } })
-  ).json()) as {
-    csrf: string
+/** The github.io site in tests (PUBLIC_SITE_URL in test/wrangler.jsonc): the browser origin. */
+export const SITE = "https://public.example"
+
+/** Sign in through the dev-mode start/exchange flow and return a bearer-token client. */
+export async function signIn() {
+  const post = (path: string, body: unknown) =>
+    SELF.fetch(ORIGIN + path, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: SITE },
+      body: JSON.stringify(body),
+    })
+  const started = (await (await post("/api/auth/start", { next: "/" })).json()) as {
+    state: string
+    nonce: string
   }
+  const exchanged = await post("/api/auth/exchange", started)
+  expect(exchanged.status).toBe(200)
+  return ((await exchanged.json()) as { token: string }).token
+}
+
+export async function member() {
+  const token = await signIn()
   const headers = {
-    cookie,
-    origin: ORIGIN,
-    "x-csrf-token": session.csrf,
+    authorization: `Bearer ${token}`,
+    origin: SITE,
     "content-type": "application/json",
   }
   const fetch = (path: string, init: Init = {}) =>
@@ -30,7 +42,7 @@ export async function member() {
     const response = await fetch(path, init)
     return { status: response.status, body: (await response.json()) as any }
   }
-  return { cookie, csrf: session.csrf, headers, fetch, json }
+  return { token, headers, fetch, json }
 }
 
 export type Client = Awaited<ReturnType<typeof member>>

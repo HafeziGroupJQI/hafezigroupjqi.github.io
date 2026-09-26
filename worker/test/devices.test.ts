@@ -1,9 +1,9 @@
 import { SELF, env, runInDurableObject } from "cloudflare:test"
 import { beforeAll, describe, expect, it } from "vitest"
 import { sign } from "../src/session"
-import { ORIGIN, member } from "./helpers"
+import { ORIGIN, SITE, member } from "./helpers"
 
-// A raw agent call: device-key bearer, no cookie/CSRF.
+// A raw agent call: device-key bearer.
 const agent = (path: string, key: string | null, body?: unknown) =>
   SELF.fetch(ORIGIN + path, {
     method: "POST",
@@ -14,18 +14,16 @@ const agent = (path: string, key: string | null, body?: unknown) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 
-// A member (non-owner) session cookie, signed with the test SESSION_SECRET.
+// A member (non-owner) bearer token, signed with the test SESSION_SECRET.
 async function memberSession() {
-  const csrf = "csrf-member-token"
   const session = {
+    typ: "session",
     login: "member1",
     name: "Member One",
     role: "member" as const,
-    csrf,
     exp: Math.floor(Date.now() / 1000) + 3600,
   }
-  const token = await sign(session, (env as any).SESSION_SECRET)
-  return { cookie: `hafezi_members_session=${token}`, csrf }
+  return await sign(session, (env as any).SESSION_SECRET)
 }
 
 async function createDevice(code: string) {
@@ -100,10 +98,10 @@ describe("device enrollment", () => {
   })
 
   it("forbids a non-owner from creating a device", async () => {
-    const { cookie, csrf } = await memberSession()
+    const token = await memberSession()
     const res = await SELF.fetch(`${ORIGIN}/api/devices`, {
       method: "POST",
-      headers: { cookie, origin: ORIGIN, "x-csrf-token": csrf, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${token}`, origin: SITE, "content-type": "application/json" },
       body: JSON.stringify({ code_name: "sneaky" }),
     })
     expect(res.status).toBe(403)

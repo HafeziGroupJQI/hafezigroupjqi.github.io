@@ -3,7 +3,8 @@
 #
 # Secrets in members-site: VAULT_PRIVATE_READ_TOKEN (fine-grained PAT, contents:read on
 # vault-private), CLOUDFLARE_API_TOKEN (Workers scripts, D1, R2 edit), CLOUDFLARE_ACCOUNT_ID.
-# Variables in members-site: MEMBERS_BASE_URL (the Worker origin).
+# Variables in members-site: MEMBERS_BASE_URL (the github.io site, where the member edition is
+# shown) and MEMBERS_API_ORIGIN (this Worker's origin, baked into the dashboard's live stream).
 # It builds the website repo's main branch, so only enable it once main carries the Worker
 # you want deployed.
 name: deploy member site
@@ -80,7 +81,7 @@ jobs:
           VAULT_PUBLIC_DIR: ../vault/content
           VAULT_PRIVATE_DIR: ../vault-private
           MEMBERS_BASE_URL: ${{ vars.MEMBERS_BASE_URL }}
-          SITE_LOGIN_ORIGIN: ${{ vars.MEMBERS_BASE_URL }}
+          MEMBERS_API_ORIGIN: ${{ vars.MEMBERS_API_ORIGIN }}
       - run: npm run check
         working-directory: website/worker
       - run: npm test

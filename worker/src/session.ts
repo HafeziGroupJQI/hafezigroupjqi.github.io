@@ -1,14 +1,17 @@
-import { cookies } from "./http"
 import type { Env } from "./env"
 
-export const SESSION_COOKIE = "hafezi_members_session"
+// Members authenticate with a bearer token held by the github.io site (a service worker adds it
+// to every request); there are no cookies. Tokens are HMAC-signed JSON with a `typ` claim so an
+// OAuth state can never be replayed as a session.
 export const SESSION_MAX_AGE = 8 * 60 * 60
 
+export type TokenType = "session" | "state"
+
 export interface Session {
+  typ: "session"
   login: string
   name: string
   role: "member" | "owner"
-  csrf: string
   exp: number
 }
 
@@ -43,6 +46,7 @@ export async function sign(payload: object, secret: string): Promise<string> {
 export async function verify<T extends { exp?: number }>(
   token: string | undefined,
   secret: string,
+  typ?: TokenType,
 ): Promise<T | null> {
   if (!token) return null
   const [body, mac] = token.split(".")
@@ -53,6 +57,7 @@ export async function verify<T extends { exp?: number }>(
     if (!valid) return null
     const payload = JSON.parse(decoder.decode(bytes)) as T
     if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) return null
+    if (typ && (payload as { typ?: string }).typ !== typ) return null
     return payload
   } catch {
     return null
@@ -70,33 +75,23 @@ export function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0
 }
 
-const secureFlag = (url: URL) => (url.protocol === "https:" ? "; Secure" : "")
-
-export const serializeCookie = (name: string, value: string, url: URL, maxAge: number) =>
-  `${name}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secureFlag(url)}`
-
-export const clearCookie = (name: string, url: URL) => serializeCookie(name, "", url, 0)
+/** Parse `Authorization: Bearer <token>` (member routes only; /api/agent/* reads device keys). */
+export function bearer(request: Request): string | null {
+  const match = (request.headers.get("authorization") ?? "").match(/^Bearer\s+(\S+)$/i)
+  return match ? match[1] : null
+}
 
 export async function readSession(request: Request, env: Env): Promise<Session | null> {
-  const session = await verify<Session>(cookies(request).get(SESSION_COOKIE), env.SESSION_SECRET)
-  if (!session || !session.login || !session.csrf) return null
+  const session = await verify<Session>(bearer(request) ?? undefined, env.SESSION_SECRET, "session")
+  if (!session || !session.login) return null
   return session
 }
 
-export async function sessionCookie(
+export async function issueSession(
   user: { login: string; name: string; role: "member" | "owner" },
-  url: URL,
   env: Env,
-): Promise<string> {
-  const session: Session = {
-    ...user,
-    csrf: randomToken(),
-    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE,
-  }
-  return serializeCookie(
-    SESSION_COOKIE,
-    await sign(session, env.SESSION_SECRET),
-    url,
-    SESSION_MAX_AGE,
-  )
+): Promise<{ token: string; exp: number }> {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE
+  const session: Session = { typ: "session", ...user, exp }
+  return { token: await sign(session, env.SESSION_SECRET), exp }
 }

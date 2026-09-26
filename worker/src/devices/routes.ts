@@ -8,7 +8,7 @@ import { hashSecret, newSecret, normalizeCodeName } from "./keys"
 import { ageMs, effectiveStatus, liveness } from "./liveness"
 import { DevicesStore } from "./store"
 
-// Member → Worker. Cookie session + CSRF (requireMutation) on writes. Owner-only routes gate on
+// Member → Worker. Bearer session; writes pass requireMutation (origin allow-list). Owner-only routes gate on
 // session.role. Returns null when it does not own the path so app.ts can fall through.
 
 function requireOwner(session: Session): void {
@@ -44,7 +44,7 @@ export async function deviceRoutes(
   if (url.pathname === "/api/devices") {
     if (request.method === "GET") return json(await store.listDevices())
     if (request.method === "POST") {
-      requireMutation(request, url, session)
+      requireMutation(request, env)
       requireOwner(session)
       const body = (await readJson(request)) as { code_name?: unknown }
       const codeName = normalizeCodeName(body.code_name)
@@ -109,7 +109,7 @@ export async function deviceRoutes(
   }
 
   // ---- writes: same-origin + CSRF ----
-  requireMutation(request, url, session)
+  requireMutation(request, env)
 
   // Device create/delete is owner-only; enqueuing commands and experiments is any member.
   if (request.method === "DELETE" && rest === "") {

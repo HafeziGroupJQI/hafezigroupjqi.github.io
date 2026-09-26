@@ -1,24 +1,32 @@
 import type { Env } from "./env"
-import { HttpError, cookies, problem, redirect } from "./http"
-import {
-  SESSION_COOKIE,
-  type Session,
-  clearCookie,
-  randomToken,
-  serializeCookie,
-  sessionCookie,
-  sign,
-  timingSafeEqual,
-  verify,
-} from "./session"
+import { HttpError, json, readJson } from "./http"
+import { issueSession, randomToken, sign, timingSafeEqual, verify } from "./session"
 
-const OAUTH_COOKIE = "hafezi_oauth"
+// Sign-in for the github.io site. The browser never visits the Worker:
+//   1. /auth/login (a static github.io page) POSTs /api/auth/start and gets GitHub's authorize URL,
+//      whose redirect_uri is PUBLIC_SITE_URL/auth/callback and whose `state` is a Worker-signed,
+//      10-minute token bound to a nonce the page keeps in sessionStorage.
+//   2. GitHub returns to /auth/callback (another static page), which POSTs {code, state, nonce}
+//      to /api/auth/exchange. The Worker checks the state, trades the code with the client secret,
+//      applies the org/team rule and returns an 8 h bearer token.
+
 const GITHUB_API = "https://api.github.com"
 const USER_AGENT = "hafezi-members-worker"
+const STATE_TTL = 600
+
+/** Outbound fetch to GitHub (OAuth + REST); tests substitute a stub. */
+export type GitHubFetch = (input: string, init: RequestInit) => Promise<Response>
 
 interface Membership {
   state?: string
   role?: string
+}
+
+interface PendingLogin {
+  typ: "state"
+  nonce: string
+  next: string
+  exp: number
 }
 
 // Org owners always get in; otherwise the visitor must be an active member of the lab team.
@@ -46,57 +54,56 @@ export function safeNext(value: string | null | undefined, fallback = "/"): stri
   return value
 }
 
-export const loginUrl = (url: URL) =>
-  `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`
+export const callbackUrl = (env: Env) => `${new URL(env.PUBLIC_SITE_URL).origin}/auth/callback`
 
-const github = async (path: string, token: string) =>
-  fetch(GITHUB_API + path, {
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: "application/vnd.github+json",
-      "x-github-api-version": "2022-11-28",
-      "user-agent": USER_AGENT,
-    },
-  })
+const str = (value: unknown) => (typeof value === "string" ? value : "")
 
-export async function login(request: Request, url: URL, env: Env): Promise<Response> {
-  const next = safeNext(url.searchParams.get("next"))
+export async function startLogin(request: Request, env: Env): Promise<Response> {
+  const body = (await readJson(request)) as { next?: unknown }
+  const next = safeNext(str(body.next))
+  const nonce = randomToken()
   if (env.AUTH_MODE === "dev") {
-    const cookie = await sessionCookie(
-      { login: "dev", name: "Local member", role: "owner" },
-      url,
-      env,
+    const state = await sign(
+      { typ: "state", nonce, next, exp: Math.floor(Date.now() / 1000) + STATE_TTL },
+      env.SESSION_SECRET,
     )
-    return redirect(next, 302, { "set-cookie": cookie })
+    return json({ dev: true, state, nonce, next })
   }
   if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET)
-    return problem(503, "GitHub login is not configured")
-  const state = randomToken()
-  const pending = await sign(
-    { state, next, exp: Math.floor(Date.now() / 1000) + 600 },
-    env.SESSION_SECRET,
-  )
+    throw new HttpError(503, "GitHub login is not configured")
+  const pending: PendingLogin = {
+    typ: "state",
+    nonce,
+    next,
+    exp: Math.floor(Date.now() / 1000) + STATE_TTL,
+  }
+  const state = await sign(pending, env.SESSION_SECRET)
   const authorize = new URL("https://github.com/login/oauth/authorize")
   authorize.searchParams.set("client_id", env.GITHUB_CLIENT_ID)
-  authorize.searchParams.set("redirect_uri", `${url.origin}/auth/callback`)
+  authorize.searchParams.set("redirect_uri", callbackUrl(env))
   authorize.searchParams.set("scope", "read:org")
   authorize.searchParams.set("state", state)
-  return redirect(authorize.toString(), 302, {
-    "set-cookie": serializeCookie(OAUTH_COOKIE, pending, url, 600),
-  })
+  return json({ authorize_url: authorize.toString(), nonce })
 }
 
-export async function callback(request: Request, url: URL, env: Env): Promise<Response> {
-  if (env.AUTH_MODE !== "github") return problem(404, "not found")
-  const pending = await verify<{ state: string; next: string; exp: number }>(
-    cookies(request).get(OAUTH_COOKIE),
-    env.SESSION_SECRET,
-  )
-  const code = url.searchParams.get("code")
-  const state = url.searchParams.get("state")
-  if (!pending || !code || !state || !timingSafeEqual(state, pending.state))
-    return problem(400, "login attempt expired; start again")
-  const exchange = await fetch("https://github.com/login/oauth/access_token", {
+export async function exchange(
+  request: Request,
+  env: Env,
+  githubFetch: GitHubFetch,
+): Promise<Response> {
+  const body = (await readJson(request)) as { code?: unknown; state?: unknown; nonce?: unknown }
+  const pending = await verify<PendingLogin>(str(body.state), env.SESSION_SECRET, "state")
+  if (!pending || !timingSafeEqual(pending.nonce, str(body.nonce)))
+    throw new HttpError(400, "login attempt expired; start again")
+
+  if (env.AUTH_MODE === "dev") {
+    const user = { login: "dev", name: "Local member", role: "owner" as const }
+    return json({ ...(await issueSession(user, env)), user, next: pending.next })
+  }
+
+  const code = str(body.code)
+  if (!code) throw new HttpError(400, "missing authorization code")
+  const exchanged = await githubFetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: {
       accept: "application/json",
@@ -107,55 +114,50 @@ export async function callback(request: Request, url: URL, env: Env): Promise<Re
       client_id: env.GITHUB_CLIENT_ID,
       client_secret: env.GITHUB_CLIENT_SECRET,
       code,
-      redirect_uri: `${url.origin}/auth/callback`,
+      redirect_uri: callbackUrl(env),
     }),
   })
-  const token = exchange.ok
-    ? ((await exchange.json()) as { access_token?: string }).access_token
+  const token = exchanged.ok
+    ? ((await exchanged.json()) as { access_token?: string }).access_token
     : null
-  if (!token) return problem(502, "GitHub did not issue a token")
-  const userResponse = await github("/user", token)
-  if (!userResponse.ok) return problem(502, "GitHub did not identify the user")
-  const user = (await userResponse.json()) as { login: string; name?: string | null }
+  if (!token) throw new HttpError(502, "GitHub did not issue a token")
+  const github = (path: string) =>
+    githubFetch(GITHUB_API + path, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        "user-agent": USER_AGENT,
+      },
+    })
+  const userResponse = await github("/user")
+  if (!userResponse.ok) throw new HttpError(502, "GitHub did not identify the user")
+  const profile = (await userResponse.json()) as { login: string; name?: string | null }
   const [org, team] = await Promise.all([
-    github(`/user/memberships/orgs/${env.GITHUB_ORG}`, token),
-    github(`/orgs/${env.GITHUB_ORG}/teams/${env.GITHUB_TEAM}/memberships/${user.login}`, token),
+    github(`/user/memberships/orgs/${env.GITHUB_ORG}`),
+    github(`/orgs/${env.GITHUB_ORG}/teams/${env.GITHUB_TEAM}/memberships/${profile.login}`),
   ])
   const [allowed, role] = decide(
     org.ok ? ((await org.json()) as Membership) : null,
     team.ok ? ((await team.json()) as Membership) : null,
   )
-  const clear = clearCookie(OAUTH_COOKIE, url)
-  if (!allowed)
-    return new Response(`${user.login}: ${role}`, {
-      status: 403,
-      headers: { "content-type": "text/plain; charset=utf-8", "set-cookie": clear },
-    })
-  const cookie = await sessionCookie(
-    { login: user.login, name: user.name ?? user.login, role },
-    url,
-    env,
-  )
-  const headers = new Headers({ location: safeNext(pending.next) })
-  headers.append("set-cookie", cookie)
-  headers.append("set-cookie", clear)
-  return new Response(null, { status: 302, headers })
+  if (!allowed) throw new HttpError(403, `${profile.login}: ${role}`)
+  const user = { login: profile.login, name: profile.name ?? profile.login, role }
+  return json({ ...(await issueSession(user, env)), user, next: pending.next })
 }
 
-export function logout(url: URL): Response {
-  // Return to this deployment's own root so logout behaves the same on localhost and the
-  // published Worker. With no session, the root bounces the visitor to the login page.
-  return redirect(`${url.origin}/`, 302, {
-    "set-cookie": clearCookie(SESSION_COOKIE, url),
-    "clear-site-data": '"cache", "storage"',
-  })
+/** Allowed browser origins: the github.io site plus any ALLOWED_ORIGINS (local development). */
+export function allowedOrigins(env: Env): Set<string> {
+  const origins = new Set([new URL(env.PUBLIC_SITE_URL).origin])
+  for (const entry of (env.ALLOWED_ORIGINS ?? "").split(","))
+    if (entry.trim()) origins.add(entry.trim().replace(/\/$/, ""))
+  return origins
 }
 
-// Cookie authentication needs a same-origin request and the session's CSRF token.
-export function requireMutation(request: Request, url: URL, session: Session): void {
-  if (request.headers.get("origin") !== url.origin)
-    throw new HttpError(403, "same-origin request required")
-  const supplied = request.headers.get("x-csrf-token") ?? ""
-  if (!session.csrf || !timingSafeEqual(session.csrf, supplied))
-    throw new HttpError(403, "invalid CSRF token")
+// Bearer tokens are never sent ambiently, so there is no CSRF to guard against; a write that does
+// come from a browser must still come from one of the site's own origins.
+export function requireMutation(request: Request, env: Env): void {
+  const origin = request.headers.get("origin")
+  if (origin && !allowedOrigins(env).has(origin))
+    throw new HttpError(403, "request from an unknown origin")
 }

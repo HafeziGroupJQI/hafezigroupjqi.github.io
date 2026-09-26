@@ -37,16 +37,37 @@ export class DevicesStore {
 
   // ---- devices ----
 
+  /**
+   * Create a device, or re-arm one that has no live key: a never-enrolled device (its token
+   * expired or was lost) or a revoked one is reset so a fresh enrolment token can be issued.
+   * Only an enrolled, un-revoked device is a conflict.
+   */
   async createDevice(codeName: string, owner: string): Promise<void> {
     const existing = await this.db
-      .prepare("SELECT code_name FROM devices WHERE code_name = ?")
+      .prepare("SELECT enrolled_at, revoked FROM devices WHERE code_name = ?")
       .bind(codeName)
-      .first()
-    if (existing) throw new HttpError(409, `device ${codeName} already exists`)
-    await this.db
-      .prepare("INSERT INTO devices (code_name, created_by, created_at) VALUES (?, ?, ?)")
-      .bind(codeName, owner, nowMs())
-      .run()
+      .first<{ enrolled_at: number | null; revoked: number }>()
+    if (!existing) {
+      await this.db
+        .prepare("INSERT INTO devices (code_name, created_by, created_at) VALUES (?, ?, ?)")
+        .bind(codeName, owner, nowMs())
+        .run()
+      return
+    }
+    if (existing.enrolled_at != null && !existing.revoked)
+      throw new HttpError(409, `device ${codeName} is already enrolled; revoke it first`)
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE devices SET revoked = 0, key_hash = NULL, enrolled_at = NULL, last_seen_ns = NULL,
+             created_by = ?, created_at = ? WHERE code_name = ?`,
+        )
+        .bind(owner, nowMs(), codeName),
+      // Outstanding tokens for the old incarnation die with it.
+      this.db
+        .prepare("UPDATE enrollment_tokens SET used_at = ? WHERE code_name = ? AND used_at IS NULL")
+        .bind(nowMs(), codeName),
+    ])
   }
 
   async listDevices(): Promise<

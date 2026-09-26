@@ -65,14 +65,38 @@ describe("device enrollment", () => {
     expect((await agent("/api/agent/instruments", "not-a-real-key", [])).status).toBe(401)
   })
 
-  it("refuses a duplicate code_name", async () => {
-    await createDevice("dup-pc")
+  it("refuses a duplicate code_name once the device is enrolled", async () => {
+    const { enrollment_token } = await createDevice("dup-pc")
+    await agent("/api/agent/enroll", null, { enrollment_token })
     const owner = await member()
     const { status } = await owner.json("/api/devices", {
       method: "POST",
       body: JSON.stringify({ code_name: "dup-pc" }),
     })
     expect(status).toBe(409)
+  })
+
+  it("re-issues a token for a never-enrolled device and kills the old one", async () => {
+    const first = await createDevice("slow-pc")
+    const second = await createDevice("slow-pc")
+    expect(second.enrollment_token).not.toBe(first.enrollment_token)
+    expect((await agent("/api/agent/enroll", null, { enrollment_token: first.enrollment_token })).status).toBe(401)
+    expect((await agent("/api/agent/enroll", null, { enrollment_token: second.enrollment_token })).status).toBe(200)
+  })
+
+  it("lets a revoked code_name be enrolled again", async () => {
+    const { enrollment_token } = await createDevice("reborn-pc")
+    const enrolled = await agent("/api/agent/enroll", null, { enrollment_token })
+    const { device_key } = (await enrolled.json()) as { device_key: string }
+    const owner = await member()
+    expect((await owner.fetch("/api/devices/reborn-pc", { method: "DELETE" })).status).toBe(200)
+    const again = await createDevice("reborn-pc")
+    expect((await agent("/api/agent/enroll", null, { enrollment_token: again.enrollment_token })).status).toBe(200)
+    // the old key stays dead
+    expect((await agent("/api/agent/instruments", device_key, [])).status).toBe(401)
+    const { body } = await owner.json("/api/devices")
+    const row = (body as Array<Record<string, unknown>>).find((d) => d.code_name === "reborn-pc")!
+    expect(row.enrolled).toBe(true)
   })
 
   it("forbids a non-owner from creating a device", async () => {

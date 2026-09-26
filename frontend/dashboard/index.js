@@ -184,6 +184,16 @@ export function mountDashboard(root, { api, session }) {
       showError(error)
     }
   }
+  async function revokeDevice(code) {
+    if (!confirm(`Revoke ${code}? Its agent is cut off at once; Add device with the same name to re-enrol it.`)) return
+    try {
+      await api(`/api/devices/${enc(code)}`, { method: "DELETE" })
+      await loadDevices()
+      navigate({ tab: "overview" })
+    } catch (error) {
+      showError(error)
+    }
+  }
   const loadInstrument = (code, id) =>
     guard(api(`/api/devices/${enc(code)}/instruments/${enc(id)}`).then((detail) => store.dispatch({ type: "instrumentLoaded", code, detail })))
 
@@ -192,6 +202,7 @@ export function mountDashboard(root, { api, session }) {
     document.body.append(dialog)
     dialog.innerHTML = `<h2>Add a device</h2>
       <form>
+        <p class="muted">Adding a name that is pending or revoked issues it a fresh token.</p>
         <label>Device code-name (lowercase letters, digits, hyphens)<input name="code_name" required maxlength="64" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" autocomplete="off"></label>
         <p role="alert"></p>
         <div class="editor-actions"><button type="submit">Create &amp; get token</button><button type="button" data-cancel>Cancel</button></div>
@@ -222,7 +233,7 @@ export function mountDashboard(root, { api, session }) {
   }
 
   const ctx = {
-    store, api, isOwner, navigate, command, pollAll, stopExperiment, loadInstrument, addDevice,
+    store, api, isOwner, navigate, command, pollAll, stopExperiment, loadInstrument, addDevice, revokeDevice,
     devicesFetchedAt: () => devicesFetchedAt,
   }
 

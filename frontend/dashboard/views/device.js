@@ -66,7 +66,10 @@ export function mountDevice(panel, ctx, route) {
     h("h2", { class: "mono", text: code }), h("span", { "data-pill": "" }),
     h("span", { class: "sse-badge", "data-sse": "" }),
     h("span", { class: "spacer" }), picker.element,
-    link({ tab: "builder", code }, "Build an experiment", { class: "btn" }))
+    link({ tab: "builder", code }, "Build an experiment", { class: "btn" }),
+    ctx.isOwner
+      ? h("button", { type: "button", class: "danger", text: "Revoke", title: "Kill this PC's device key; Add device again to re-enrol it", onclick: () => ctx.revokeDevice(code) })
+      : null)
   const kv = h("dl", { class: "kv" })
   const insts = h("div", { class: "inst-cards" })
   let paused = false

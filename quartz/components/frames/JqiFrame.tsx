@@ -17,21 +17,12 @@ const sectionLabels: Record<string, string> = Object.fromEntries([
   ...resourceNav.map((item) => [item.href!.replace(/^\/|\/$/g, ""), item.label]),
   ["resources", "Resources"],
   ["tags", "Tags"],
-  ["onboarding", "Onboarding"],
   ["places", "Places"],
   ["equipment", "Lab equipment"],
   ["materials", "Photonic materials"],
-  ["lab", "Lab notes"],
 ])
 
-const handbookSections = new Set([
-  "onboarding",
-  "equipment",
-  "setups",
-  "materials",
-  "lab",
-  "places",
-])
+const handbookSections = new Set(["equipment", "setups", "materials", "places"])
 
 const humanize = (segment: string) =>
   segment.replace(/[-_]+/g, " ").replace(/^\w/, (letter) => letter.toUpperCase())
@@ -66,10 +57,14 @@ export const JqiFrame: PageFrame = {
     const dashboard = frontmatter?.layout === "dashboard"
     const internal = process.env.SITE_MODE === "internal"
     const crumbs = breadcrumbs(slug, componentData.allFiles)
-    // Handbook and member pages get the graph, backlinks, and table of contents column;
+    // Tag pages list every page that carries the tag (the listing public pages otherwise hide).
+    const tagPage = slug === "tags" || slug.startsWith("tags/")
+    // Handbook, tag and member pages get the graph, backlinks, and table of contents column;
     // pages mirrored from hafezi.jqi.umd.edu keep the live site's two-column look.
     const handbook =
-      handbookSections.has(slug.split("/")[0]) || (internal && slug.startsWith("resources/"))
+      tagPage ||
+      handbookSections.has(slug.split("/")[0]) ||
+      (internal && slug.startsWith("resources/"))
     // Private resources carry topic tags; public pages keep the live site's untagged look.
     const tags =
       internal && slug.startsWith("resources/")
@@ -77,7 +72,7 @@ export const JqiFrame: PageFrame = {
         : []
     return (
       <div
-        class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}${dashboard ? " site-dashboard" : ""}`}
+        class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}${tagPage ? " site-tag" : ""}${dashboard ? " site-dashboard" : ""}`}
       >
         <script dangerouslySetInnerHTML={{ __html: memberBootstrap }} />
         <a href="#main-content" class="skip-nav-link">

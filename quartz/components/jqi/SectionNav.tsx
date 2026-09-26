@@ -43,27 +43,23 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
           </li>
         ))}
       </ul>
-      <div class="handbook-links">
-        <h2>Group resources</h2>
-        {process.env.SITE_MODE === "internal" && (
-          // Private resource links: rendered only in the member build, and hidden until signed in
-          // (the session script reveals [data-member]). Keeps them out of the logged-out sidebar.
-          <ul data-member="" hidden>
+      {process.env.SITE_MODE === "internal" && (
+        // Group resources are for members only: rendered only in the member build, and hidden
+        // until signed in (the session script reveals [data-member]). The public build has none.
+        <div class="handbook-links" data-member="" hidden>
+          <h2>Group resources</h2>
+          <ul>
             {resourceNav.map((item) => (
               <li>
                 <a href={item.href}>{item.label}</a>
               </li>
             ))}
+            <li>{link("places/index", "Places")}</li>
+            <li>{link("equipment/index", "Lab equipment")}</li>
+            <li>{link("materials/index", "Photonic materials")}</li>
           </ul>
-        )}
-        <ul>
-          <li>{link("onboarding/index", "Onboarding")}</li>
-          <li>{link("places/index", "Places")}</li>
-          <li>{link("equipment/index", "Lab equipment")}</li>
-          <li>{link("materials/index", "Photonic materials")}</li>
-          <li>{link("lab/index", "Lab notes")}</li>
-        </ul>
-      </div>
+        </div>
+      )}
     </nav>
   )
 }

@@ -41,7 +41,7 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     fs.mkdirSync(path.join(privateRoot, "equipment"))
     fs.writeFileSync(
       path.join(privateRoot, "equipment", "laser-manual.md"),
-      "---\ntitle: Laser manual\nequipment: [laser]\ntags: [internal, equipment]\n---\n![[files/laser.pdf]]\n[record](/equipment/laser)",
+      "---\ntitle: Laser manual\nequipment: [laser]\ntags: [internal, equipment, equipment/laser]\n---\n![[files/laser.pdf]]\n[record](/equipment/laser)",
     )
     built = prepareUnified(publicRoot, privateRoot, yaml)
     const read = (file) => fs.readFileSync(path.join(built.output, file), "utf8")
@@ -59,6 +59,9 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     )
     assert.match(read("equipment/index.md"), /resources\/equipment\/index/)
     assert.match(read("resources/equipment/laser-manual.md"), /\]\(\/equipment\/laser\)/)
+    // Tags that name a note get a tag page linking to it (so the note shows a backlink).
+    assert.match(read("tags/equipment/laser.md"), /\[\[equipment\/laser\|Laser\]\]/)
+    assert.ok(!fs.existsSync(path.join(built.output, "tags/private-tag.md")))
     assert.match(read("resources/index.md"), /\/resources\/equipment\//)
     assert.ok(fs.existsSync(path.join(built.output, "calendar.md")))
     // The devices dashboard renders full-bleed; the legacy pages still exist and redirect to it.

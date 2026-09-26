@@ -97,7 +97,6 @@ test("legacy directory links preserve labels and unrelated resources", () => {
     ),
     "[[people/directory/index|directory]] [[people/directory/index|Contact directory]] [[people/amy|Amy]]",
   )
-  assert.equal(rewriteLinks("[[welcome#start|Start]]"), "[[onboarding/index#start|Start]]")
 })
 
 test("publication listings preserve authors, venue and year without undefined values", () => {
@@ -131,7 +130,6 @@ test("preparation builds distinct home, people, directory, alumni, and places pa
     fs.writeFileSync(filename, `---\n${codec.stringify(fm)}---\n\n${body}\n`)
   }
   put("index", { title: "Hafezi Group", tags: ["home"] }, "Concise introduction")
-  put("onboarding/index", { title: "Onboarding", aliases: ["welcome"] }, "Checklists")
   put("people/index", { title: "People" }, "People instructions")
   put(
     "people/directory/index",

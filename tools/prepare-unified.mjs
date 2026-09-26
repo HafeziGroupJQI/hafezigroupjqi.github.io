@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { prepareSite } from "./prepare-site.mjs"
+import { writeTagPages } from "./tag-pages.mjs"
 
 export const excluded = new Set([
   "node_modules",
@@ -176,6 +177,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       )
     }
     const sections = [
+      ["Onboarding", "onboarding", "Start here: checklists, buildings, safety, and the glossary."],
       [
         "Journal Club",
         "journal-club",
@@ -184,7 +186,11 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       ["Notes", "notes", "Meeting notes, planning documents, and handoffs."],
       ["Projects", "projects", "Project logs, plans, and recovered priorities."],
       ["Code", "code", "Runnable analyses and notes on the group's software repositories."],
-      ["Drive", "drive", "The catalogue of the shared Google Drive and what was kept from it."],
+      [
+        "Library",
+        "library",
+        "Historical data, code, layouts, manuals, and reference material the group relies on.",
+      ],
       [
         "Equipment",
         "equipment",
@@ -220,7 +226,8 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       project: "Projects",
       research: "Research areas",
       people: "People",
-      drive: "Drive folders",
+      library: "Library",
+      onboarding: "Onboarding",
       data: "Data",
       "journal-club": "Journal club",
       planning: "Planning",
@@ -269,7 +276,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "resources/index",
       "Group resources",
       [
-        "Working notes, code, project records, Drive catalogues, and session material for lab members. Members can also [[calendar|manage the group calendar]], [[devices|see every lab PC and its instruments live]], and [[experiments|build and review experiments]].",
+        "Onboarding, working notes, code, project records, the library, and session material for lab members. Members can also [[calendar|manage the group calendar]], [[devices|see every lab PC and its instruments live]], and [[experiments|build and review experiments]].",
         '<div class="feature-grid resource-grid">',
         ...sections.map(
           ([title, slug, description]) =>
@@ -308,6 +315,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
     legacy("instrument", "Instrument", "data-instrument")
     legacy("experiment-builder", "Experiment builder", "data-experiment-builder")
     legacy("experiments", "Experiments", "data-experiments")
+    writeTagPages(prepared.output, yaml)
     return prepared
   } catch (error) {
     fs.rmSync(prepared.stage, { recursive: true, force: true })

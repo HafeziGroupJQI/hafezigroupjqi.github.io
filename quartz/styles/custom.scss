@@ -284,24 +284,35 @@ body {
 }
 .page-listing .section {
   display: grid;
-  grid-template-columns: 6em 1fr auto;
-  gap: 12px;
+  grid-template-columns: 7em 1fr;
+  gap: 4px 12px;
   align-items: baseline;
   padding: 10px 0;
   border-bottom: 1px solid var(--jqi-rule);
 }
+// Tags wrap under the title instead of squeezing it into a narrow column.
 .page-listing .section .tags {
+  grid-column: 2;
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.page-listing .section .tags li {
+  margin: 0;
+}
+// Every private note carries "internal"; it says nothing in a listing.
+.page-listing .section .tags li:has(> a[href$="/tags/internal"]) {
+  display: none;
 }
 .page-listing .section .tag-link {
   font-size: 12px;
 }
 .page-listing h3 {
   margin: 0;
+  font-size: 1.2rem;
 }
 
 // Bases (directory, inventory) tables use the same table styling as content.
@@ -938,7 +949,8 @@ article.popover-hint > *:first-child {
 .site-public .page-content__main {
   max-width: 1090px;
 }
-.site-public .page-listing {
+// Section pages build their own card lists; tag pages rely on the automatic listing.
+.site-public:not(.site-tag) .page-listing {
   display: none;
 }
 .site-home .page-content__sidebar,

@@ -223,6 +223,5 @@ export function rewriteLinks(text) {
   return text
     .replace(/\[\[people\/Directory(?:\.base)?(?=[|\]#])/g, "[[people/directory/index")
     .replace(/\[\[people\/index\|Directory\]\]/g, "[[people/directory/index|Contact directory]]")
-    .replace(/\[\[welcome(?=[|\]#])/g, "[[onboarding/index")
     .replace(/\]\((?:\.\/)?people\/Directory(?:\.base)?(?=[)#])/g, "](people/directory/index")
 }

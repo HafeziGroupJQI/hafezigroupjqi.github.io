@@ -12,6 +12,7 @@ import {
   rewriteLinks,
   profileContact,
 } from "./site-model.mjs"
+import { writeTagPages } from "./tag-pages.mjs"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const walk = (dir) =>
@@ -75,21 +76,6 @@ export function prepareSite(source, yaml) {
       },
       body,
     )
-  const welcome = get("index")
-  if (welcome?.fm.title === "Welcome") {
-    write(
-      "onboarding/welcome",
-      { ...welcome.fm, aliases: [...new Set([...(welcome.fm.aliases ?? []), "welcome"])] },
-      welcome.body,
-    )
-    const onboarding = get("onboarding/index")
-    if (onboarding)
-      write(
-        onboarding.slug,
-        onboarding.fm,
-        `[[onboarding/welcome|Welcome to the group]]\n\n${onboarding.body}`,
-      )
-  }
   const people = records.filter((r) => r.fm.type === "person")
   if (people.length) {
     page("people/index", "People", peoplePage(records))
@@ -157,8 +143,7 @@ export function prepareSite(source, yaml) {
         "research/index",
         "news/index",
         "publications/index",
-      ].includes(record.slug) ||
-      (record.slug === "onboarding/index" && welcome?.fm.title === "Welcome")
+      ].includes(record.slug)
     )
       continue
     const publicPage =
@@ -182,5 +167,6 @@ export function prepareSite(source, yaml) {
       body,
     )
   }
+  writeTagPages(output, yaml)
   return { stage, output, manifest }
 }

@@ -43,4 +43,5 @@ the members-site workflow itself is kept in `worker/ci/members-site-deploy.yml`.
 - Other important notes:
   - The homepage reuses the group introduction, research, publications, and news from the original website
   - `/people/` contains role-grouped photo cards and `/people/directory/` contains the contact table.
-  - The onboarding welcome lives at `/onboarding/welcome`; old `/welcome` and `/people/Directory` links have aliases. The source vault is not modified.
+  - Onboarding and the lab walkthrough are member-only, in `vault-private` (served at `/resources/onboarding/`). The sidebar's Group resources block exists only in the member edition and stays hidden until sign-in. Old `/people/Directory` links have aliases. The source vault is not modified.
+  - Tags that name a note (`people/<slug>`, `project/<name>`, `library/<collection>`, …) get a tag page that links to it (`tools/tag-pages.mjs`), so the note lists the tag page among its backlinks.

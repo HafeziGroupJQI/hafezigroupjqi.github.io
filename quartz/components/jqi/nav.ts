@@ -23,10 +23,12 @@ export const publicNav: NavItem[] = [
 
 export const resourceNav: NavItem[] = [
   { label: "All resources", href: "/resources/" },
-  ...["Journal Club", "Notes", "Projects", "Code", "Drive", "Equipment"].map((label) => ({
-    label,
-    href: `/resources/${label.toLowerCase().replace(/ /g, "-")}/`,
-  })),
+  ...["Onboarding", "Journal Club", "Notes", "Projects", "Code", "Library", "Equipment"].map(
+    (label) => ({
+      label,
+      href: `/resources/${label.toLowerCase().replace(/ /g, "-")}/`,
+    }),
+  ),
   { label: "Topics", href: "/resources/topics/" },
 ]
 

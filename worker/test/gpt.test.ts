@@ -21,6 +21,7 @@ async function keyed(
   client: Client,
   path: string,
   init: RequestInit & { headers?: Record<string, string> } = {},
+  overrides: Record<string, string> = {},
 ) {
   const ctx = createExecutionContext()
   const response = await (worker as ExportedHandler).fetch!(
@@ -28,7 +29,7 @@ async function keyed(
       ...init,
       headers: { ...client.headers, ...(init.headers ?? {}) },
     }) as any,
-    { ...env, ANTHROPIC_API_KEY: "test-key" } as any,
+    { ...env, ANTHROPIC_API_KEY: "test-key", ...overrides } as any,
     ctx,
   )
   const text = await response.text()
@@ -564,5 +565,33 @@ describe("Claude turns (scripted API)", () => {
       tool_use_id: "tu_8",
       is_error: true,
     })
+  })
+
+  it("talks plain text to the claude-bridge: no tools, betas or thinking; pages inlined", async () => {
+    const alice = await as("alice-bridge")
+    const chat = await newChat(alice, { origin_slug: "equipment/santec-tsl" })
+    anthropicScript.push({
+      content: [{ type: "text", text: "It is a tunable laser." }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 5, output_tokens: 6 },
+    })
+    const { events } = await keyed(
+      alice,
+      `/api/gpt/conversations/${chat.id}/messages`,
+      { method: "POST", body: JSON.stringify({ text: "What is this?" }) },
+      { ANTHROPIC_BASE_URL: "https://bridge-example.trycloudflare.com" },
+    )
+    expect(events.at(-1)!.name).toBe("done")
+    const request = anthropicCalls.find((c) => c.body.stream)!
+    expect(request.url).toContain("bridge-example.trycloudflare.com")
+    expect(request.body.tools).toBeUndefined()
+    expect(request.body.thinking).toBeUndefined()
+    expect(request.body.context_management).toBeUndefined()
+    const content = request.body.messages[0].content
+    expect(content.every((b: any) => b.type === "text")).toBe(true)
+    expect(content[1].text).toContain('<document title="Santec TSL tunable laser"')
+    expect(content[1].text).toContain("swept-wavelength source")
+    // No extra title request: the title comes from the message itself.
+    expect(anthropicCalls.filter((c) => !c.body.stream)).toHaveLength(0)
   })
 })

@@ -68,7 +68,7 @@ export function readTurn(body: Record<string, unknown>): TurnInput {
   }
 }
 
-/** Local claude-bridge (dev only): text in, text out, no tools/thinking/betas. */
+/** The claude-bridge: text in, text out, no tools/thinking/betas. */
 const flattenForBridge = (message: MessageParam): MessageParam => {
   if (typeof message.content === "string") return message
   // The bridge keeps text blocks only, so inline text documents as tagged text.
@@ -88,8 +88,17 @@ const flattenForBridge = (message: MessageParam): MessageParam => {
   return { ...message, content }
 }
 
-const isBridge = (env: Env) =>
-  /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(env.ANTHROPIC_BASE_URL ?? "")
+const isBridge = (env: Env) => {
+  // Any Messages endpoint other than Anthropic's is the claude-bridge (~/src/claude-bridge): local
+  // under wrangler dev, or tunnelled for the deployed Worker when there is no API key.
+  const base = env.ANTHROPIC_BASE_URL?.trim()
+  if (!base) return false
+  try {
+    return new URL(base).hostname !== "api.anthropic.com"
+  } catch {
+    return false
+  }
+}
 
 export async function postMessage(
   request: Request,

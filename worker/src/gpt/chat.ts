@@ -49,7 +49,17 @@ export interface TurnInput {
   files: string[]
   skill: string | null
   model: string | null
+  /** Code the member is asking about, from the Scratchpad's JupyterLab (cell, outputs, …). */
+  context: ScratchpadContext | null
 }
+
+export interface ScratchpadContext {
+  label: string
+  text: string
+}
+
+/** The Scratchpad's context block: its label shows as a chip, its text goes to Claude only. */
+export const MAX_CONTEXT_CHARS = 40_000
 
 export function readTurn(body: Record<string, unknown>): TurnInput {
   const text = typeof body.text === "string" ? body.text.trim() : ""
@@ -65,7 +75,18 @@ export function readTurn(body: Record<string, unknown>): TurnInput {
     files: [...new Set(list(body.files))],
     skill,
     model: typeof body.model === "string" ? body.model : null,
+    context: readContext(body.context),
   }
+}
+
+function readContext(value: unknown): ScratchpadContext | null {
+  if (value == null) return null
+  const { label, text } = value as { label?: unknown; text?: unknown }
+  if (typeof label !== "string" || typeof text !== "string" || !text.trim())
+    throw new HttpError(422, "context needs a label and text")
+  if (text.length > MAX_CONTEXT_CHARS)
+    throw new HttpError(413, "that code context is too long; select less of it")
+  return { label: label.trim().slice(0, 200) || "Scratchpad", text }
 }
 
 /** The claude-bridge: text in, text out, no tools/thinking/betas. */
@@ -172,12 +193,26 @@ export async function postMessage(
       text: `Use the ${skill.name} skill for this request:\n${skillText(skill)}`,
     })
   }
+  if (input.context)
+    blocks.push({
+      type: "text",
+      text:
+        `I'm working in the lab Scratchpad (JupyterLab on the group's compute host). ` +
+        `${input.context.label}:\n\n${input.context.text}`,
+    })
   blocks.push({ type: "text", text: input.text || `Run /${input.skill}.` })
 
   const prompt = {
     role: "user" as const,
     content: blocks as unknown[],
-    meta: { kind: "prompt", text: input.text, mentions, files, skill: input.skill },
+    meta: {
+      kind: "prompt",
+      text: input.text,
+      mentions,
+      files,
+      skill: input.skill,
+      context: input.context ? { label: input.context.label } : null,
+    },
   }
   await store.appendMessages(conversation.id, [prompt])
   if (m.id !== conversation.model) await store.touchConversation(conversation.id, { model: m.id })
@@ -507,6 +542,7 @@ function offline(t: TurnContext): TurnResult {
     mentions: ResolvedRef["label"][]
     files: Array<{ name: string }>
     skill: string | null
+    context: { label: string } | null
   }
   const lines = [
     `Hafezi GPT is running offline (no ANTHROPIC_API_KEY), so here is what I would have used.`,
@@ -516,6 +552,7 @@ function offline(t: TurnContext): TurnResult {
     ...meta.mentions.map((x) => `- Page: [${x.title}](${x.url})`),
     ...meta.files.map((f) => `- File: ${f.name}`),
     meta.skill ? `- Skill: /${meta.skill}` : "",
+    meta.context ? `- Scratchpad: ${meta.context.label}` : "",
     `- ${t.history.filter((r) => r.meta.kind === "prompt").length} earlier message(s) in this chat`,
   ].filter(Boolean)
   const hits = t.knowledge.search(String((t.prompt.meta as { text?: string }).text ?? ""), {
@@ -594,6 +631,7 @@ export type DisplayTurn =
       mentions: ResolvedRef["label"][]
       files: Array<{ id: string; name: string; mime: string }>
       skill: string | null
+      context: { label: string } | null
     }
   | {
       role: "assistant"
@@ -625,6 +663,7 @@ export function displayTurns(rows: StoredMessage[]): DisplayTurn[] {
         mentions: (meta.mentions as ResolvedRef["label"][]) ?? [],
         files: (meta.files as Array<{ id: string; name: string; mime: string }>) ?? [],
         skill: (meta.skill as string | null) ?? null,
+        context: (meta.context as { label: string } | null) ?? null,
       })
       continue
     }

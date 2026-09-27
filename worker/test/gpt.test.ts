@@ -537,6 +537,51 @@ describe("Claude turns (scripted API)", () => {
     expect(stored!.content_json).not.toContain(btoa("%PDF-1.4 laser"))
   })
 
+  it("puts Scratchpad code context in front of Claude, and keeps only its label in history", async () => {
+    const alice = await as("alice-scratch")
+    const chat = await newChat(alice, { origin_slug: "scratchpad" })
+    anthropicScript.push({
+      content: [{ type: "text", text: "Use np.linspace." }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 4 },
+    })
+    const context = {
+      label: "analysis.ipynb · cell 3 (IPython · GDS)",
+      text: "```python\nnp.arange(0, 1, 0.1\n```\n\nSyntaxError: '(' was never closed",
+    }
+    const sent = await keyed(alice, `/api/gpt/conversations/${chat.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text: "Why does this fail?", context }),
+    })
+    expect(sent.status).toBe(200)
+    const content = anthropicCalls.find((c) => c.body.stream)!.body.messages[0].content
+    const texts = content.filter((b: any) => b.type === "text").map((b: any) => b.text)
+    expect(texts.at(-2)).toContain("lab Scratchpad")
+    expect(texts.at(-2)).toContain("analysis.ipynb · cell 3 (IPython · GDS):")
+    expect(texts.at(-2)).toContain("SyntaxError: '(' was never closed")
+    expect(texts.at(-1)).toBe("Why does this fail?")
+
+    const view = await alice.json(`/api/gpt/conversations/${chat.id}`)
+    const turn = (view.body as any).turns[0]
+    expect(turn.context).toEqual({ label: context.label })
+    expect(turn.text).toBe("Why does this fail?")
+    // The audit log never gets message text, context included.
+    expect(JSON.stringify(await auditRows("login = ?", "alice-scratch"))).not.toContain(
+      "never closed",
+    )
+
+    const tooLong = await send(alice, chat.id, {
+      text: "and this?",
+      context: { label: "big", text: "x".repeat(40_001) },
+    })
+    expect(tooLong.status).toBe(413)
+    const malformed = await send(alice, chat.id, {
+      text: "and this?",
+      context: { label: "no text" },
+    })
+    expect(malformed.status).toBe(422)
+  })
+
   it("answers pending tool calls when it runs out of rounds, so history stays valid", async () => {
     const alice = await as("alice-rounds")
     const chat = await newChat(alice)

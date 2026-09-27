@@ -38,7 +38,9 @@ export function createChat({
   let reply = null
   let controller = null
   let usage = boot.usage
-  const attachments = { mentions: [], files: [] }
+  // context: the Scratchpad's code context ({label, text}), attached to the next message.
+  const attachments = { mentions: [], files: [], context: null }
+  let codeActions = []
   let skill = null
   let model = boot.default_model
   let originAttached = !!origin
@@ -158,6 +160,7 @@ export function createChat({
       ...(turn.mentions ?? []).map((m) => chip(m.title, m.kind === "document" ? "📄" : "@", m.url)),
       ...(turn.files ?? []).map((f) => chip(f.name, "📎", gpt.fileUrl(f.id))),
       turn.skill ? chip(`/${turn.skill}`, "✦") : null,
+      turn.context ? chip(turn.context.label, "🧪") : null,
     ].filter(Boolean)
     return h(
       "article",
@@ -173,7 +176,7 @@ export function createChat({
       if (block.type === "text") {
         const div = h("div", { class: "gpt-md" })
         div.innerHTML = renderMarkdown(block.text, block.citations)
-        enhanceCode(div)
+        enhanceCode(div, codeActions)
         body.append(div)
       } else if (block.type === "thinking") {
         const details = h(
@@ -322,6 +325,14 @@ export function createChat({
           `This page: ${origin.title}`,
           "📍",
           () => ((originAttached = false), renderChips()),
+        ),
+      )
+    if (attachments.context)
+      items.push(
+        removable(
+          attachments.context.label,
+          "🧪",
+          () => ((attachments.context = null), renderChips()),
         ),
       )
     for (const m of attachments.mentions)
@@ -510,6 +521,7 @@ export function createChat({
       files: attachments.files.map((f) => f.id),
       skill,
       model,
+      context: attachments.context,
     }
     turns.push({
       role: "user",
@@ -522,11 +534,13 @@ export function createChat({
       ],
       files: attachments.files.map((f) => ({ id: f.id, name: f.name, mime: f.mime })),
       skill,
+      context: attachments.context ? { label: attachments.context.label } : null,
     })
     reply = { role: "assistant", blocks: [], streaming: true }
     input.value = ""
     attachments.mentions = []
     attachments.files = []
+    attachments.context = null
     skill = null
     originAttached = false
     renderChips()
@@ -732,5 +746,15 @@ export function createChat({
     focus: () => input.focus(),
     busy: () => !!controller,
     stop: () => controller?.abort(),
+    /** Attach code context ({label, text}) to the next message; it shows as a removable chip. */
+    attachContext(context) {
+      attachments.context = context
+      renderChips()
+    },
+    /** Buttons under code blocks in replies ({label, run(code, lang)}), e.g. "Insert below". */
+    setCodeActions(actions) {
+      codeActions = actions ?? []
+      renderThread()
+    },
   }
 }

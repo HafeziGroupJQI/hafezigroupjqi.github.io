@@ -2,18 +2,29 @@
 // itself (modal.js → chat.js, Markdown, KaTeX) loads only when first opened.
 import { h } from "../dashboard/dom.js"
 
+let deps = null
+let modal = null
+let loading = null
+
+async function open(options) {
+  loading ??= import("./modal.js").then(({ createModal }) => (modal = createModal(deps)))
+  await loading
+  modal.open(options)
+}
+
+/**
+ * Open the modal from page code, e.g. the Scratchpad asking about a notebook cell:
+ * `openGpt({context: {label, text}, codeActions: [{label, run(code, lang)}]})`.
+ */
+export async function openGpt(options = {}) {
+  if (!deps) throw new Error("Hafezi GPT is not available on this page")
+  await open(options)
+}
+
 export function installLauncher({ api, session }) {
   const path = location.pathname.replace(/\/+$/, "")
   if (path === "/gpt" || document.querySelector("[data-hafezi-gpt]")) return
-  let modal = null
-  let loading = null
-  const open = async () => {
-    loading ??= import("./modal.js").then(
-      ({ createModal }) => (modal = createModal({ api, session })),
-    )
-    await loading
-    modal.open()
-  }
+  deps = { api, session }
   const button = h(
     "button",
     {

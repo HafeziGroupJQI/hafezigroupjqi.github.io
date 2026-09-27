@@ -135,14 +135,20 @@ export function createModal({ api, session }) {
     chat.focus()
   }
 
-  function open() {
+  /** `context` ({label, text}) is attached to the next message; `codeActions` go under code. */
+  function open({ context = null, codeActions = null } = {}) {
     if (!dialog.open) dialog.showModal()
     document.documentElement.classList.add("gpt-modal-open")
     ready ??= setup().catch((error) => {
       ready = null
       host.replaceChildren(h("p", { class: "gpt-error", role: "alert", text: error.message }))
     })
-    ready.then(() => chat?.focus())
+    ready.then(() => {
+      if (!chat) return
+      if (codeActions) chat.setCodeActions(codeActions)
+      if (context) chat.attachContext(context)
+      chat.focus()
+    })
   }
 
   function close() {

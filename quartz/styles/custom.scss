@@ -2908,6 +2908,26 @@ a.gpt-chip:hover {
 .gpt-copy:focus-visible {
   opacity: 1;
 }
+// Under code in replies when the chat was opened from the Scratchpad: back into the notebook.
+.gpt-code-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: -6px 0 12px;
+  button {
+    padding: 3px 10px !important;
+    font-size: 0.75rem !important;
+    border: 1px solid var(--gpt-line) !important;
+    border-radius: 6px;
+    background: var(--gpt-soft) !important;
+    color: var(--gpt-text) !important;
+    cursor: pointer;
+  }
+  button:hover,
+  button:focus-visible {
+    border-color: var(--gpt-accent) !important;
+  }
+}
 .gpt-cite {
   display: inline-grid;
   place-items: center;

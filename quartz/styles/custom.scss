@@ -3591,3 +3591,379 @@ html.gpt-modal-open .gpt-fab {
   text-align: left;
   border-bottom: 1px solid var(--jqi-rule);
 }
+
+// Wolfram notebook pages (tools/notebooks/, frontend/wolfram-notebook/) ------------------------
+// Pre-rendered EIWL3 chapters: input cells with Shiki spans, cached outputs, per-cell tools.
+.wl-notebook {
+  --wl-surface: #f7f7f5;
+  --wl-accent: #c4410c; // the book's orange exercise numbers, darkened for contrast
+  --wl-ok: #1a7f37;
+  --wl-error: #9a1a2c;
+  line-height: 1.6;
+
+  h2 {
+    margin-top: 2.2rem;
+  }
+  img.wl-img,
+  .wl-out img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0;
+  }
+  code.wl-inline {
+    font-family: var(--codeFont);
+    font-size: 0.92em;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: var(--wl-surface);
+    a.wl-ref {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px dotted currentColor;
+    }
+  }
+  kbd {
+    font-family: var(--codeFont);
+    font-size: 0.85em;
+    padding: 1px 6px;
+    border: 1px solid var(--jqi-rule);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: #fff;
+  }
+}
+
+.wl-notebook-nav,
+.wl-page-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0 20px;
+  font-size: 0.95rem;
+}
+.wl-notebook-nav {
+  justify-content: space-between;
+  border-top: 1px solid var(--jqi-rule);
+  padding-top: 12px;
+}
+
+.wl-notebook .wl-caption {
+  margin: 24px 0 4px;
+  color: var(--jqi-muted);
+  font-style: italic;
+}
+
+// One input cell and its output.
+.wl-notebook figure.wl-cell {
+  margin: 6px 0 22px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+
+  pre.wl-code {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 10px 14px;
+    background: var(--wl-surface);
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    code {
+      background: none;
+      font-size: inherit;
+    }
+    span {
+      color: var(--shiki-light);
+    }
+  }
+  .wl-editor {
+    background: var(--wl-surface);
+    border-bottom: 1px solid var(--jqi-rule);
+  }
+  .wl-out,
+  .wl-run-out {
+    padding: 10px 14px;
+    overflow-x: auto;
+  }
+  .wl-run-out {
+    border-top: 1px dashed var(--jqi-rule);
+    &::before {
+      content: "Live result";
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--wl-ok);
+      margin-bottom: 4px;
+    }
+  }
+  pre.wl-text,
+  pre.wl-messages {
+    margin: 0;
+    border: 0;
+    padding: 0;
+    background: none;
+    white-space: pre-wrap;
+    font-size: 14px;
+  }
+  pre.wl-messages {
+    color: var(--wl-error);
+    margin-bottom: 6px;
+  }
+  .wl-error {
+    color: var(--wl-error);
+    margin: 0;
+  }
+  .wl-timing {
+    margin: 4px 0 0;
+    font-size: 0.8rem;
+    color: var(--jqi-muted);
+    text-align: right;
+  }
+  audio {
+    width: 100%;
+    max-width: 480px;
+  }
+  a.wl-video {
+    display: inline-block;
+    position: relative;
+    &::after {
+      content: "▶";
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 2.5rem;
+      color: #fff;
+      text-shadow: 0 1px 6px rgb(0 0 0 / 60%);
+    }
+  }
+}
+
+// Per-cell tools: shown on hover/focus on wide screens, always on touch.
+.wl-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--jqi-rule);
+  font-size: 0.85rem;
+}
+.wl-toolbar button,
+.wl-page-actions button,
+.wl-page-actions select {
+  padding: 4px 10px;
+  background: #fff;
+  color: #222;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  &:hover:not(:disabled) {
+    border-color: var(--jqi-muted);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+.wl-toolbar button.wl-run,
+.wl-page-actions button {
+  background: #454545;
+  border-color: #454545;
+  color: #fff;
+}
+.wl-status {
+  color: var(--jqi-muted);
+  font-size: 0.85rem;
+}
+@media (hover: hover) and (min-width: 800px) {
+  .wl-notebook figure.wl-cell .wl-toolbar {
+    opacity: 0.35;
+    transition: opacity 0.15s;
+  }
+  .wl-notebook figure.wl-cell:is(:hover, :focus-within) .wl-toolbar {
+    opacity: 1;
+  }
+}
+
+// Precomputed Manipulate: sliders over a sprite grid.
+.wl-notebook .wl-manipulate {
+  display: grid;
+  gap: 8px;
+  .wl-controls {
+    display: grid;
+    gap: 4px;
+  }
+  .wl-control {
+    display: grid;
+    grid-template-columns: minmax(3rem, auto) minmax(120px, 320px) auto;
+    gap: 10px;
+    align-items: center;
+    font-family: var(--codeFont);
+    font-size: 0.85rem;
+  }
+  .wl-sprite {
+    width: 100%;
+    background-repeat: no-repeat;
+  }
+}
+
+// Text cells from the book's styles.
+.wl-notebook .wl-technote {
+  border-left: 3px solid var(--jqi-gold);
+  padding: 2px 0 2px 14px;
+  margin: 14px 0;
+  color: var(--jqi-muted);
+  font-size: 0.95rem;
+}
+.wl-notebook .wl-qa {
+  margin: 14px 0;
+  .wl-question {
+    font-weight: 600;
+    margin: 18px 0 4px;
+  }
+  .wl-answer {
+    margin: 0 0 0 16px;
+  }
+}
+.wl-notebook .wl-more {
+  margin: 6px 0;
+}
+.wl-notebook table.wl-vocab,
+.wl-notebook table.wl-grid {
+  border-collapse: collapse;
+  margin: 12px 0 20px;
+  :is(th, td) {
+    padding: 5px 16px 5px 0;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--jqi-rule);
+  }
+}
+.wl-notebook table.wl-vocab td:first-child {
+  font-family: var(--codeFont);
+  white-space: nowrap;
+}
+.wl-notebook table.wl-grid :is(th, td) {
+  padding-right: 12px;
+  font-family: var(--codeFont);
+  font-size: 14px;
+}
+.wl-notebook .wl-exercise {
+  margin: 22px 0 6px;
+  .wl-exnum {
+    display: inline-block;
+    min-width: 2.8rem;
+    font-weight: 700;
+    color: var(--wl-accent);
+  }
+}
+.wl-notebook details.wl-expected {
+  margin: 0 0 10px 2.8rem;
+  summary {
+    cursor: pointer;
+    color: var(--jqi-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  & > :not(summary) {
+    margin-top: 6px;
+  }
+}
+.wl-notice {
+  font-size: 0.85rem;
+  color: var(--jqi-muted);
+}
+
+[saved-theme="dark"] .wl-notebook {
+  --wl-surface: #1f2328;
+  --wl-accent: #f08a4b;
+  --wl-ok: #56d364;
+  --wl-error: #ff8182;
+  figure.wl-cell {
+    background: transparent;
+    pre.wl-code span {
+      color: var(--shiki-dark);
+    }
+  }
+  kbd,
+  .wl-toolbar button:not(.wl-run),
+  .wl-page-actions select {
+    background: transparent;
+    color: inherit;
+  }
+  // Rendered outputs are drawn for a white page; keep them on one.
+  .wl-out img,
+  .wl-sprite,
+  details.wl-expected img {
+    background-color: #fff;
+    border-radius: 3px;
+  }
+}
+
+// Wolfram notebook pages: pieces emitted by tools/notebooks/wolfram-pages.mjs.
+.wl-notebook {
+  img.wl-inline-img {
+    display: inline;
+    vertical-align: middle;
+    max-width: 100%;
+    height: auto;
+    margin: 0;
+  }
+  .wl-code-img {
+    padding: 10px 14px;
+    background: var(--wl-surface);
+    overflow-x: auto;
+  }
+  .wl-label {
+    display: inline-block;
+    margin: 8px 14px 0;
+    font-weight: 600;
+    color: var(--wl-accent);
+  }
+  .wl-out.wl-standalone,
+  .wl-manipulate-static {
+    margin: 6px 0 18px;
+    overflow-x: auto;
+  }
+  pre.wl-text.wl-message {
+    color: var(--wl-error);
+  }
+  .wl-missing {
+    color: var(--jqi-muted);
+    font-style: italic;
+  }
+  .wl-exsummary {
+    font-weight: 600;
+  }
+  .wl-index-entry {
+    margin: 2px 0;
+  }
+  .wl-indexsubentry {
+    margin-left: 1.5rem;
+  }
+  .wl-video-label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--jqi-muted);
+  }
+}
+.wl-notebook ul.wl-index-list {
+  columns: 2 16rem;
+  list-style: none;
+  padding-left: 0;
+  li {
+    margin: 0 0 2px;
+    break-inside: avoid;
+  }
+  li.wl-index-sub {
+    padding-left: 1.25rem;
+  }
+}

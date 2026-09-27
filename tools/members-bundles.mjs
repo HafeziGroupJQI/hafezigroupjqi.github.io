@@ -11,8 +11,9 @@ export async function bundleMembers(output, mode, apiOrigin = DEFAULT_API) {
   const define = { __MEMBERS_API__: JSON.stringify(apiOrigin.replace(/\/$/, "")) }
   const common = { bundle: true, minify: true, define, logLevel: "warning" }
   if (mode === "internal") {
-    // Split so heavy tools (Hafezi GPT's Markdown renderer) load only when opened:
-    // static/member-tools.js on every member page, static/chunks/* on demand.
+    // Split so heavy tools (Hafezi GPT's Markdown renderer, the Scratchpad, the Wolfram guide and
+    // its CodeMirror editor) load only when opened: static/member-tools.js on every member page,
+    // static/chunks/* on demand.
     await bundle({
       ...common,
       entryPoints: { "member-tools": "frontend/member-tools.js" },

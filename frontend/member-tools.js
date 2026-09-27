@@ -285,6 +285,13 @@ if (session.user) {
       .then(({ mountScratchpad }) => mountScratchpad(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
+  // Wolfram notebook pages (tools/notebooks/, frontend/wolfram-notebook/): Run / Edit / Copy /
+  // Open in Scratchpad on every code cell.
+  mount("data-wolfram-notebook", (root) =>
+    import("./wolfram-notebook/index.js")
+      .then(({ mountWolframNotebook }) => mountWolframNotebook(root, { api, session }))
+      .catch((error) => showError(root, error)),
+  )
   for (const attr of [
     "data-device",
     "data-instrument",

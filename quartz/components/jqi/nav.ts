@@ -54,6 +54,7 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
           member: true,
           children: [
             { label: "Hafezi GPT", href: "/gpt" },
+            { label: "Scratchpad", href: "/scratchpad" },
             { label: "Devices", href: "/devices" },
             { label: "Experiments", href: "/devices?tab=experiments" },
             { label: "Experiment builder", href: "/devices?tab=builder" },

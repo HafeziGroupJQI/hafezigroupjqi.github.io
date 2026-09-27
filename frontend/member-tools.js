@@ -279,6 +279,12 @@ if (session.user) {
       }),
   )
   installLauncher({ api, session })
+  // The Scratchpad (frontend/scratchpad/) loads only on its own page.
+  mount("data-scratchpad", (root) =>
+    import("./scratchpad/index.js")
+      .then(({ mountScratchpad }) => mountScratchpad(root, { api, session }))
+      .catch((error) => showError(root, error)),
+  )
   for (const attr of [
     "data-device",
     "data-instrument",

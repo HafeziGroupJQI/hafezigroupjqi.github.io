@@ -3542,3 +3542,52 @@ html.gpt-modal-open .gpt-fab {
   font-size: 0.75rem !important;
   margin: 0 !important;
 }
+
+// ---- the Scratchpad (/scratchpad, frontend/scratchpad/) ----
+// Same dashboard chrome; the JupyterLab iframe takes the rest of the viewport once a lab is open.
+.scratchpad .scratch-launcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin: 16px 0 12px;
+}
+.scratchpad .scratch-launchers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.scratchpad .scratch-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  font-size: 0.88rem;
+}
+.scratchpad .scratch-progress progress {
+  width: min(320px, 50vw);
+}
+.scratchpad .scratch-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 180px);
+  min-height: 480px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: var(--dash-radius);
+  background: var(--dash-surface);
+}
+.scratchpad.scratch-open .scratch-launcher {
+  margin: 8px 0;
+}
+.scratchpad .scratch-servers {
+  margin-top: 24px;
+}
+.scratchpad .scratch-table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.scratchpad .scratch-table :is(th, td) {
+  padding: 6px 14px 6px 0;
+  text-align: left;
+  border-bottom: 1px solid var(--jqi-rule);
+}

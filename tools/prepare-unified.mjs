@@ -61,6 +61,9 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "experiments",
       "gpt",
       "admin",
+      "scratchpad",
+      // The Scratchpad's JupyterLab: the service worker answers /jupyter/* from the compute relay.
+      "jupyter",
     ]) {
       if (
         [reserved, reserved + ".md", reserved + ".qmd"].some((name) =>
@@ -336,6 +339,15 @@ export function prepareUnified(publicSource, privateSource, yaml) {
     legacy("instrument", "Instrument", "data-instrument")
     legacy("experiment-builder", "Experiment builder", "data-experiment-builder")
     legacy("experiments", "Experiments", "data-experiments")
+    // The Scratchpad: live Jupyter/IPython/Quarto/Wolfram on the lab's compute host, embedded as a
+    // same-origin JupyterLab iframe (frontend/scratchpad/, the Worker's src/compute/).
+    page(
+      "scratchpad",
+      "Scratchpad",
+      '<div class="member-tools dashboard scratchpad" data-scratchpad></div>',
+      [],
+      { layout: "dashboard" },
+    )
     writeTagPages(prepared.output, yaml)
     return prepared
   } catch (error) {

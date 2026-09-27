@@ -21,6 +21,8 @@ test("launchers open the member's own lab with the requested kernel", () => {
   assert.equal(url.searchParams.get("kernel"), "hafezi-gds")
   const wolfram = new URL(launchUrl("alice", "wolfram", "gds"), "https://site.test")
   assert.equal(wolfram.searchParams.get("kernel"), "wolfram")
+  // A native Wolfram notebook (.nb), not a Jupyter one.
+  assert.equal(wolfram.searchParams.get("hafezi-view"), "nb")
   assert.equal(launchUrl("alice", "nope"), "/jupyter/user/alice/lab")
   assert.equal(
     launchUrl("alice", "notebook", "base", "proj/a b.ipynb"),

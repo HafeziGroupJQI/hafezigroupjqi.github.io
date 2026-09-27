@@ -22,7 +22,7 @@ export const LAUNCHERS = [
   { id: "console", label: "Jupyter console", view: "console", kernel: "profile" },
   { id: "notebook", label: "Notebook", view: "notebook", kernel: "profile" },
   { id: "quarto", label: "Quarto doc", view: "qmd", kernel: "profile" },
-  { id: "wolfram", label: "Wolfram notebook", view: "notebook", kernel: "wolfram" },
+  { id: "wolfram", label: "Wolfram notebook", view: "nb", kernel: "wolfram" },
 ]
 
 export const labRoot = (login) => `/jupyter/user/${encodeURIComponent(login.toLowerCase())}/`

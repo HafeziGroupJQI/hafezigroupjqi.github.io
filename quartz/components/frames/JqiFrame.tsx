@@ -83,7 +83,8 @@ export const JqiFrame: PageFrame = {
             <HeaderComponent {...componentData} />
           ))}
         </JqiHeader>
-        <main id="main-content">
+        {/* "center": Quartz plugin scripts (e.g. the Mermaid renderer) look for their content in .center. */}
+        <main id="main-content" class="center">
           {dashboard ? (
             <div class="page-content">
               <div class="page-content__main">

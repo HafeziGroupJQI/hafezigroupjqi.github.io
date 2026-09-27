@@ -69,6 +69,25 @@ export function readTurn(body: Record<string, unknown>): TurnInput {
 }
 
 /** Local claude-bridge (dev only): text in, text out, no tools/thinking/betas. */
+const flattenForBridge = (message: MessageParam): MessageParam => {
+  if (typeof message.content === "string") return message
+  // The bridge keeps text blocks only, so inline text documents as tagged text.
+  const content = message.content.map((block): Block => {
+    if (block.type === "document" && block.source.type === "text")
+      return {
+        type: "text",
+        text: `<document title="${block.title ?? ""}" source="${block.context ?? ""}">\n${block.source.data}\n</document>`,
+      }
+    if (block.type === "document" || block.type === "image")
+      return {
+        type: "text",
+        text: `[${block.type === "image" ? "an image" : "a PDF"} (not readable through the local bridge)]`,
+      }
+    return block
+  })
+  return { ...message, content }
+}
+
 const isBridge = (env: Env) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(env.ANTHROPIC_BASE_URL ?? "")
 
@@ -310,7 +329,13 @@ async function converse(t: TurnContext): Promise<TurnResult> {
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
     const params: Anthropic.Beta.MessageCreateParamsStreaming = bridge
-      ? { model: m.id, max_tokens: MAX_OUTPUT_TOKENS, system, messages, stream: true }
+      ? {
+          model: m.id,
+          max_tokens: MAX_OUTPUT_TOKENS,
+          system,
+          messages: messages.map(flattenForBridge),
+          stream: true,
+        }
       : {
           model: m.id,
           max_tokens: MAX_OUTPUT_TOKENS,

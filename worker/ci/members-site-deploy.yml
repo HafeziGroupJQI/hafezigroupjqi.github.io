@@ -3,6 +3,13 @@
 #
 # Secrets in members-site: VAULT_PRIVATE_READ_TOKEN (fine-grained PAT, contents:read on
 # vault-private), CLOUDFLARE_API_TOKEN (Workers scripts, D1, R2 edit), CLOUDFLARE_ACCOUNT_ID.
+#
+# Notebooks: every .ipynb and Wolfram .nb in the vaults becomes a page, rendered from the outputs
+# saved in it (tools/notebooks/). Wolfram notebooks need a licensed Wolfram Engine, which only the
+# lab's compute host has, so the `notebooks` job runs there on a self-hosted runner (labels
+# self-hosted, hafezi-compute; compute repo deploy/ci-runner.sh). It renders the notebooks of the
+# exact commits this deploy builds and hands them to the `deploy` job as an artifact; the build
+# refuses a notebook whose bytes have no render from this run. Deploys wait while that PC is off.
 # Variables in members-site: MEMBERS_BASE_URL (the github.io site, where the member edition is
 # shown) and MEMBERS_API_ORIGIN (this Worker's origin, baked into the dashboard's live stream).
 # It builds the website repo's main branch, so only enable it once main carries the Worker
@@ -24,10 +31,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+  notebooks:
+    # Stage 1 of the notebook step, on the compute host: Wolfram notebooks -> block JSON + assets.
+    runs-on: [self-hosted, hafezi-compute]
+    timeout-minutes: 90
+    outputs:
+      website: ${{ steps.commits.outputs.website }}
+      vault: ${{ steps.commits.outputs.vault }}
+      vault_private: ${{ steps.commits.outputs.vault_private }}
     steps:
-      - name: checkout the website (layout, build tools, worker)
+      - name: checkout the website (the renderer)
         uses: actions/checkout@v4
         with:
           repository: HafeziGroupJQI/hafezigroupjqi.github.io
@@ -43,6 +56,58 @@ jobs:
           repository: HafeziGroupJQI/vault-private
           path: vault-private
           token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
+      - name: record the commits this deploy builds
+        id: commits
+        run: |
+          echo "website=$(git -C website rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "vault=$(git -C vault rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "vault_private=$(git -C vault-private rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      # The host's own node and wolframscript (no setup actions: the runner is not Ubuntu).
+      - run: npm ci --no-audit --no-fund
+        working-directory: website
+      - name: render the Wolfram notebooks of both vaults
+        working-directory: website
+        env:
+          # Kept between deploys; keyed by each notebook's sha256, so it only saves time.
+          NOTEBOOK_CACHE: ${{ runner.tool_cache }}/../notebook-cache
+        run: >
+          node tools/notebooks/render-notebooks.mjs stage1
+          --root ../vault/content --root ../vault-private --out ../notebook-renders
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notebook-renders
+          path: notebook-renders
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    needs: notebooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout the website (layout, build tools, worker)
+        uses: actions/checkout@v4
+        with:
+          repository: HafeziGroupJQI/hafezigroupjqi.github.io
+          ref: ${{ needs.notebooks.outputs.website }}
+          path: website
+      - name: checkout the public vault
+        uses: actions/checkout@v4
+        with:
+          repository: HafeziGroupJQI/vault
+          ref: ${{ needs.notebooks.outputs.vault }}
+          path: vault
+      - name: checkout the private vault
+        uses: actions/checkout@v4
+        with:
+          repository: HafeziGroupJQI/vault-private
+          ref: ${{ needs.notebooks.outputs.vault_private }}
+          path: vault-private
+          token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
+      - name: the notebook renders made for these commits
+        uses: actions/download-artifact@v4
+        with:
+          name: notebook-renders
+          path: notebook-renders
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -74,12 +139,23 @@ jobs:
         working-directory: website
       - run: npm ci
         working-directory: website/worker
+      - name: notebook page caches from earlier deploys
+        # .ipynb pages and Wolfram asset conversions, keyed by content: an unchanged notebook is
+        # served from here, a changed one re-renders. Pruned to what this deploy used, then saved.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/hafezi-notebooks
+          key: notebook-pages-${{ github.run_id }}
+          restore-keys: notebook-pages-
       - name: build the member edition and the documents manifest
         run: npm run build:members
         working-directory: website
         env:
           VAULT_PUBLIC_DIR: ../vault/content
           VAULT_PRIVATE_DIR: ../vault-private
+          # Stage 2 (pages) runs in the build from the renders above; .ipynb render with Quarto.
+          NOTEBOOK_RENDERS: ../notebook-renders
+          NOTEBOOK_CACHE_PRUNE: "1"
           MEMBERS_BASE_URL: ${{ vars.MEMBERS_BASE_URL }}
           MEMBERS_API_ORIGIN: ${{ vars.MEMBERS_API_ORIGIN }}
       - run: npm run check

@@ -1,0 +1,130 @@
+{
+  "secret": "test-assertion-secret",
+  "tokens": {
+    "valid": {
+      "token": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.d0fct4L_QEHBJXqJ47GWx5X0n9NTSg89sWIFTx1hXFg",
+      "claims": {
+        "typ": "compute",
+        "aud": "hafezi-compute",
+        "login": "alice",
+        "role": "member",
+        "iat": 1790000000,
+        "exp": 4102444800
+      }
+    },
+    "tampered": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.d0fct4L_QEHBJXqJ47GWx5X0n9NTSg89sWIFTx1hXAA",
+    "expired": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjoxMDAwfQ.g791poorQWYJij38F7-s4BbM5WzbAjX5UP5eQPDg8dM",
+    "wrong_typ": "eyJ0eXAiOiJzZXNzaW9uIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.b5lRzCnraaqE6nPEglMJqQZwfoDiPvOMsZ-5jyIWK74",
+    "wrong_aud": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoib3RoZXIiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.8_hiEizuKtn6rMygkNx4pwWklcjEiqNDX3izgzxPzzA"
+  },
+  "host_key": {
+    "key": "hk_test_0123456789",
+    "sha256": "15eb4414844f9ef4c04e8d89c10aafa558c9f7a809b9586ed67ec7c210ce84ad"
+  },
+  "frames": [
+    {
+      "name": "open_http",
+      "type": 1,
+      "flags": 0,
+      "stream_id": 1,
+      "json": {
+        "method": "GET",
+        "target": "/jupyter/user/alice/lab",
+        "headers": [
+          [
+            "accept",
+            "text/html"
+          ]
+        ],
+        "assertion": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.d0fct4L_QEHBJXqJ47GWx5X0n9NTSg89sWIFTx1hXFg",
+        "has_body": false,
+        "window": 524288,
+        "ws_url": "wss://w.example/api/compute/ws",
+        "ticket": "t"
+      },
+      "wire_hex": "01000000010000007b226d6574686f64223a22474554222c22746172676574223a222f6a7570797465722f757365722f616c6963652f6c6162222c2268656164657273223a5b5b22616363657074222c22746578742f68746d6c225d5d2c22617373657274696f6e223a2265794a30655841694f694a6a623231776458526c496977695958566b496a6f696147466d5a5870704c574e7662584231644755694c434a736232647062694936496d467361574e6c49697769636d39735a534936496d316c62574a6c63694973496d6c68644349364d5463354d4441774d4441774d4377695a586877496a6f304d5441794e4451304f44417766512e6430666374344c5f514548424a58714a34374757783558306e394e54536738397357494654783168584667222c226861735f626f6479223a66616c73652c2277696e646f77223a3532343238382c2277735f75726c223a227773733a2f2f772e6578616d706c652f6170692f636f6d707574652f7773222c227469636b6574223a2274227d"
+    },
+    {
+      "name": "response_head",
+      "type": 2,
+      "flags": 0,
+      "stream_id": 1,
+      "json": {
+        "status": 200,
+        "headers": [
+          [
+            "content-type",
+            "text/html"
+          ]
+        ]
+      },
+      "wire_hex": "02000000010000007b22737461747573223a3230302c2268656164657273223a5b5b22636f6e74656e742d74797065222c22746578742f68746d6c225d5d7d"
+    },
+    {
+      "name": "data_eos",
+      "type": 3,
+      "flags": 4,
+      "stream_id": 1,
+      "bytes_hex": "68656c6c6f",
+      "wire_hex": "030400000100000068656c6c6f"
+    },
+    {
+      "name": "window",
+      "type": 5,
+      "flags": 0,
+      "stream_id": 3,
+      "bytes_hex": "00000400",
+      "wire_hex": "050000000300000000000400"
+    },
+    {
+      "name": "ws_msg_bin_fin",
+      "type": 8,
+      "flags": 3,
+      "stream_id": 5,
+      "bytes_hex": "000102ff",
+      "wire_hex": "0803000005000000000102ff"
+    },
+    {
+      "name": "ws_msg_text_frag",
+      "type": 8,
+      "flags": 0,
+      "stream_id": 5,
+      "bytes_hex": "7b2261223a",
+      "wire_hex": "08000000050000007b2261223a"
+    },
+    {
+      "name": "ws_close",
+      "type": 9,
+      "flags": 0,
+      "stream_id": 5,
+      "bytes_hex": "e803627965",
+      "wire_hex": "0900000005000000e803627965"
+    },
+    {
+      "name": "hello",
+      "type": 16,
+      "flags": 0,
+      "stream_id": 0,
+      "json": {
+        "proto": 1,
+        "host_id": "wsl",
+        "version": "0.1.0",
+        "max_streams": 64
+      },
+      "wire_hex": "10000000000000007b2270726f746f223a312c22686f73745f6964223a2277736c222c2276657273696f6e223a22302e312e30222c226d61785f73747265616d73223a36347d"
+    },
+    {
+      "name": "control",
+      "type": 18,
+      "flags": 0,
+      "stream_id": 0,
+      "json": {
+        "rpc_id": 7,
+        "op": "status",
+        "assertion": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.d0fct4L_QEHBJXqJ47GWx5X0n9NTSg89sWIFTx1hXFg",
+        "args": {}
+      },
+      "wire_hex": "12000000000000007b227270635f6964223a372c226f70223a22737461747573222c22617373657274696f6e223a2265794a30655841694f694a6a623231776458526c496977695958566b496a6f696147466d5a5870704c574e7662584231644755694c434a736232647062694936496d467361574e6c49697769636d39735a534936496d316c62574a6c63694973496d6c68644349364d5463354d4441774d4441774d4377695a586877496a6f304d5441794e4451304f44417766512e6430666374344c5f514548424a58714a34374757783558306e394e54536738397357494654783168584667222c2261726773223a7b7d7d"
+    }
+  ]
+}

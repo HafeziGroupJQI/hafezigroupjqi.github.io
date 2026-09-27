@@ -38,9 +38,14 @@ export async function readJson(request: Request): Promise<unknown> {
   }
 }
 
-const CORS_ALLOW_HEADERS = "authorization, content-type, range, accept"
-const CORS_EXPOSE_HEADERS = "content-disposition, content-range, accept-ranges, x-canonical-path"
-const CORS_METHODS = "GET, HEAD, POST, PUT, DELETE, OPTIONS"
+// x-compute-* carry the Scratchpad envelope (src/compute/routes.ts): one preflight covers every
+// JupyterLab request. The compute response headers are exposed so the service worker can copy them.
+const CORS_ALLOW_HEADERS =
+  "authorization, content-type, range, accept, x-compute-method, x-compute-target, if-none-match"
+const CORS_EXPOSE_HEADERS =
+  "content-disposition, content-range, accept-ranges, x-canonical-path, etag, " +
+  "content-security-policy, x-frame-options, x-compute-location, x-compute-upstream-status"
+const CORS_METHODS = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
 
 /** Add CORS headers when the request comes from an allowed browser origin (no credentials). */
 export function withCors(

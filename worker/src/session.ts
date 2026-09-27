@@ -5,7 +5,9 @@ import type { Env } from "./env"
 // OAuth state can never be replayed as a session.
 export const SESSION_MAX_AGE = 8 * 60 * 60
 
-export type TokenType = "session" | "state"
+// "compute" is the Worker → compute-host assertion and "compute-ws" the browser's WebSocket ticket
+// (src/compute/tokens.ts).
+export type TokenType = "session" | "state" | "compute" | "compute-ws"
 
 export interface Session {
   typ: "session"

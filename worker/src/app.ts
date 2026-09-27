@@ -2,6 +2,7 @@ import { adminRoutes } from "./admin/routes"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
 import { type GitHubFetch, allowedOrigins, exchange, requireMutation, startLogin } from "./auth"
 import { calendarRoutes } from "./calendar/routes"
+import { computeHostRoute, computeRoutes, computeSocketRoute } from "./compute/routes"
 import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
@@ -14,11 +15,12 @@ import { type Session, readSession } from "./session"
 
 // The Worker is an API. Browsers only ever show https://hafezigroupjqi.github.io: its service
 // worker fetches the member edition of every page from GET /api/site/<path> with a bearer token,
-// and forwards same-origin /api/* calls here. Lab PCs call /api/agent/* with device keys.
+// and forwards same-origin /api/* calls here. Lab PCs call /api/agent/* with device keys; the
+// compute host holds /api/compute/host with its host key (src/compute/).
 
 export const VERSION = "1.0.0"
 
-// The member tool pages of the site (device-scoped instrument control + the calendar).
+// The member tool pages of the site (device-scoped instrument control, the calendar, Scratchpad).
 export const MEMBER_PAGES = [
   "/calendar",
   "/devices",
@@ -28,6 +30,7 @@ export const MEMBER_PAGES = [
   "/experiments",
   "/gpt",
   "/admin",
+  "/scratchpad",
 ]
 
 const SITE_PREFIX = "/api/site"
@@ -72,8 +75,8 @@ export function createHandler(
       const url = new URL(request.url)
       const origin = request.headers.get("origin")
       const allowed = allowedOrigins(env)
-      // Machine callers (lab PCs) never get CORS; they are not browsers.
-      const isAgent = url.pathname.startsWith("/api/agent/")
+      // Machine callers (lab PCs, the compute host) never get CORS; they are not browsers.
+      const isAgent = url.pathname.startsWith("/api/agent/") || url.pathname === "/api/compute/host"
       if (request.method === "OPTIONS" && !isAgent) return preflight(origin, allowed)
       let response: Response
       try {
@@ -86,6 +89,8 @@ export function createHandler(
           response = withPrivateHeaders(problem(500, "internal error"))
         }
       }
+      // WebSocket upgrades (agents, compute host, JupyterLab) go back untouched.
+      if (response.webSocket) return response
       return isAgent ? response : withCors(response, origin, allowed)
     },
   }
@@ -106,6 +111,12 @@ export function createHandler(
     // Agent ingest is device-key authenticated, before the member bearer is ever parsed.
     const agent = await agentRoutes(request, url, env)
     if (agent) return withPrivateHeaders(agent)
+    // Likewise the compute host (host key) and JupyterLab's WebSockets (short ticket in ?token=,
+    // because a browser WebSocket cannot carry the bearer header).
+    const computeHost = await computeHostRoute(request, url, env)
+    if (computeHost) return computeHost
+    const computeSocket = await computeSocketRoute(request, url, env)
+    if (computeSocket) return computeSocket
 
     if (path === "/api/auth/start" && request.method === "POST")
       return withPrivateHeaders(await startLogin(request, env))
@@ -136,6 +147,12 @@ export function createHandler(
     }
     if (path === SITE_PREFIX || path.startsWith(SITE_PREFIX + "/"))
       return site(request, url, env, ctx, path.slice(SITE_PREFIX.length) || "/", record)
+
+    // The Scratchpad's compute relay audits its own control actions (compute.*): every JupyterLab
+    // request is a POST envelope, which must not become an api.POST row each, and relayed answers
+    // keep Jupyter's caching headers instead of the private no-store ones.
+    const compute = await computeRoutes(request, url, env, session, record)
+    if (compute) return compute
 
     // Every write is audited: routes record a specific event (device.create, gpt.share …); any
     // write that did not gets a generic api.<METHOD> row with its path and final status.

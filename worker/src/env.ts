@@ -26,6 +26,16 @@ export interface Env {
   /** Messages API origin. Defaults to https://api.anthropic.com. Point it at a local claude-bridge
    *  (`~/src/claude-bridge`) under `wrangler dev` to generate on a Claude subscription with no key. */
   ANTHROPIC_BASE_URL?: string
+  /** The single ComputeRelay DO (src/compute/relay.ts) the compute host's tunnel dials into. */
+  COMPUTE_RELAY: DurableObjectNamespace
+  /** HMAC secret shared with the compute host for the per-request assertion. Unset: compute is off. */
+  COMPUTE_ASSERTION_SECRET?: string
+  /** Lowercase hex SHA-256 of the compute host's bearer key. */
+  COMPUTE_HOST_KEY_HASH?: string
+  /** Optional coarse rate limit for Wolfram runs; the relay enforces the real per-login budget. */
+  COMPUTE_LIMIT?: RateLimit
+  /** "true" lets owners open any member's server (every such request is logged). */
+  COMPUTE_OWNER_ACCESS?: string
 }
 
 export interface DocumentEntry {

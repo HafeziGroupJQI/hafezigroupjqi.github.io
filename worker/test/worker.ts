@@ -4,6 +4,7 @@ import skills from "./fixtures/gpt-skills.json"
 
 // The Durable Object class must be exported from the test entry module too.
 export { DeviceHub } from "../src/devices/hub"
+export { ComputeRelay } from "../src/compute/relay"
 
 // The test Worker shares the isolate with the tests, so they can inspect the GitHub blob calls.
 export const upstreamCalls: string[] = []

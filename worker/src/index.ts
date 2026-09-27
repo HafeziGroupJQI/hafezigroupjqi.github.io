@@ -8,6 +8,7 @@ import skills from "../generated/gpt-skills.json"
 
 // The Durable Object class must be exported from the entry module for Wrangler to bind it.
 export { DeviceHub } from "./devices/hub"
+export { ComputeRelay } from "./compute/relay"
 
 export default {
   ...createHandler(manifest, { skills }),

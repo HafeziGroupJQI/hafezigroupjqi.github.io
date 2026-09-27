@@ -18,9 +18,15 @@
     },
   ],
   "durable_objects": {
-    "bindings": [{ "name": "DEVICE_HUB", "class_name": "DeviceHub" }],
+    "bindings": [
+      { "name": "DEVICE_HUB", "class_name": "DeviceHub" },
+      { "name": "COMPUTE_RELAY", "class_name": "ComputeRelay" },
+    ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceHub"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DeviceHub"] },
+    { "tag": "v2", "new_sqlite_classes": ["ComputeRelay"] },
+  ],
   "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
   "vars": {
     "AUTH_MODE": "dev",
@@ -32,5 +38,8 @@
     "GITHUB_DOCS_TOKEN": "test-docs-token",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
     "PUBLIC_SITE_URL": "https://public.example",
+    // compute-vectors.json: the assertion secret and sha256("hk_test_0123456789").
+    "COMPUTE_ASSERTION_SECRET": "test-assertion-secret",
+    "COMPUTE_HOST_KEY_HASH": "15eb4414844f9ef4c04e8d89c10aafa558c9f7a809b9586ed67ec7c210ce84ad",
   },
 }

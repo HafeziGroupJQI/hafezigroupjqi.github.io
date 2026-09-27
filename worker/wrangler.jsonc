@@ -28,9 +28,20 @@
     },
   ],
   "durable_objects": {
-    "bindings": [{ "name": "DEVICE_HUB", "class_name": "DeviceHub" }],
+    "bindings": [
+      { "name": "DEVICE_HUB", "class_name": "DeviceHub" },
+      // The Scratchpad's compute relay: one instance the compute host's tunnel dials into.
+      { "name": "COMPUTE_RELAY", "class_name": "ComputeRelay" },
+    ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceHub"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DeviceHub"] },
+    { "tag": "v2", "new_sqlite_classes": ["ComputeRelay"] },
+  ],
+  // Coarse edge limit on Wolfram runs (optional; the relay enforces 1 concurrent + 30 / 10 min).
+  "ratelimits": [
+    { "name": "COMPUTE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+  ],
   "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
   // Daily audit-log retention sweep (src/audit.ts pruneAudit).
   "triggers": { "crons": ["17 4 * * *"] },
@@ -45,4 +56,7 @@
   // GITHUB_DOCS_TOKEN, and ANTHROPIC_API_KEY for cloud experiment generation. Instrument
   // control now runs through the per-device HafeziAgent + DeviceHub, so the old C2 quick-tunnel
   // gateway secrets (C2_URL, C2_GATEWAY_SECRET, CF_ACCESS_*) are retired.
+  // Scratchpad compute: COMPUTE_ASSERTION_SECRET (shared with the compute host; it never gets
+  // SESSION_SECRET) and COMPUTE_HOST_KEY_HASH (lowercase hex sha256 of the host's bearer key).
+  // Optional var COMPUTE_OWNER_ACCESS="true" lets owners open members' servers (each is logged).
 }

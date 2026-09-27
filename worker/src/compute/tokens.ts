@@ -1,0 +1,77 @@
+import type { Env } from "../env"
+import { HttpError } from "../http"
+import { SESSION_MAX_AGE, type Session, sign, verify } from "../session"
+
+// Two short-lived tokens, both in the site's HMAC format (session.ts sign/verify):
+//   assertion  Worker → compute host, inside every OPEN_HTTP / OPEN_WS / CONTROL frame. Signed with
+//              COMPUTE_ASSERTION_SECRET, the only secret the host shares; it never sees SESSION_SECRET.
+//   ws ticket  Worker → browser → Worker. JupyterLab cannot put a bearer header on a WebSocket, so the
+//              host writes this ticket into jupyter-config-data and the lab sends it as ?token=.
+
+export const ASSERTION_AUDIENCE = "hafezi-compute"
+export const ASSERTION_TTL = 60
+
+export interface Assertion {
+  typ: "compute"
+  aud: typeof ASSERTION_AUDIENCE
+  login: string
+  role: "member" | "owner"
+  iat: number
+  exp: number
+}
+
+// The host's verifier reads {typ, login, exp}; `role` rides along so a WebSocket's assertion
+// matches the session's. Only the Worker ever verifies a ticket.
+export interface WsTicket {
+  typ: "compute-ws"
+  login: string
+  role: "member" | "owner"
+  exp: number
+}
+
+type Principal = Pick<Session, "login" | "role"> & { exp?: number }
+
+const now = () => Math.floor(Date.now() / 1000)
+
+export function assertionSecret(env: Env): string {
+  if (!env.COMPUTE_ASSERTION_SECRET) throw new HttpError(503, "compute is not configured")
+  return env.COMPUTE_ASSERTION_SECRET
+}
+
+export async function issueAssertion(env: Env, principal: Principal): Promise<string> {
+  const iat = now()
+  const claims: Assertion = {
+    typ: "compute",
+    aud: ASSERTION_AUDIENCE,
+    login: principal.login.toLowerCase(),
+    role: principal.role,
+    iat,
+    exp: iat + ASSERTION_TTL,
+  }
+  return sign(claims, assertionSecret(env))
+}
+
+/** The host's check, mirrored here so the shared vectors are exercised on both sides. */
+export async function verifyAssertion(token: string, secret: string): Promise<Assertion | null> {
+  const claims = await verify<Assertion>(token, secret, "compute")
+  if (!claims || claims.aud !== ASSERTION_AUDIENCE || typeof claims.exp !== "number") return null
+  return claims
+}
+
+/** A WebSocket ticket that never outlives the session (and never exceeds 8 h). */
+export async function issueTicket(env: Env, session: Principal): Promise<string> {
+  const cap = now() + SESSION_MAX_AGE
+  const ticket: WsTicket = {
+    typ: "compute-ws",
+    login: session.login.toLowerCase(),
+    role: session.role,
+    exp: Math.min(session.exp ?? cap, cap),
+  }
+  return sign(ticket, env.SESSION_SECRET)
+}
+
+export async function verifyTicket(env: Env, token: string | null): Promise<WsTicket | null> {
+  const ticket = await verify<WsTicket>(token ?? undefined, env.SESSION_SECRET, "compute-ws")
+  if (!ticket || typeof ticket.login !== "string" || typeof ticket.exp !== "number") return null
+  return ticket
+}

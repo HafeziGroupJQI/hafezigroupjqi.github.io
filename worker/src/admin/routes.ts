@@ -1,0 +1,204 @@
+import { requireMutation } from "../auth"
+import { type Auditor, requireAdmin } from "../audit"
+import type { Env } from "../env"
+import { HttpError, json, readJson } from "../http"
+import type { Session } from "../session"
+
+// Group-admin console: the audit log, the admin allow-list, and Hafezi GPT usage + budgets.
+// Everything here is admin-only (org owners, or members an admin promoted).
+
+const PAGE = 100
+const LOGIN = /^[A-Za-z0-9-]{1,39}$/
+
+export interface AuditRow {
+  id: number
+  at: number
+  login: string
+  role: string | null
+  action: string
+  target: string | null
+  status: number | null
+  detail: Record<string, unknown> | null
+  ip: string | null
+  user_agent: string | null
+}
+
+const month = (at = Date.now()) => new Date(at).toISOString().slice(0, 7)
+
+function auditQuery(params: URLSearchParams, limit: number) {
+  const where: string[] = []
+  const binds: unknown[] = []
+  const login = params.get("login")?.trim()
+  if (login) {
+    where.push("login = ?")
+    binds.push(login)
+  }
+  // "gpt" matches gpt.message, gpt.share …; "auth.login" matches exactly.
+  const action = params.get("action")?.trim()
+  if (action) {
+    where.push("(action = ? OR action LIKE ?)")
+    binds.push(action, `${action}.%`)
+  }
+  for (const [key, op] of [
+    ["since", ">="],
+    ["until", "<"],
+    ["before_id", "<"],
+  ] as const) {
+    const raw = params.get(key)
+    if (raw === null || raw === "") continue
+    const value = Number(raw)
+    if (!Number.isFinite(value)) throw new HttpError(422, `${key} must be a number`)
+    where.push(`${key === "before_id" ? "id" : "at"} ${op} ?`)
+    binds.push(value)
+  }
+  const sql = `SELECT * FROM audit_log ${where.length ? "WHERE " + where.join(" AND ") : ""}
+               ORDER BY id DESC LIMIT ?`
+  return { sql, binds: [...binds, limit] }
+}
+
+const toRow = (raw: Record<string, unknown>): AuditRow => ({
+  ...(raw as unknown as AuditRow),
+  detail: raw.detail_json ? JSON.parse(String(raw.detail_json)) : null,
+})
+
+const csvCell = (value: unknown) => {
+  const text = value === null || value === undefined ? "" : String(value)
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+export async function adminRoutes(
+  request: Request,
+  url: URL,
+  env: Env,
+  session: Session,
+  record: Auditor,
+): Promise<Response | null> {
+  if (!url.pathname.startsWith("/api/admin/")) return null
+  await requireAdmin(env, session)
+  const path = url.pathname.slice("/api/admin".length)
+
+  if (path === "/audit" && request.method === "GET") {
+    const limit = Math.min(Number(url.searchParams.get("limit")) || PAGE, 500)
+    const { sql, binds } = auditQuery(url.searchParams, limit)
+    const { results } = await env.DB.prepare(sql)
+      .bind(...binds)
+      .all<Record<string, unknown>>()
+    const rows = results.map(toRow)
+    return json({ rows, next_before_id: rows.length === limit ? rows[rows.length - 1].id : null })
+  }
+
+  if (path === "/audit.csv" && request.method === "GET") {
+    const { sql, binds } = auditQuery(url.searchParams, 50_000)
+    const { results } = await env.DB.prepare(sql)
+      .bind(...binds)
+      .all<Record<string, unknown>>()
+    const columns = [
+      "id",
+      "at",
+      "time_utc",
+      "login",
+      "role",
+      "action",
+      "target",
+      "status",
+      "detail_json",
+      "ip",
+      "user_agent",
+    ]
+    const lines = [columns.join(",")]
+    for (const row of results)
+      lines.push(
+        columns
+          .map((c) => csvCell(c === "time_utc" ? new Date(Number(row.at)).toISOString() : row[c]))
+          .join(","),
+      )
+    record("admin.audit.export", null, { rows: results.length })
+    return new Response(lines.join("\n") + "\n", {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="hafezi-audit-${month()}.csv"`,
+      },
+    })
+  }
+
+  if (path === "/admins") {
+    if (request.method === "GET") {
+      const { results } = await env.DB.prepare(
+        "SELECT login, added_by, added_at FROM admins ORDER BY login",
+      ).all()
+      return json({ admins: results, org: env.GITHUB_ORG })
+    }
+    if (request.method === "POST") {
+      requireMutation(request, env)
+      const body = (await readJson(request)) as { login?: unknown }
+      const login = typeof body.login === "string" ? body.login.trim().replace(/^@/, "") : ""
+      if (!LOGIN.test(login)) throw new HttpError(422, "enter a GitHub login")
+      await env.DB.prepare(
+        "INSERT OR IGNORE INTO admins (login, added_by, added_at) VALUES (?, ?, ?)",
+      )
+        .bind(login, session.login, Date.now())
+        .run()
+      record("admin.promote", login)
+      return json({ login }, 201)
+    }
+    throw new HttpError(405, "method not allowed")
+  }
+
+  const demote = path.match(/^\/admins\/([^/]+)$/)
+  if (demote && request.method === "DELETE") {
+    requireMutation(request, env)
+    const login = decodeURIComponent(demote[1])
+    const { meta } = await env.DB.prepare("DELETE FROM admins WHERE login = ?").bind(login).run()
+    if (!meta.changes) throw new HttpError(404, "not an admin (org owners are managed on GitHub)")
+    record("admin.demote", login)
+    return json({ removed: login })
+  }
+
+  if (path === "/usage" && request.method === "GET") {
+    const m = url.searchParams.get("month") || month()
+    if (!/^\d{4}-\d{2}$/.test(m)) throw new HttpError(422, "month must be YYYY-MM")
+    // Everyone with usage this month or a budget, plus everyone seen signing in.
+    const { results } = await env.DB.prepare(
+      `WITH people AS (
+         SELECT login FROM gpt_usage WHERE month = ?1
+         UNION SELECT login FROM gpt_budgets
+         UNION SELECT DISTINCT login FROM audit_log WHERE action = 'auth.login'
+       )
+       SELECT p.login, COALESCE(u.input, 0) AS input, COALESCE(u.output, 0) AS output,
+              COALESCE(u.cache_read, 0) AS cache_read, COALESCE(u.cache_write, 0) AS cache_write,
+              COALESCE(u.cost_usd, 0) AS cost_usd, b.monthly_tokens
+       FROM people p
+       LEFT JOIN gpt_usage u ON u.login = p.login AND u.month = ?1
+       LEFT JOIN gpt_budgets b ON b.login = p.login
+       ORDER BY cost_usd DESC, p.login`,
+    )
+      .bind(m)
+      .all()
+    return json({ month: m, members: results })
+  }
+
+  const budget = path.match(/^\/budgets\/([^/]+)$/)
+  if (budget && request.method === "PUT") {
+    requireMutation(request, env)
+    const login = decodeURIComponent(budget[1])
+    if (!LOGIN.test(login)) throw new HttpError(422, "invalid login")
+    const body = (await readJson(request)) as { monthly_tokens?: unknown }
+    if (body.monthly_tokens === null) {
+      await env.DB.prepare("DELETE FROM gpt_budgets WHERE login = ?").bind(login).run()
+    } else {
+      const tokens = Number(body.monthly_tokens)
+      if (!Number.isInteger(tokens) || tokens < 0)
+        throw new HttpError(422, "monthly_tokens must be a whole number, or null for no limit")
+      await env.DB.prepare(
+        `INSERT INTO gpt_budgets (login, monthly_tokens) VALUES (?, ?)
+         ON CONFLICT (login) DO UPDATE SET monthly_tokens = excluded.monthly_tokens`,
+      )
+        .bind(login, tokens)
+        .run()
+    }
+    record("admin.budget", login, { monthly_tokens: body.monthly_tokens ?? null })
+    return json({ login, monthly_tokens: body.monthly_tokens ?? null })
+  }
+
+  throw new HttpError(404, "not found")
+}

@@ -5,7 +5,8 @@ SESSION_SECRET=replace-with-32-or-more-random-characters-for-local-use
 ALLOWED_ORIGINS=http://localhost:8080
 # Optional: a fine-grained PAT with contents:read on vault-private so embedded documents load.
 # GITHUB_DOCS_TOKEN=
-# Cloud experiment generation. Unset = the offline template generator (no cost, no network).
+# Cloud experiment generation and Hafezi GPT. Unset = offline (the template generator; GPT replies
+# list the context they would send), no cost, no network.
 # To generate on your Claude subscription with no API key, run ~/src/claude-bridge (uv run bridge.py)
 # and point the Worker at it — the key is a dummy the bridge ignores:
 # ANTHROPIC_API_KEY=bridge
@@ -13,3 +14,5 @@ ALLOWED_ORIGINS=http://localhost:8080
 # Or use a real key against Anthropic directly (leave ANTHROPIC_BASE_URL unset):
 # ANTHROPIC_API_KEY=sk-ant-...
 # ANTHROPIC_MODEL=claude-opus-5
+# Hafezi GPT through claude-bridge runs without tools, thinking or citations (the bridge is
+# text-only); use a real key to exercise the full assistant locally.

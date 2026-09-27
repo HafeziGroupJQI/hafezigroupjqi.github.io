@@ -67,7 +67,11 @@ describe("github sign-in (start → GitHub → github.io callback → exchange)"
       const state = new URL(authorize_url).searchParams.get("state")!
       const response = await call("/api/auth/exchange", postJson({ code, state, nonce }), github)
       expect(response.status, code).toBe(200)
-      const body = (await response.json()) as { token: string; user: { role: string }; next: string }
+      const body = (await response.json()) as {
+        token: string
+        user: { role: string }
+        next: string
+      }
       expect(body.user.role).toBe(role)
       expect(body.next).toBe("/resources/notes")
       const session = await call("/api/session", {
@@ -120,6 +124,7 @@ describe("bearer sessions", () => {
       login: "dev",
       name: "Local member",
       role: "owner",
+      is_admin: true,
     })
   })
 
@@ -138,7 +143,10 @@ describe("bearer sessions", () => {
     })
     expect(await asSession.json()).toEqual({ user: null })
     // …and a session token is not a login state.
-    const replay = await SELF.fetch(`${ORIGIN}/api/auth/exchange`, postJson({ state: token, nonce: "n" }))
+    const replay = await SELF.fetch(
+      `${ORIGIN}/api/auth/exchange`,
+      postJson({ state: token, nonce: "n" }),
+    )
     expect(replay.status).toBe(400)
   })
 
@@ -175,7 +183,9 @@ describe("CORS for the github.io site", () => {
     const response = await client.fetch("/api/session")
     expect(response.headers.get("access-control-allow-origin")).toBe(SITE)
     expect(response.headers.get("vary")).toContain("Origin")
-    const foreign = await client.fetch("/api/session", { headers: { origin: "https://evil.example" } })
+    const foreign = await client.fetch("/api/session", {
+      headers: { origin: "https://evil.example" },
+    })
     expect(foreign.headers.get("access-control-allow-origin")).toBeNull()
     const dev = await call(
       "/api/health",

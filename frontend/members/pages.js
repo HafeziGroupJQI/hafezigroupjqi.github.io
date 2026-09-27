@@ -2,7 +2,7 @@
 // /auth/logout) import this module as /static/members-auth.js. GitHub sends members back to
 // /auth/callback on the github.io site; the Worker is only ever called with fetch().
 
-import { API_ORIGIN, FLAG_KEY, clearAuth, safeNext, writeAuth } from "./auth.js"
+import { API_ORIGIN, FLAG_KEY, clearAuth, readAuth, safeNext, writeAuth } from "./auth.js"
 
 const NONCE_KEY = "hafezi.loginNonce"
 
@@ -62,13 +62,26 @@ export async function callback() {
     const nonce = sessionStorage.getItem(NONCE_KEY) ?? ""
     sessionStorage.removeItem(NONCE_KEY)
     status("Checking your lab membership…")
-    await finish(await post("/api/auth/exchange", { code: query.get("code"), state: query.get("state"), nonce }))
+    await finish(
+      await post("/api/auth/exchange", {
+        code: query.get("code"),
+        state: query.get("state"),
+        nonce,
+      }),
+    )
   } catch (error) {
     status(error.message)
   }
 }
 
 export async function logout() {
+  // Best effort: record the sign-out in the audit log before the token is forgotten.
+  const auth = await readAuth().catch(() => null)
+  if (auth)
+    await fetch(API_ORIGIN + "/api/auth/logout", {
+      method: "POST",
+      headers: { authorization: `Bearer ${auth.token}` },
+    }).catch(() => {})
   await clearAuth()
   try {
     localStorage.removeItem(FLAG_KEY)
@@ -78,6 +91,7 @@ export async function logout() {
   }
   const registration = await navigator.serviceWorker?.getRegistration?.("/")
   registration?.active?.postMessage("signed-out")
-  for (const name of (await caches?.keys?.()) ?? []) if (name.startsWith("hafezi-")) await caches.delete(name)
+  for (const name of (await caches?.keys?.()) ?? [])
+    if (name.startsWith("hafezi-")) await caches.delete(name)
   location.replace("/")
 }

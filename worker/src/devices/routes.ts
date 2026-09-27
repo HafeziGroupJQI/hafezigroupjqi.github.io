@@ -1,3 +1,4 @@
+import type { Auditor } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
 import { HttpError, json, readJson } from "../http"
@@ -8,12 +9,9 @@ import { hashSecret, newSecret, normalizeCodeName } from "./keys"
 import { ageMs, effectiveStatus, liveness } from "./liveness"
 import { DevicesStore } from "./store"
 
-// Member → Worker. Bearer session; writes pass requireMutation (origin allow-list). Owner-only routes gate on
-// session.role. Returns null when it does not own the path so app.ts can fall through.
-
-function requireOwner(session: Session): void {
-  if (session.role !== "owner") throw new HttpError(403, "owner access required")
-}
+// Member → Worker. Bearer session; writes pass requireMutation (origin allow-list). Any member may
+// register or revoke a lab PC; both are audited. Returns null when it does not own the path so
+// app.ts can fall through.
 
 const COMMAND_KINDS = new Set(["poll", "reconfigure", "experiment.stop"])
 
@@ -22,6 +20,7 @@ export async function deviceRoutes(
   url: URL,
   env: Env,
   session: Session,
+  record: Auditor,
 ): Promise<Response | null> {
   const store = new DevicesStore(env.DB)
 
@@ -45,12 +44,12 @@ export async function deviceRoutes(
     if (request.method === "GET") return json(await store.listDevices())
     if (request.method === "POST") {
       requireMutation(request, env)
-      requireOwner(session)
       const body = (await readJson(request)) as { code_name?: unknown }
       const codeName = normalizeCodeName(body.code_name)
       await store.createDevice(codeName, session.login)
       const token = newSecret()
       await store.issueEnrollmentToken(codeName, await hashSecret(token), session.login)
+      record("device.create", codeName)
       // The plaintext token is shown once; only its hash is stored.
       return json({ code_name: codeName, enrollment_token: token }, 201)
     }
@@ -111,10 +110,9 @@ export async function deviceRoutes(
   // ---- writes: same-origin + CSRF ----
   requireMutation(request, env)
 
-  // Device create/delete is owner-only; enqueuing commands and experiments is any member.
   if (request.method === "DELETE" && rest === "") {
-    requireOwner(session)
     await store.revokeDevice(code)
+    record("device.revoke", code)
     return json({ revoked: true })
   }
 

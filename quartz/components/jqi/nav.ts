@@ -7,6 +7,8 @@ export interface NavItem {
   menu?: "resources"
   /** Member-only entry: hidden until the visitor is signed in (toggled client-side). */
   member?: boolean
+  /** Admin-only entry: hidden unless the live session reports is_admin (toggled client-side). */
+  admin?: boolean
   /** Auth control: "in" shows only when logged out, "out" shows only when logged in. */
   auth?: "in" | "out"
 }
@@ -51,9 +53,11 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
           label: "Tools",
           member: true,
           children: [
+            { label: "Hafezi GPT", href: "/gpt" },
             { label: "Devices", href: "/devices" },
             { label: "Experiments", href: "/devices?tab=experiments" },
             { label: "Experiment builder", href: "/devices?tab=builder" },
+            { label: "Admin", href: "/admin", admin: true },
           ],
         },
         { label: "Sign in with GitHub", href: "/auth/login", auth: "in" },

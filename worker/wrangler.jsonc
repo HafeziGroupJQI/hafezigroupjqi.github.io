@@ -32,6 +32,8 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceHub"] }],
   "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
+  // Daily audit-log retention sweep (src/audit.ts pruneAudit).
+  "triggers": { "crons": ["17 4 * * *"] },
   "vars": {
     "AUTH_MODE": "github",
     "GITHUB_ORG": "HafeziGroupJQI",

@@ -1,11 +1,16 @@
-import { type GitHubFetch, allowedOrigins, exchange, startLogin } from "./auth"
+import { adminRoutes } from "./admin/routes"
+import { type Auditor, audit, auditor, isAdmin } from "./audit"
+import { type GitHubFetch, allowedOrigins, exchange, requireMutation, startLogin } from "./auth"
 import { calendarRoutes } from "./calendar/routes"
 import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
 import type { DocsManifest, Env } from "./env"
+import type { AnthropicFetch } from "./gpt/chat"
+import { gptRoutes } from "./gpt/routes"
+import type { SkillsManifest } from "./gpt/skills"
 import { HttpError, json, preflight, problem, redirect, withCors, withPrivateHeaders } from "./http"
-import { readSession } from "./session"
+import { type Session, readSession } from "./session"
 
 // The Worker is an API. Browsers only ever show https://hafezigroupjqi.github.io: its service
 // worker fetches the member edition of every page from GET /api/site/<path> with a bearer token,
@@ -21,6 +26,8 @@ export const MEMBER_PAGES = [
   "/instrument",
   "/experiment-builder",
   "/experiments",
+  "/gpt",
+  "/admin",
 ]
 
 const SITE_PREFIX = "/api/site"
@@ -34,6 +41,10 @@ export interface HandlerOptions {
   upstream?: Upstream
   /** Outbound fetch for GitHub OAuth + REST during sign-in; tests substitute a stub. */
   github?: GitHubFetch
+  /** Outbound fetch for the Claude API (Hafezi GPT); tests substitute a scripted stub. */
+  anthropic?: AnthropicFetch
+  /** Repo skills baked in at build time (tools/gpt-manifest.mjs → generated/gpt-skills.json). */
+  skills?: SkillsManifest
 }
 
 export function createHandler(
@@ -43,6 +54,12 @@ export function createHandler(
   const documents = manifest.documents
   const upstream: Upstream = options.upstream ?? ((input, init) => fetch(input, init))
   const githubFetch: GitHubFetch = options.github ?? ((input, init) => fetch(input, init))
+  const gptDeps = {
+    manifest,
+    skills: options.skills ?? { skills: [] },
+    upstream,
+    anthropicFetch: options.anthropic,
+  }
   return {
     async fetch(request, env, ctx) {
       const url = new URL(request.url)
@@ -86,24 +103,73 @@ export function createHandler(
     if (path === "/api/auth/start" && request.method === "POST")
       return withPrivateHeaders(await startLogin(request, env))
     if (path === "/api/auth/exchange" && request.method === "POST")
-      return withPrivateHeaders(await exchange(request, env, githubFetch))
+      return withPrivateHeaders(await exchange(request, env, githubFetch, ctx))
 
     const session = await readSession(request, env)
     if (!session) {
       if (path === "/api/session") return withPrivateHeaders(json({ user: null }))
       return withPrivateHeaders(problem(401, "login required"))
     }
+    const record = auditor(env, ctx, request, session)
     if (path === "/api/session")
       return withPrivateHeaders(
-        json({ user: { login: session.login, name: session.name, role: session.role } }),
+        json({
+          user: {
+            login: session.login,
+            name: session.name,
+            role: session.role,
+            is_admin: await isAdmin(env, session),
+          },
+        }),
       )
+    if (path === "/api/auth/logout" && request.method === "POST") {
+      requireMutation(request, env)
+      record("auth.logout")
+      return withPrivateHeaders(json({ ok: true }))
+    }
     if (path === SITE_PREFIX || path.startsWith(SITE_PREFIX + "/"))
-      return site(request, url, env, ctx, path.slice(SITE_PREFIX.length) || "/")
+      return site(request, url, env, ctx, path.slice(SITE_PREFIX.length) || "/", record)
+
+    // Every write is audited: routes record a specific event (device.create, gpt.share …); any
+    // write that did not gets a generic api.<METHOD> row with its path and final status.
+    const isWrite = request.method !== "GET" && request.method !== "HEAD"
+    let status = 500
+    try {
+      const response = await memberRoutes(request, url, env, ctx, session, record)
+      status = response.status
+      return withPrivateHeaders(response)
+    } catch (error) {
+      if (error instanceof HttpError) status = error.status
+      throw error
+    } finally {
+      if (isWrite && !record.recorded)
+        audit(env, ctx, request, {
+          login: session.login,
+          role: session.role,
+          action: `api.${request.method}`,
+          target: path,
+          status,
+        })
+    }
+  }
+
+  async function memberRoutes(
+    request: Request,
+    url: URL,
+    env: Env,
+    ctx: ExecutionContext,
+    session: Session,
+    record: Auditor,
+  ): Promise<Response> {
+    const admin = await adminRoutes(request, url, env, session, record)
+    if (admin) return admin
+    const gpt = await gptRoutes(request, url, env, ctx, session, record, gptDeps)
+    if (gpt) return gpt
     const calendar = await calendarRoutes(request, url, env, session)
-    if (calendar) return withPrivateHeaders(calendar)
-    const devices = await deviceRoutes(request, url, env, session)
-    if (devices) return withPrivateHeaders(devices)
-    return withPrivateHeaders(problem(404, "not found"))
+    if (calendar) return calendar
+    const devices = await deviceRoutes(request, url, env, session, record)
+    if (devices) return devices
+    return problem(404, "not found")
   }
 
   // The member edition of the site: prerendered pages and assets from the ASSETS build, and
@@ -114,6 +180,7 @@ export function createHandler(
     env: Env,
     ctx: ExecutionContext,
     sitePath: string,
+    record: Auditor,
   ): Promise<Response> {
     if (request.method !== "GET" && request.method !== "HEAD")
       throw new HttpError(405, "method not allowed")
@@ -139,7 +206,12 @@ export function createHandler(
     if (asset.status !== 404) return withPrivateHeaders(asset, { store: isHashedAsset(sitePath) })
     const docPath = decodeURIComponent(sitePath).replace(/^\//, "")
     const entry = documents[docPath]
-    if (entry) return serveDocument(request, docPath, entry, env, ctx, upstream)
+    if (entry) {
+      // One row per opened document, not per byte-range a PDF viewer asks for.
+      if (request.method === "GET" && (!range || /^bytes=0-/.test(range)))
+        record("doc.view", docPath)
+      return serveDocument(request, docPath, entry, env, ctx, upstream)
+    }
     return withPrivateHeaders(asset)
   }
 }

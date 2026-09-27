@@ -67,6 +67,9 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     // The devices dashboard renders full-bleed; the legacy pages still exist and redirect to it.
     assert.match(read("devices.md"), /layout: dashboard/)
     assert.match(read("devices.md"), /data-dashboard/)
+    assert.match(read("gpt.md"), /data-hafezi-gpt/)
+    assert.match(read("gpt.md"), /layout: dashboard/)
+    assert.match(read("admin.md"), /data-admin/)
     assert.match(read("device.md"), /data-device/)
     assert.match(read("instrument.md"), /data-instrument/)
     assert.match(read("experiment-builder.md"), /data-experiment-builder/)

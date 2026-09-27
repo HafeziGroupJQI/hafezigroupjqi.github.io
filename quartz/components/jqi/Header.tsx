@@ -72,7 +72,11 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
                     <div class="member-menu__panel">
                       <ul>
                         {item.children.map((child) => (
-                          <li>
+                          // Admin entries stay hidden unless the session says is_admin.
+                          <li
+                            data-admin-only={child.admin ? "" : undefined}
+                            hidden={child.admin ? true : undefined}
+                          >
                             <a href={href(child)}>{child.label}</a>
                           </li>
                         ))}

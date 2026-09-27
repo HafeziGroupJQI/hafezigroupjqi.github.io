@@ -1,5 +1,6 @@
-import { SELF } from "cloudflare:test"
-import { expect } from "vitest"
+import { SELF, env } from "cloudflare:test"
+import { expect, vi } from "vitest"
+import { sign } from "../src/session"
 
 export const ORIGIN = "https://members.test"
 
@@ -26,7 +27,39 @@ export async function signIn() {
 }
 
 export async function member() {
-  const token = await signIn()
+  return client(await signIn())
+}
+
+/** A client signed in as `login` (a bearer minted with the test SESSION_SECRET, no GitHub). */
+export async function as(login: string, role: "member" | "owner" = "member") {
+  const session = {
+    typ: "session",
+    login,
+    name: login,
+    role,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  }
+  return client(await sign(session, (env as any).SESSION_SECRET))
+}
+
+/** Audit rows are written in waitUntil; wait until the expected rows land. */
+export async function auditRows(where: string, ...binds: unknown[]) {
+  const query = () =>
+    env.DB.prepare(
+      `SELECT action, login, target, status, detail_json FROM audit_log WHERE ${where} ORDER BY id`,
+    )
+      .bind(...binds)
+      .all()
+      .then((r) => r.results as any[])
+  let rows = await query()
+  await vi.waitFor(async () => {
+    rows = await query()
+    if (!rows.length) throw new Error("no audit rows yet")
+  })
+  return rows
+}
+
+function client(token: string) {
   const headers = {
     authorization: `Bearer ${token}`,
     origin: SITE,

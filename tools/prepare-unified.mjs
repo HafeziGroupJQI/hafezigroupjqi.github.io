@@ -13,6 +13,8 @@ export const excluded = new Set([
   "requirements.txt",
   "_quarto.yml",
   "_freeze",
+  // Hafezi GPT skills: baked into the Worker (tools/gpt-manifest.mjs), not published as pages.
+  "gpt",
 ])
 const walk = (dir) =>
   fs
@@ -57,6 +59,8 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "instrument",
       "experiment-builder",
       "experiments",
+      "gpt",
+      "admin",
     ]) {
       if (
         [reserved, reserved + ".md", reserved + ".qmd"].some((name) =>
@@ -301,6 +305,23 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "devices",
       "Lab devices",
       '<div class="member-tools dashboard" data-dashboard><h1 class="dash-title">Lab devices</h1><p class="muted">Loading…</p></div>',
+      [],
+      { layout: "dashboard" },
+    )
+    // Hafezi GPT (frontend/gpt/): the lab's Claude-backed assistant with projects, skills, @-mentions
+    // of any site page and shared chats. The same chat also opens as a modal on every member page.
+    page(
+      "gpt",
+      "Hafezi GPT",
+      '<div class="member-tools dashboard gpt" data-hafezi-gpt><h1 class="dash-title">Hafezi GPT</h1><p class="muted">Loading…</p></div>',
+      [],
+      { layout: "dashboard" },
+    )
+    // Group admins only (the Worker enforces it): audit log, admins, Hafezi GPT usage and budgets.
+    page(
+      "admin",
+      "Admin",
+      '<div class="member-tools dashboard" data-admin><h1 class="dash-title">Admin</h1><p class="muted">Loading…</p></div>',
       [],
       { layout: "dashboard" },
     )

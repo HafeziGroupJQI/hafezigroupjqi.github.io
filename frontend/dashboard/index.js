@@ -28,7 +28,8 @@ const VIEWS = {
 const HIDDEN_PAUSE_MS = 60_000
 
 export function mountDashboard(root, { api, session }) {
-  const isOwner = session.user?.role === "owner"
+  // Any signed-in member may register and revoke lab PCs (both are audited on the Worker).
+  const canManage = Boolean(session.user)
   const store = createStore(initialState(Date.now()))
   const isHidden = () => document.visibilityState === "hidden"
   let route = parseRoute(location.search)
@@ -42,20 +43,44 @@ export function mountDashboard(root, { api, session }) {
   root.replaceChildren()
   root.classList.add("dashboard")
   const summary = h("p", { class: "dash-summary", "aria-live": "polite" })
-  const header = h("header", { class: "dash-header" },
-    h("h1", { class: "dash-title", text: "Lab devices" }), summary, h("span", { class: "spacer" }),
-    isOwner ? h("button", { type: "button", class: "primary", text: "Add device", onclick: () => addDevice() }) : null)
+  const header = h(
+    "header",
+    { class: "dash-header" },
+    h("h1", { class: "dash-title", text: "Lab devices" }),
+    summary,
+    h("span", { class: "spacer" }),
+    canManage
+      ? h("button", {
+          type: "button",
+          class: "primary",
+          text: "Add device",
+          onclick: () => addDevice(),
+        })
+      : null,
+  )
   const tabs = h("div", { class: "dash-tabs", role: "tablist", "aria-label": "Dashboard sections" })
   const toolbar = h("div", { class: "dash-toolbar" })
   const banner = h("div", { class: "dash-error", role: "alert", hidden: true })
-  const panel = h("div", { class: "dash-panel", role: "tabpanel", id: "dash-panel", tabindex: "-1" })
+  const panel = h("div", {
+    class: "dash-panel",
+    role: "tabpanel",
+    id: "dash-panel",
+    tabindex: "-1",
+  })
   root.append(header, tabs, toolbar, banner, panel)
 
   for (const tab of TABS)
-    tabs.append(h("button", {
-      type: "button", role: "tab", id: `dash-tab-${tab}`, "aria-controls": "dash-panel", "data-tab": tab, text: TAB_LABELS[tab],
-      onclick: () => navigate({ tab, code: route.code }),
-    }))
+    tabs.append(
+      h("button", {
+        type: "button",
+        role: "tab",
+        id: `dash-tab-${tab}`,
+        "aria-controls": "dash-panel",
+        "data-tab": tab,
+        text: TAB_LABELS[tab],
+        onclick: () => navigate({ tab, code: route.code }),
+      }),
+    )
   tabs.addEventListener("keydown", (event) => {
     const i = TABS.indexOf(route.tab)
     const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[event.key]
@@ -69,7 +94,14 @@ export function mountDashboard(root, { api, session }) {
   // ---- data ----
   const showError = (error) => {
     banner.hidden = false
-    banner.replaceChildren(h("span", { text: error.message }), h("button", { type: "button", text: "Retry", onclick: () => ((banner.hidden = true), refreshAll()) }))
+    banner.replaceChildren(
+      h("span", { text: error.message }),
+      h("button", {
+        type: "button",
+        text: "Retry",
+        onclick: () => ((banner.hidden = true), refreshAll()),
+      }),
+    )
   }
   async function loadDevices() {
     try {
@@ -82,22 +114,42 @@ export function mountDashboard(root, { api, session }) {
     }
   }
   async function loadDevice(code) {
-    const [device, instruments] = await Promise.all([api(`/api/devices/${enc(code)}`), api(`/api/devices/${enc(code)}/instruments`)])
+    const [device, instruments] = await Promise.all([
+      api(`/api/devices/${enc(code)}`),
+      api(`/api/devices/${enc(code)}/instruments`),
+    ])
     store.dispatch({ type: "deviceLoaded", code, device, at: Date.now() })
     store.dispatch({ type: "instrumentsLoaded", code, instruments })
   }
   const loadInstruments = async (code) =>
-    store.dispatch({ type: "instrumentsLoaded", code, instruments: await api(`/api/devices/${enc(code)}/instruments`) })
+    store.dispatch({
+      type: "instrumentsLoaded",
+      code,
+      instruments: await api(`/api/devices/${enc(code)}/instruments`),
+    })
   const loadCommands = async (code) =>
-    store.dispatch({ type: "commandsLoaded", code, commands: await api(`/api/devices/${enc(code)}/commands`) })
+    store.dispatch({
+      type: "commandsLoaded",
+      code,
+      commands: await api(`/api/devices/${enc(code)}/commands`),
+    })
   async function loadExperiments(code) {
     if (code) {
       const rows = await api(`/api/devices/${enc(code)}/experiments`)
-      return store.dispatch({ type: "experimentsLoaded", code, experiments: rows.map((r) => ({ ...r, device_code: code })) })
+      return store.dispatch({
+        type: "experimentsLoaded",
+        code,
+        experiments: rows.map((r) => ({ ...r, device_code: code })),
+      })
     }
     const devices = [...store.getState().devices.keys()]
-    const lists = await Promise.all(devices.map((c) =>
-      api(`/api/devices/${enc(c)}/experiments`).then((rows) => rows.map((r) => ({ ...r, device_code: c }))).catch(() => [])))
+    const lists = await Promise.all(
+      devices.map((c) =>
+        api(`/api/devices/${enc(c)}/experiments`)
+          .then((rows) => rows.map((r) => ({ ...r, device_code: c })))
+          .catch(() => []),
+      ),
+    )
     store.dispatch({ type: "experimentsLoaded", code: null, experiments: lists.flat() })
   }
   const guard = (promise) => promise.catch(showError)
@@ -135,7 +187,8 @@ export function mountDashboard(root, { api, session }) {
   }
   const devicesPoller = createPoller(loadDevices, 10_000, { isHidden })
   let tabPoller = null
-  const tabInterval = () => ({ device: 60_000, instruments: 60_000, overview: 60_000 })[route.tab] ?? 15_000
+  const tabInterval = () =>
+    ({ device: 60_000, instruments: 60_000, overview: 60_000 })[route.tab] ?? 15_000
 
   function refreshAll() {
     devicesPoller.now()
@@ -150,7 +203,10 @@ export function mountDashboard(root, { api, session }) {
       button.textContent = "Sending…"
     }
     try {
-      const { delivered } = await api(`/api/devices/${enc(code)}/commands`, { method: "POST", body: JSON.stringify({ kind, args }) })
+      const { delivered } = await api(`/api/devices/${enc(code)}/commands`, {
+        method: "POST",
+        body: JSON.stringify({ kind, args }),
+      })
       if (button) button.textContent = delivered ? "Sent" : "Queued"
       guard(loadCommands(code))
     } catch (error) {
@@ -164,13 +220,20 @@ export function mountDashboard(root, { api, session }) {
     try {
       button && (button.disabled = true)
       const instruments = await api(`/api/devices/${enc(code)}/instruments`)
-      await Promise.all(instruments.map((i) =>
-        api(`/api/devices/${enc(code)}/commands`, { method: "POST", body: JSON.stringify({ kind: "poll", args: { local_id: i.local_id } }) })))
+      await Promise.all(
+        instruments.map((i) =>
+          api(`/api/devices/${enc(code)}/commands`, {
+            method: "POST",
+            body: JSON.stringify({ kind: "poll", args: { local_id: i.local_id } }),
+          }),
+        ),
+      )
       if (button) button.textContent = `Polled ${instruments.length}`
     } catch (error) {
       showError(error)
     } finally {
-      if (button) setTimeout(() => ((button.disabled = false), (button.textContent = "Poll all")), 1500)
+      if (button)
+        setTimeout(() => ((button.disabled = false), (button.textContent = "Poll all")), 1500)
     }
   }
   async function stopExperiment(code, id, button) {
@@ -185,7 +248,12 @@ export function mountDashboard(root, { api, session }) {
     }
   }
   async function revokeDevice(code) {
-    if (!confirm(`Revoke ${code}? Its agent is cut off at once; Add device with the same name to re-enrol it.`)) return
+    if (
+      !confirm(
+        `Revoke ${code}? Its agent is cut off at once; Add device with the same name to re-enrol it.`,
+      )
+    )
+      return
     try {
       await api(`/api/devices/${enc(code)}`, { method: "DELETE" })
       await loadDevices()
@@ -195,7 +263,11 @@ export function mountDashboard(root, { api, session }) {
     }
   }
   const loadInstrument = (code, id) =>
-    guard(api(`/api/devices/${enc(code)}/instruments/${enc(id)}`).then((detail) => store.dispatch({ type: "instrumentLoaded", code, detail })))
+    guard(
+      api(`/api/devices/${enc(code)}/instruments/${enc(id)}`).then((detail) =>
+        store.dispatch({ type: "instrumentLoaded", code, detail }),
+      ),
+    )
 
   function addDevice() {
     const dialog = h("dialog", { class: "member-editor" })
@@ -215,15 +287,37 @@ export function mountDashboard(root, { api, session }) {
       event.preventDefault()
       const code_name = form.elements.namedItem("code_name").value.trim()
       try {
-        const created = await api("/api/devices", { method: "POST", body: JSON.stringify({ code_name }) })
+        const created = await api("/api/devices", {
+          method: "POST",
+          body: JSON.stringify({ code_name }),
+        })
         const result = dialog.querySelector("[data-result]")
         form.hidden = true
         result.hidden = false
         result.append(
-          h("p", {}, "Device ", h("code", { text: created.code_name }), " created. Enroll the agent once with this one-time token (shown only now, valid 15 minutes):"),
+          h(
+            "p",
+            {},
+            "Device ",
+            h("code", { text: created.code_name }),
+            " created. Enroll the agent once with this one-time token (shown only now, valid 15 minutes):",
+          ),
           h("pre", { class: "enroll-token", text: created.enrollment_token }),
-          h("p", { class: "muted" }, "On the lab PC (elevated): ", h("code", { text: `HafeziAgent.exe enroll ${created.enrollment_token}` })),
-          h("div", { class: "editor-actions" }, h("button", { type: "button", text: "Done", onclick: () => (dialog.close(), loadDevices()) })),
+          h(
+            "p",
+            { class: "muted" },
+            "On the lab PC (elevated): ",
+            h("code", { text: `HafeziAgent.exe enroll ${created.enrollment_token}` }),
+          ),
+          h(
+            "div",
+            { class: "editor-actions" },
+            h("button", {
+              type: "button",
+              text: "Done",
+              onclick: () => (dialog.close(), loadDevices()),
+            }),
+          ),
         )
       } catch (error) {
         form.querySelector('[role="alert"]').textContent = error.message
@@ -233,7 +327,16 @@ export function mountDashboard(root, { api, session }) {
   }
 
   const ctx = {
-    store, api, isOwner, navigate, command, pollAll, stopExperiment, loadInstrument, addDevice, revokeDevice,
+    store,
+    api,
+    canManage,
+    navigate,
+    command,
+    pollAll,
+    stopExperiment,
+    loadInstrument,
+    addDevice,
+    revokeDevice,
     devicesFetchedAt: () => devicesFetchedAt,
   }
 
@@ -254,12 +357,23 @@ export function mountDashboard(root, { api, session }) {
   })
   root.addEventListener("click", (event) => {
     const a = event.target.closest("a[data-nav]")
-    if (!a || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    if (
+      !a ||
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return
     const url = new URL(a.href, location.origin)
     if (url.pathname !== "/devices") return
     event.preventDefault()
     const r = parseRoute(url.search)
-    navigate(r, { replace: r.tab === route.tab && r.tab === "overview" && r.layout !== route.layout })
+    navigate(r, {
+      replace: r.tab === route.tab && r.tab === "overview" && r.layout !== route.layout,
+    })
   })
 
   function renderToolbar() {
@@ -267,13 +381,25 @@ export function mountDashboard(root, { api, session }) {
     if (route.tab !== "overview") return
     const group = h("div", { class: "seg", role: "radiogroup", "aria-label": "Layout" })
     for (const layout of LAYOUTS)
-      group.append(h("button", {
-        type: "button", role: "radio", "aria-checked": String(route.layout === layout), text: LAYOUT_LABELS[layout],
-        onclick: () => navigate({ ...route, layout }, { replace: true }),
-      }))
+      group.append(
+        h("button", {
+          type: "button",
+          role: "radio",
+          "aria-checked": String(route.layout === layout),
+          text: LAYOUT_LABELS[layout],
+          onclick: () => navigate({ ...route, layout }, { replace: true }),
+        }),
+      )
     toolbar.append(group)
     if (route.layout === "wall")
-      toolbar.append(h("button", { type: "button", class: "wall-exit", text: "Exit wall (Esc)", onclick: () => navigate({ ...route, layout: "grid" }, { replace: true }) }))
+      toolbar.append(
+        h("button", {
+          type: "button",
+          class: "wall-exit",
+          text: "Exit wall (Esc)",
+          onclick: () => navigate({ ...route, layout: "grid" }, { replace: true }),
+        }),
+      )
   }
 
   function syncStream() {
@@ -295,7 +421,9 @@ export function mountDashboard(root, { api, session }) {
       button.tabIndex = selected ? 0 : -1
     }
     panel.setAttribute("aria-labelledby", `dash-tab-${route.tab}`)
-    document.querySelector(".site-dashboard")?.classList.toggle("dash-wall", route.layout === "wall")
+    document
+      .querySelector(".site-dashboard")
+      ?.classList.toggle("dash-wall", route.layout === "wall")
     document.title = `${TAB_LABELS[route.tab]}${route.code ? " · " + route.code : ""} · Lab devices`
     renderToolbar()
     view?.destroy?.()
@@ -329,7 +457,8 @@ export function mountDashboard(root, { api, session }) {
     else stream?.resume()
   })
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && route.layout === "wall") navigate({ ...route, layout: "grid" }, { replace: true })
+    if (event.key === "Escape" && route.layout === "wall")
+      navigate({ ...route, layout: "grid" }, { replace: true })
   })
   window.addEventListener("beforeunload", () => {
     clearInterval(ticker)
@@ -339,5 +468,11 @@ export function mountDashboard(root, { api, session }) {
   setText(summary, "Loading…")
   devicesPoller.start()
   render()
-  return { store, navigate, get route() { return route } }
+  return {
+    store,
+    navigate,
+    get route() {
+      return route
+    },
+  }
 }

@@ -15,7 +15,8 @@ describe("the member edition behind /api/site", () => {
     expect((await client.fetch("/api/site/resources/notes")).headers.get("cache-control")).toBe(
       "private, no-store",
     )
-    expect(await (await client.fetch("/api/site/static/contentIndex.json")).json()).toBe("secret")
+    const index = (await (await client.fetch("/api/site/static/contentIndex.json")).json()) as any
+    expect(index["equipment/santec-tsl"].title).toBe("Santec TSL tunable laser")
     expect((await client.fetch("/api/site/nowhere")).status).toBe(404)
   })
 

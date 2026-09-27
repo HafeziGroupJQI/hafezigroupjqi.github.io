@@ -78,8 +78,13 @@ describe("device enrollment", () => {
     const first = await createDevice("slow-pc")
     const second = await createDevice("slow-pc")
     expect(second.enrollment_token).not.toBe(first.enrollment_token)
-    expect((await agent("/api/agent/enroll", null, { enrollment_token: first.enrollment_token })).status).toBe(401)
-    expect((await agent("/api/agent/enroll", null, { enrollment_token: second.enrollment_token })).status).toBe(200)
+    expect(
+      (await agent("/api/agent/enroll", null, { enrollment_token: first.enrollment_token })).status,
+    ).toBe(401)
+    expect(
+      (await agent("/api/agent/enroll", null, { enrollment_token: second.enrollment_token }))
+        .status,
+    ).toBe(200)
   })
 
   it("lets a revoked code_name be enrolled again", async () => {
@@ -89,7 +94,9 @@ describe("device enrollment", () => {
     const owner = await member()
     expect((await owner.fetch("/api/devices/reborn-pc", { method: "DELETE" })).status).toBe(200)
     const again = await createDevice("reborn-pc")
-    expect((await agent("/api/agent/enroll", null, { enrollment_token: again.enrollment_token })).status).toBe(200)
+    expect(
+      (await agent("/api/agent/enroll", null, { enrollment_token: again.enrollment_token })).status,
+    ).toBe(200)
     // the old key stays dead
     expect((await agent("/api/agent/instruments", device_key, [])).status).toBe(401)
     const { body } = await owner.json("/api/devices")
@@ -97,14 +104,31 @@ describe("device enrollment", () => {
     expect(row.enrolled).toBe(true)
   })
 
-  it("forbids a non-owner from creating a device", async () => {
+  it("lets any member register and revoke a device, and audits both", async () => {
     const token = await memberSession()
-    const res = await SELF.fetch(`${ORIGIN}/api/devices`, {
+    const headers = {
+      authorization: `Bearer ${token}`,
+      origin: SITE,
+      "content-type": "application/json",
+    }
+    const created = await SELF.fetch(`${ORIGIN}/api/devices`, {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, origin: SITE, "content-type": "application/json" },
-      body: JSON.stringify({ code_name: "sneaky" }),
+      headers,
+      body: JSON.stringify({ code_name: "member-pc" }),
     })
-    expect(res.status).toBe(403)
+    expect(created.status).toBe(201)
+    const revoked = await SELF.fetch(`${ORIGIN}/api/devices/member-pc`, {
+      method: "DELETE",
+      headers,
+    })
+    expect(revoked.status).toBe(200)
+    const { results } = await env.DB.prepare(
+      "SELECT action, target FROM audit_log WHERE login = 'member1' AND target = 'member-pc' ORDER BY id",
+    ).all()
+    expect(results).toEqual([
+      { action: "device.create", target: "member-pc" },
+      { action: "device.revoke", target: "member-pc" },
+    ])
   })
 })
 

@@ -1,3 +1,4 @@
+import { audit } from "./audit"
 import type { Env } from "./env"
 import { HttpError, json, readJson } from "./http"
 import { issueSession, randomToken, sign, timingSafeEqual, verify } from "./session"
@@ -90,6 +91,7 @@ export async function exchange(
   request: Request,
   env: Env,
   githubFetch: GitHubFetch,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   const body = (await readJson(request)) as { code?: unknown; state?: unknown; nonce?: unknown }
   const pending = await verify<PendingLogin>(str(body.state), env.SESSION_SECRET, "state")
@@ -98,6 +100,12 @@ export async function exchange(
 
   if (env.AUTH_MODE === "dev") {
     const user = { login: "dev", name: "Local member", role: "owner" as const }
+    audit(env, ctx, request, {
+      login: user.login,
+      role: user.role,
+      action: "auth.login",
+      status: 200,
+    })
     return json({ ...(await issueSession(user, env)), user, next: pending.next })
   }
 
@@ -141,8 +149,17 @@ export async function exchange(
     org.ok ? ((await org.json()) as Membership) : null,
     team.ok ? ((await team.json()) as Membership) : null,
   )
-  if (!allowed) throw new HttpError(403, `${profile.login}: ${role}`)
+  if (!allowed) {
+    audit(env, ctx, request, {
+      login: profile.login,
+      action: "auth.denied",
+      status: 403,
+      detail: { reason: role },
+    })
+    throw new HttpError(403, `${profile.login}: ${role}`)
+  }
   const user = { login: profile.login, name: profile.name ?? profile.login, role }
+  audit(env, ctx, request, { login: user.login, role, action: "auth.login", status: 200 })
   return json({ ...(await issueSession(user, env)), user, next: pending.next })
 }
 

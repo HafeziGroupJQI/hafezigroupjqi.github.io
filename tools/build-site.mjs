@@ -18,6 +18,7 @@ import {
 import { excluded } from "./prepare-unified.mjs"
 import { writeAuthPages } from "./members-pages.mjs"
 import { DEFAULT_API, bundleMembers } from "./members-bundles.mjs"
+import { writeGptSkills } from "./gpt-manifest.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
 // The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
@@ -89,6 +90,8 @@ try {
     console.log(
       `${Object.keys(manifest).length} private documents recorded in ${written}${pruned ? ` (${pruned} pruned from the site)` : ""}`,
     )
+    const skills = writeGptSkills(fs.realpathSync(options.content))
+    console.log(`${skills.count} Hafezi GPT skills written to ${skills.file}`)
   }
   if (options.mode !== "internal") {
     // The public site carries the members entry points: the service worker that serves signed-in

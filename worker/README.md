@@ -22,30 +22,33 @@ lab PC ─ device key ─► /api/agent/*
 
 ## Routes
 
-| Route                                                   | Purpose                                                                                                                                                                                                               |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/health`                                       | liveness, no login                                                                                                                                                                                                    |
-| `POST /api/auth/start {next}`                          | returns GitHub's authorize URL with `redirect_uri` = `PUBLIC_SITE_URL/auth/callback` and a signed 10-minute state bound to a nonce; `AUTH_MODE=dev` returns `{dev:true, state, nonce}` instead |
-| `POST /api/auth/exchange {code, state, nonce}`          | verifies the state and nonce, trades the code, checks org ownership or `lab-members` membership, returns `{token, exp, user, next}` (8 h bearer token)                                          |
-| `GET /api/session`                                      | `{ user }` for the bearer token (`{ user: null }` without one)                                                                                                                                       |
-| `GET /api/site/<path>`                                  | the member edition of a github.io path: pages and assets from the static assets, private documents streamed from GitHub (Range supported); a trailing-slash/`.html` redirect comes back as `204` + `x-canonical-path` |
-| `GET /api/calendar/events?start&end`                    | occurrences in an aware range of at most 370 days                                                                                                                                                                     |
-| `GET/POST/PUT/DELETE /api/calendar/events[/:id]`        | series and single-occurrence edits with optimistic `version` (409 on conflict); writes from a browser must come from an allowed origin                                                                             |
-| `POST /api/agent/enroll`                                | an agent exchanges a one-time enrollment token for its device key (the only agent call without a device key)                                                                                                          |
-| `POST /api/agent/{instruments,readings,logs,heartbeat}` | device-key ingest: replace-set the instrument declaration, the reading/log firehose (routed through the DeviceHub DO), and per-instrument status                                                                      |
-| `GET /api/agent/command-channel`                        | the agent's persistent WebSocket to its DeviceHub (hibernated): commands out, results back                                                                                                                            |
-| `POST /api/agent/experiments`                           | device-key twin of `POST /api/devices/:code/experiments`: the desktop GUI (`HafeziAgent gui`) on the lab PC submits a `Setup.json` for _its own_ device — same generation, validation and `experiment.start` dispatch |
-| `GET/POST /api/devices`, `DELETE /api/devices/:code`    | list devices; owner-only create (returns a one-time enrollment token) and revoke                                                                                                                                      |
-| `GET /api/devices/:code[/instruments[/:local_id]]`      | device detail, its instruments with latest readings, and one instrument's ports/capabilities/history                                                                                                                  |
+| Route                                                   | Purpose                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                                       | liveness, no login                                                                                                                                                                                                                                                                                                                                                                                    |
+| `POST /api/auth/start {next}`                           | returns GitHub's authorize URL with `redirect_uri` = `PUBLIC_SITE_URL/auth/callback` and a signed 10-minute state bound to a nonce; `AUTH_MODE=dev` returns `{dev:true, state, nonce}` instead                                                                                                                                                                                                        |
+| `POST /api/auth/exchange {code, state, nonce}`          | verifies the state and nonce, trades the code, checks org ownership or `lab-members` membership, returns `{token, exp, user, next}` (8 h bearer token)                                                                                                                                                                                                                                                |
+| `GET /api/session`                                      | `{ user }` for the bearer token (`{ user: null }` without one)                                                                                                                                                                                                                                                                                                                                        |
+| `GET /api/site/<path>`                                  | the member edition of a github.io path: pages and assets from the static assets, private documents streamed from GitHub (Range supported); a trailing-slash/`.html` redirect comes back as `204` + `x-canonical-path`                                                                                                                                                                                 |
+| `GET /api/calendar/events?start&end`                    | occurrences in an aware range of at most 370 days                                                                                                                                                                                                                                                                                                                                                     |
+| `GET/POST/PUT/DELETE /api/calendar/events[/:id]`        | series and single-occurrence edits with optimistic `version` (409 on conflict); writes from a browser must come from an allowed origin                                                                                                                                                                                                                                                                |
+| `POST /api/agent/enroll`                                | an agent exchanges a one-time enrollment token for its device key (the only agent call without a device key)                                                                                                                                                                                                                                                                                          |
+| `POST /api/agent/{instruments,readings,logs,heartbeat}` | device-key ingest: replace-set the instrument declaration, the reading/log firehose (routed through the DeviceHub DO), and per-instrument status                                                                                                                                                                                                                                                      |
+| `GET /api/agent/command-channel`                        | the agent's persistent WebSocket to its DeviceHub (hibernated): commands out, results back                                                                                                                                                                                                                                                                                                            |
+| `POST /api/agent/experiments`                           | device-key twin of `POST /api/devices/:code/experiments`: the desktop GUI (`HafeziAgent gui`) on the lab PC submits a `Setup.json` for _its own_ device — same generation, validation and `experiment.start` dispatch                                                                                                                                                                                 |
+| `GET/POST /api/devices`, `DELETE /api/devices/:code`    | list devices; any member may create (returns a one-time enrollment token) and revoke; both are audited                                                                                                                                                                                                                                                                                                |
+| `GET /api/devices/:code[/instruments[/:local_id]]`      | device detail, its instruments with latest readings, and one instrument's ports/capabilities/history                                                                                                                                                                                                                                                                                                  |
 | _liveness fields_                                       | `GET /api/devices` rows and `GET /api/devices/:code` carry `liveness` (`online` ≤ 45 s · `stale` ≤ 300 s · `offline` · `pending` = never enrolled/seen) and `last_seen_age_ms`, from the **server-stamped** heartbeat; the list adds `instruments_online`. Instrument rows add `effective_status` (`offline` unless the device is `online`) — `instrument_status` never expires, so views must use it |
-| `GET /api/devices/:code/stream`                         | Server-Sent Events: the DeviceHub's live reading/log fan-out (bearer token; the dashboard reads it with `fetch()`)                                                                                                                 |
-| `GET/POST /api/devices/:code/commands`                  | the command audit log; enqueue a `poll`/`reconfigure`/`experiment.stop` command (mutation headers required)                                                                                                           |
-| `GET/POST /api/devices/:code/experiments`               | list experiments; `POST` a `Setup.json` spec → cloud-generate `Runexp.py` → dispatch `experiment.start` (mutation headers)                                                                                            |
-| `POST /api/devices/:code/experiments/:id/stop`          | stop a running experiment                                                                                                                                                                                             |
-| `GET /api/experiments/:id[/datasets]`                   | one experiment (spec, generated script, status) and its dataset artifacts                                                                                                                                             |
-| `GET /api/catalog`                                      | instrument families (ports, capabilities) for the builder                                                                                                                                                             |
-| any other `/api/*`                                      | requires the bearer token (401 without it)                                                                                                                                                          |
-| anything outside `/api/`                                | `302` to the same path on `PUBLIC_SITE_URL`                                                                                                                                                          |
+| `GET /api/devices/:code/stream`                         | Server-Sent Events: the DeviceHub's live reading/log fan-out (bearer token; the dashboard reads it with `fetch()`)                                                                                                                                                                                                                                                                                    |
+| `GET/POST /api/devices/:code/commands`                  | the command audit log; enqueue a `poll`/`reconfigure`/`experiment.stop` command (mutation headers required)                                                                                                                                                                                                                                                                                           |
+| `GET/POST /api/devices/:code/experiments`               | list experiments; `POST` a `Setup.json` spec → cloud-generate `Runexp.py` → dispatch `experiment.start` (mutation headers)                                                                                                                                                                                                                                                                            |
+| `POST /api/devices/:code/experiments/:id/stop`          | stop a running experiment                                                                                                                                                                                                                                                                                                                                                                             |
+| `GET /api/experiments/:id[/datasets]`                   | one experiment (spec, generated script, status) and its dataset artifacts                                                                                                                                                                                                                                                                                                                             |
+| `GET /api/catalog`                                      | instrument families (ports, capabilities) for the builder                                                                                                                                                                                                                                                                                                                                             |
+| `POST /api/auth/logout`                                 | records the sign-out in the audit log (the token itself just expires)                                                                                                                                                                                                                                                                                                                                 |
+| `/api/admin/*`                                          | group admins only (org owners + the `admins` table): `audit` (paged, filtered), `audit.csv`, `admins` (promote/demote), `usage`, `budgets/:login`. See [Audit log](#audit-log-and-admins)                                                                                                                                                                                                             |
+| `/api/gpt/*`                                            | Hafezi GPT: projects, skills, uploads, chats, sharing, and `POST /api/gpt/conversations/:id/messages` (Server-Sent Events). See [Hafezi GPT](#hafezi-gpt)                                                                                                                                                                                                                                             |
+| any other `/api/*`                                      | requires the bearer token (401 without it)                                                                                                                                                                                                                                                                                                                                                            |
+| anything outside `/api/`                                | `302` to the same path on `PUBLIC_SITE_URL`                                                                                                                                                                                                                                                                                                                                                           |
 
 Every response is marked `private` and `noindex`. Browser access is limited by CORS to
 `PUBLIC_SITE_URL` plus any `ALLOWED_ORIGINS` (comma-separated; e.g. `http://localhost:8080` for
@@ -63,19 +66,58 @@ one of those paths the Worker fetches the blob through the GitHub API with
 document simply gets a new key. Documents that are not committed in `vault-private` fail
 the build on purpose: the Worker could never fetch them.
 
+## Audit log and admins
+
+Every sign-in (`auth.login`, and `auth.denied` for accounts the org rule turns away), sign-out,
+private-document view (`doc.view`) and write is recorded in the D1 `audit_log` with the login,
+role, time, target, status, IP and user agent (`src/audit.ts`). Routes record specific events
+(`device.create`, `gpt.share`, `gpt.message` with model and token counts, `admin.promote` …);
+any other write gets a generic `api.<METHOD>` row. Chat prompts and answers are never logged.
+A daily cron (`triggers.crons`) prunes rows older than 365 days.
+
+Group admins are the GitHub org owners plus anyone in the `admins` table; admins add and remove
+each other at `/admin`. The check reads D1 on every request, so changes apply immediately.
+`/api/session` reports `is_admin`, which reveals Tools → Admin in the header.
+
+## Hafezi GPT
+
+A Claude-backed assistant for members, at `/gpt` and as "Ask Hafezi GPT" (Ctrl/⌘+J) on every
+member page (`frontend/gpt/`, `src/gpt/`). It knows the whole member edition of the site:
+
+- **Search and read tools** over the Quartz `contentIndex.json` (public + private pages, BM25 in
+  the isolate) and the docs manifest (private PDFs/text, snapshotted to R2 `gpt/blobs/<sha>`).
+  Results come back as `search_result` / `document` blocks, so answers cite site pages.
+- **Projects**: instructions plus topics (tags such as `project/tfln`, which load every tagged
+  page) and pinned pages and text files, placed in the system prompt behind a 1-hour cache
+  breakpoint (up to ~150k tokens; the rest is read on demand). Private or group.
+- **@-mentions** of pages and documents, **uploads** (PDF, images, text/code; R2 `gpt/<login>/`),
+  and the page a modal chat started on, as cited `document` blocks in the member's message.
+- **Skills**: `SKILL.md`s in `vault-private/gpt/skills/` (baked into
+  `generated/gpt-skills.json` by `tools/gpt-manifest.mjs`) plus member-written ones in D1; the
+  model loads them with `use_skill`, or a member forces one with `/name`.
+- **History and sharing**: chats are private to their owner until shared with a login or the
+  whole lab (`*`); readers get a read-only transcript and can fork it into their own chat.
+- **Models and budgets**: Sonnet 5 by default, Opus 5.5 per chat; usage and cost per member per
+  month in `gpt_usage`, capped by `gpt_budgets` (admins set them at `/admin`).
+
+History is append-only and replayed exactly (thinking and compaction blocks included), with
+binaries stored as R2 references rather than base64. Long chats use server-side compaction.
+Without `ANTHROPIC_API_KEY` the chat answers offline, listing the context it would have sent.
+Through a local claude-bridge (`ANTHROPIC_BASE_URL` on localhost) it runs without tools.
+
 ## Configuration
 
 `wrangler.jsonc` holds the public settings (`GITHUB_ORG`, `GITHUB_TEAM`, `DOCS_REPO`,
 `PUBLIC_SITE_URL`, `AUTH_MODE=github`) and the D1 binding. Secrets, set with
 `wrangler secret put`:
 
-| Secret                                     | Value                                                                           |
-| ------------------------------------------ | ------------------------------------------------------------------------------- |
-| `SESSION_SECRET`                           | 32 or more random characters; signs the bearer tokens and login states          |
+| Secret                                     | Value                                                                                   |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `SESSION_SECRET`                           | 32 or more random characters; signs the bearer tokens and login states                  |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | the GitHub OAuth app whose callback is `https://hafezigroupjqi.github.io/auth/callback` |
-| `GITHUB_DOCS_TOKEN`                        | fine-grained PAT with contents:read on `vault-private`                          |
-| `ANTHROPIC_API_KEY`                        | cloud experiment generation; unset falls back to the offline template generator |
-| `ANTHROPIC_MODEL`                          | optional generation model override (defaults to a current, capable model)       |
+| `GITHUB_DOCS_TOKEN`                        | fine-grained PAT with contents:read on `vault-private`                                  |
+| `ANTHROPIC_API_KEY`                        | cloud experiment generation; unset falls back to the offline template generator         |
+| `ANTHROPIC_MODEL`                          | optional generation model override (defaults to a current, capable model)               |
 
 ## Local development
 

@@ -4,6 +4,8 @@ import timeGridPlugin from "@fullcalendar/timegrid"
 import listPlugin from "@fullcalendar/list"
 import luxonPlugin from "@fullcalendar/luxon3"
 import { DateTime } from "luxon"
+import { mountAdmin } from "./admin/index.js"
+import { installLauncher } from "./gpt/launcher.js"
 import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
 
@@ -259,6 +261,17 @@ if (session.user) {
   }
   mount("data-calendar", setupCalendar)
   mount("data-dashboard", (root) => mountDashboard(root, { api, session }))
-  for (const attr of ["data-device", "data-instrument", "data-experiment-builder", "data-experiments"])
+  mount("data-admin", (root) => mountAdmin(root, { api, session }))
+  // Hafezi GPT: the full app at /gpt, and "Ask Hafezi GPT" (Ctrl/⌘+J) on every other page.
+  mount("data-hafezi-gpt", (root) =>
+    import("./gpt/index.js").then(({ mountGpt }) => mountGpt(root, { api, session })),
+  )
+  installLauncher({ api, session })
+  for (const attr of [
+    "data-device",
+    "data-instrument",
+    "data-experiment-builder",
+    "data-experiments",
+  ])
     mount(attr, () => location.replace(legacyRedirect(location.pathname, location.search)))
 }

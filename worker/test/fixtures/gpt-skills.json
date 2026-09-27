@@ -1,0 +1,11 @@
+{
+  "generatedAt": "2026-09-26T00:00:00.000Z",
+  "skills": [
+    {
+      "name": "scpi-helper",
+      "description": "Write or debug instrument-control code for a lab instrument.",
+      "body": "Find the instrument's equipment record and the lab's scripts before writing commands.",
+      "references": []
+    }
+  ]
+}

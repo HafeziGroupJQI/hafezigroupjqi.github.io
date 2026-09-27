@@ -97,3 +97,11 @@ export function requestedFork(search) {
   const path = new URLSearchParams(search).get("fork")
   return path && !path.startsWith("/") && !path.split("/").includes("..") ? path : null
 }
+
+/** "1.2 GiB of 4 GiB" for a server's memory (bytes; the limit may be unknown). */
+export function formatMemory(bytes, max = null) {
+  if (typeof bytes !== "number") return "—"
+  const unit = (n) =>
+    n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GiB` : `${Math.round(n / 2 ** 20)} MiB`
+  return typeof max === "number" ? `${unit(bytes)} of ${unit(max)}` : unit(bytes)
+}

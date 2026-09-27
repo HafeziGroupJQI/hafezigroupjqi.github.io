@@ -3591,6 +3591,16 @@ html.gpt-modal-open .gpt-fab {
   text-align: left;
   border-bottom: 1px solid var(--jqi-rule);
 }
+.scratchpad .scratch-servers .dash-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.scratchpad .scratch-actions {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
 
 // Wolfram notebook pages (tools/notebooks/, frontend/wolfram-notebook/) ------------------------
 // Pre-rendered EIWL3 chapters: input cells with Shiki spans, cached outputs, per-cell tools.

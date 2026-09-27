@@ -12,6 +12,7 @@ import {
   PROFILES,
   createNdjsonParser,
   describeStatus,
+  formatMemory,
   labRoot,
   launchUrl,
   requestedFork,
@@ -221,54 +222,109 @@ export function mountScratchpad(root, { api, session }) {
     }
   }
 
-  // ---- owner: every member's server ----
+  // ---- owner: every member's server, with CPU/memory, open and stop ----
   async function loadServers() {
+    let data
     try {
-      const { servers: list = [] } = await api("/api/compute/servers")
-      servers.hidden = false
-      servers.replaceChildren(
-        h("div", { class: "dash-section-head" }, h("h2", { text: "Member servers" })),
-        list.length
-          ? h(
-              "table",
-              { class: "scratch-table" },
+      data = await api("/api/compute/servers")
+    } catch {
+      servers.hidden = true
+      return
+    }
+    const list = data.servers ?? []
+    // Opening or stopping someone else's server needs owner access on the Worker and the host.
+    const manage = !!(status?.owner_access && data.owner_access)
+    const actions = (row) => {
+      if (!manage || row.server !== "running" || row.login === login) return h("td", {})
+      return h(
+        "td",
+        { class: "scratch-actions" },
+        h("a", {
+          class: "btn",
+          href: `${labRoot(row.login)}lab`,
+          target: "_blank",
+          rel: "noopener",
+          text: "Open lab",
+        }),
+        h("button", {
+          type: "button",
+          class: "danger",
+          text: "Stop",
+          onclick: async (event) => {
+            if (!confirm(`Stop ${row.login}'s server? Their unsaved notebook changes are lost.`))
+              return
+            event.target.disabled = true
+            try {
+              await api(`/api/compute/servers/${encodeURIComponent(row.login)}`, {
+                method: "DELETE",
+              })
+            } catch (error) {
+              showError(error)
+            }
+            await loadServers()
+          },
+        }),
+      )
+    }
+    servers.hidden = false
+    servers.replaceChildren(
+      h(
+        "div",
+        { class: "dash-section-head" },
+        h("h2", { text: "Member servers" }),
+        h("button", { type: "button", text: "Refresh", onclick: () => loadServers() }),
+      ),
+      manage
+        ? null
+        : h("p", {
+            class: "muted",
+            text: "Owner access is off, so members' servers can be listed but not opened or stopped.",
+          }),
+      list.length
+        ? h(
+            "table",
+            { class: "scratch-table" },
+            h(
+              "thead",
+              {},
               h(
-                "thead",
+                "tr",
                 {},
+                ["Member", "Server", "CPU", "Memory", "Last activity", ""].map((text) =>
+                  h("th", { text }),
+                ),
+              ),
+            ),
+            h(
+              "tbody",
+              {},
+              list.map((row) =>
                 h(
                   "tr",
                   {},
-                  ["Member", "Server", "Last activity"].map((text) => h("th", { text })),
-                ),
-              ),
-              h(
-                "tbody",
-                {},
-                list.map((row) =>
+                  h("td", { class: "mono", text: row.login }),
                   h(
-                    "tr",
+                    "td",
                     {},
-                    h("td", { class: "mono", text: row.login }),
-                    h(
-                      "td",
-                      {},
-                      h("span", {
-                        class: `status status-${row.server === "running" ? "online" : "offline"}`,
-                        text: row.server,
-                      }),
-                    ),
-                    h("td", {
-                      text: row.last_activity ? new Date(row.last_activity).toLocaleString() : "—",
+                    h("span", {
+                      class: `status status-${row.server === "running" ? "online" : "offline"}`,
+                      text: row.server,
                     }),
                   ),
+                  h("td", {
+                    text: typeof row.cpu_percent === "number" ? `${row.cpu_percent}%` : "—",
+                  }),
+                  h("td", { text: formatMemory(row.memory_bytes, row.memory_max_bytes) }),
+                  h("td", {
+                    text: row.last_activity ? new Date(row.last_activity).toLocaleString() : "—",
+                  }),
+                  actions(row),
                 ),
               ),
-            )
-          : h("p", { class: "dash-empty", text: "No member servers." }),
-      )
-    } catch {
-      servers.hidden = true
-    }
+            ),
+          )
+        : h("p", { class: "dash-empty", text: "No member servers." }),
+    )
   }
 
   // ---- "Open notebook in Scratchpad": start the server, copy the notebook in, open it ----

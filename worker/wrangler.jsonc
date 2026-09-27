@@ -51,6 +51,9 @@
     "GITHUB_TEAM": "lab-members",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
     "PUBLIC_SITE_URL": "https://hafezigroupjqi.github.io",
+    // Owners may open and stop members' Scratchpad servers (each open and stop is audited); the
+    // compute host has its own switch, COMPUTE_OWNER_ACCESS in /etc/hafezi-compute/tunnel.env.
+    "COMPUTE_OWNER_ACCESS": "true",
   },
   // Secrets (wrangler secret put): SESSION_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
   // GITHUB_DOCS_TOKEN, and ANTHROPIC_API_KEY for cloud experiment generation. Instrument
@@ -58,5 +61,4 @@
   // gateway secrets (C2_URL, C2_GATEWAY_SECRET, CF_ACCESS_*) are retired.
   // Scratchpad compute: COMPUTE_ASSERTION_SECRET (shared with the compute host; it never gets
   // SESSION_SECRET) and COMPUTE_HOST_KEY_HASH (lowercase hex sha256 of the host's bearer key).
-  // Optional var COMPUTE_OWNER_ACCESS="true" lets owners open members' servers (each is logged).
 }

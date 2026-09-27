@@ -615,6 +615,16 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     const owner = await member()
     expect((await owner.json("/api/compute/servers")).body.servers).toHaveLength(1)
     await list
+
+    // An owner stops a member's server; a member cannot, and the login is checked first.
+    expect((await alice.fetch("/api/compute/servers/bob", { method: "DELETE" })).status).toBe(403)
+    expect((await owner.fetch("/api/compute/servers/..%2Fx", { method: "DELETE" })).status).toBe(
+      422,
+    )
+    const stopOther = answer("stop_server", { server: "stopped" })
+    const stoppedOther = await owner.fetch("/api/compute/servers/Bob", { method: "DELETE" })
+    expect(await stoppedOther.json()).toEqual({ server: "stopped" })
+    expect((await stopOther).args).toEqual({ login: "bob" })
   })
 
   it("limits Wolfram runs to one at a time per member", async () => {

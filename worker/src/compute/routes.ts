@@ -177,6 +177,8 @@ export async function computeRoutes(
         login: session.login.toLowerCase(),
         role: session.role,
         profiles: PROFILES,
+        // Whether owners may open members' labs through the Worker (the host has its own switch).
+        owner_access: session.role === "owner" && env.COMPUTE_OWNER_ACCESS === "true",
       }),
     )
   }
@@ -217,6 +219,18 @@ export async function computeRoutes(
     if (method !== "GET") throw new HttpError(405, "method not allowed")
     requireOwner(session)
     return control(env, session, "list", {}, { timeout_ms: 15_000 })
+  }
+
+  // An owner stopping a member's server. The host also requires its owner access to be on.
+  const other = route.match(/^\/servers\/([^/]+)$/)
+  if (other) {
+    if (method !== "DELETE") throw new HttpError(405, "method not allowed")
+    requireMutation(request, env)
+    requireOwner(session)
+    const login = decodeURIComponent(other[1]).toLowerCase()
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,38})$/.test(login)) throw new HttpError(422, "bad login")
+    record("compute.stop", login)
+    return control(env, session, "stop_server", { login }, { timeout_ms: 60_000 })
   }
 
   if (route === "/wolfram/run") {

@@ -4,6 +4,7 @@ import {
   LAUNCHERS,
   createNdjsonParser,
   describeStatus,
+  formatMemory,
   kernelFor,
   labRoot,
   launchUrl,
@@ -79,4 +80,10 @@ test("?fork= names a vault notebook to copy in; unsafe paths are ignored", () =>
   assert.equal(requestedFork("?fork=%2Fetc%2Fpasswd"), null)
   assert.equal(requestedFork("?fork=a/../../x"), null)
   assert.equal(requestedFork("?open=x.nb"), null)
+})
+
+test("server memory reads in MiB or GiB, with the limit when known", () => {
+  assert.equal(formatMemory(512 * 2 ** 20), "512 MiB")
+  assert.equal(formatMemory(1.5 * 2 ** 30, 4 * 2 ** 30), "1.5 GiB of 4.0 GiB")
+  assert.equal(formatMemory(null), "—")
 })

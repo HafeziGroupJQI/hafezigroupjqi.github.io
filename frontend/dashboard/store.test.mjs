@@ -2,7 +2,14 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { LIMITS, createStore, initialState, reduce, seriesKey } from "./store.js"
 
-const reading = (ts, value, seq = ts) => ({ local_id: "sim", metric: "v", value, ts_ns: String(ts * 1e6), seq, units: "V" })
+const reading = (ts, value, seq = ts) => ({
+  local_id: "sim",
+  metric: "v",
+  value,
+  ts_ns: String(ts * 1e6),
+  seq,
+  units: "V",
+})
 
 test("devicesLoaded derives liveness from the server age", () => {
   const s = reduce(initialState(), {
@@ -14,7 +21,10 @@ test("devicesLoaded derives liveness from the server age", () => {
       { code_name: "c", enrolled: false, last_seen_age_ms: null },
     ],
   })
-  assert.deepEqual([...s.devices.values()].map((d) => d.liveness), ["online", "stale", "pending"])
+  assert.deepEqual(
+    [...s.devices.values()].map((d) => d.liveness),
+    ["online", "stale", "pending"],
+  )
 })
 
 test("tick flips online → stale at exactly the threshold, and is a no-op otherwise", () => {
@@ -37,7 +47,10 @@ test("readings are de-duplicated, so a hello replay is idempotent", () => {
   const again = reduce(s, { type: "hello", code: "d", readings: batch, logs: [] })
   assert.equal(again, s)
   s = reduce(s, { type: "readings", code: "d", readings: [reading(2, 9), reading(4, 4)] })
-  assert.deepEqual(s.series.get(key).map((p) => p.y), [1, 2, 3, 4])
+  assert.deepEqual(
+    s.series.get(key).map((p) => p.y),
+    [1, 2, 3, 4],
+  )
   assert.equal(s.latest.get(key).value, 4)
   assert.equal(s.latest.get(key).units, "V")
 })
@@ -57,7 +70,11 @@ test("rings are capped", () => {
   const many = Array.from({ length: LIMITS.POINTS + 50 }, (_, i) => reading(i + 1, i))
   s = reduce(s, { type: "readings", code: "d", readings: many })
   assert.equal(s.series.get(seriesKey("d", "sim", "v")).length, LIMITS.POINTS)
-  const logs = Array.from({ length: LIMITS.LOGS + 20 }, (_, i) => ({ ts_ns: String(i + 1), level: "info", message: `m${i}` }))
+  const logs = Array.from({ length: LIMITS.LOGS + 20 }, (_, i) => ({
+    ts_ns: String(i + 1),
+    level: "info",
+    message: `m${i}`,
+  }))
   s = reduce(s, { type: "logs", code: "d", logs })
   assert.equal(s.logs.get("d").length, LIMITS.LOGS)
   const replay = reduce(s, { type: "logs", code: "d", logs: logs.slice(-10) })
@@ -69,7 +86,9 @@ test("at-rest instrument values never overwrite newer live ones", () => {
   s = reduce(s, {
     type: "instrumentsLoaded",
     code: "d",
-    instruments: [{ local_id: "sim", status: "online", latest: { v: { value: 1, ts_ns: String(5e6) } } }],
+    instruments: [
+      { local_id: "sim", status: "online", latest: { v: { value: 1, ts_ns: String(5e6) } } },
+    ],
   })
   assert.equal(s.latest.get(seriesKey("d", "sim", "v")).value, 10)
   assert.equal(s.instruments.get("d").get("sim").status, "online")

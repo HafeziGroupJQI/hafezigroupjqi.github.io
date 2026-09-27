@@ -52,7 +52,13 @@ test("dispatches hello/readings/logs/command_result frames from the fetch stream
 })
 
 test("retries quickly after a drop, then backs off after five failures in a minute", async () => {
-  const { timers, actions } = harness([new Error("x"), new Error("x"), new Error("x"), new Error("x"), new Error("x")])
+  const { timers, actions } = harness([
+    new Error("x"),
+    new Error("x"),
+    new Error("x"),
+    new Error("x"),
+    new Error("x"),
+  ])
   await tick()
   assert.equal(timers[0].ms, 1000)
   for (let i = 0; i < 4; i++) {

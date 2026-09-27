@@ -19,7 +19,10 @@ export function buildSpec(values, catalog) {
     ports: [],
   }))
   if (!selected.length) throw new Error("Select at least one instrument.")
-  const dut = values.dut.split(",").map((s) => s.trim()).filter(Boolean)
+  const dut = values.dut
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
   const netlist = values.netlist
     .split("\n")
     .map((line) => line.split(/->|→/).map((s) => s.trim()))
@@ -39,9 +42,24 @@ export function mountBuilder(panel, ctx, route) {
   const picker = devicePicker(ctx, route)
   const form = h("form", { class: "builder" })
   const notice = h("p", { role: "status", class: "muted" })
-  panel.append(h("div", { class: "dash-section-head" }, h("h2", { text: "Experiment builder" }), h("span", { class: "spacer" }), picker.element), form, notice)
+  panel.append(
+    h(
+      "div",
+      { class: "dash-section-head" },
+      h("h2", { text: "Experiment builder" }),
+      h("span", { class: "spacer" }),
+      picker.element,
+    ),
+    form,
+    notice,
+  )
   if (!route.code) {
-    form.append(h("p", { class: "muted", text: "Pick the device whose instruments the experiment will use." }))
+    form.append(
+      h("p", {
+        class: "muted",
+        text: "Pick the device whose instruments the experiment will use.",
+      }),
+    )
     return { update: picker.fill }
   }
   const code = route.code
@@ -59,15 +77,30 @@ export function mountBuilder(panel, ctx, route) {
   const list = form.querySelector("[data-picker]")
   const alert = form.querySelector('[role="alert"]')
   let catalog = []
-  Promise.all([ctx.api("/api/catalog").catch(() => []), ctx.api(`/api/devices/${encodeURIComponent(code)}/instruments`)])
+  Promise.all([
+    ctx.api("/api/catalog").catch(() => []),
+    ctx.api(`/api/devices/${encodeURIComponent(code)}/instruments`),
+  ])
     .then(([cat, instruments]) => {
       catalog = cat
       list.replaceChildren()
-      if (!instruments.length) return list.append(h("p", { class: "muted", text: "No instruments on this device." }))
+      if (!instruments.length)
+        return list.append(h("p", { class: "muted", text: "No instruments on this device." }))
       for (const inst of instruments)
-        list.append(h("label", { class: "check-row" },
-          h("input", { type: "checkbox", value: inst.local_id, "data-driver": inst.driver || "" }),
-          h("span", { text: `${inst.title || inst.local_id} (${inst.ports?.length || 0} ports)` })))
+        list.append(
+          h(
+            "label",
+            { class: "check-row" },
+            h("input", {
+              type: "checkbox",
+              value: inst.local_id,
+              "data-driver": inst.driver || "",
+            }),
+            h("span", {
+              text: `${inst.title || inst.local_id} (${inst.ports?.length || 0} ports)`,
+            }),
+          ),
+        )
     })
     .catch((error) => list.replaceChildren(h("p", { role: "alert", text: error.message })))
 
@@ -77,11 +110,21 @@ export function mountBuilder(panel, ctx, route) {
     const field = (n) => form.elements.namedItem(n).value
     let spec
     try {
-      spec = buildSpec({
-        device: code,
-        instruments: [...list.querySelectorAll("input:checked")].map((b) => ({ local_id: b.value, driver: b.dataset.driver })),
-        label: field("label"), dut: field("dut"), netlist: field("netlist"), points: field("points"), prompt: field("prompt"),
-      }, catalog)
+      spec = buildSpec(
+        {
+          device: code,
+          instruments: [...list.querySelectorAll("input:checked")].map((b) => ({
+            local_id: b.value,
+            driver: b.dataset.driver,
+          })),
+          label: field("label"),
+          dut: field("dut"),
+          netlist: field("netlist"),
+          points: field("points"),
+          prompt: field("prompt"),
+        },
+        catalog,
+      )
     } catch (error) {
       alert.textContent = error.message
       return
@@ -90,7 +133,10 @@ export function mountBuilder(panel, ctx, route) {
     button.disabled = true
     notice.textContent = "Generating the control script…"
     try {
-      const result = await ctx.api(`/api/devices/${encodeURIComponent(code)}/experiments`, { method: "POST", body: JSON.stringify(spec) })
+      const result = await ctx.api(`/api/devices/${encodeURIComponent(code)}/experiments`, {
+        method: "POST",
+        body: JSON.stringify(spec),
+      })
       notice.textContent = ""
       ctx.navigate({ tab: "experiments", code, focus: result.experiment_id })
     } catch (error) {

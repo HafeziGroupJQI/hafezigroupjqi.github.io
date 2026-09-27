@@ -43,13 +43,18 @@ const CORS_EXPOSE_HEADERS = "content-disposition, content-range, accept-ranges, 
 const CORS_METHODS = "GET, HEAD, POST, PUT, DELETE, OPTIONS"
 
 /** Add CORS headers when the request comes from an allowed browser origin (no credentials). */
-export function withCors(response: Response, origin: string | null, allowed: Set<string>): Response {
+export function withCors(
+  response: Response,
+  origin: string | null,
+  allowed: Set<string>,
+): Response {
   if (!origin || !allowed.has(origin)) return response
   const out = new Response(response.body, response)
   out.headers.set("access-control-allow-origin", origin)
   out.headers.set("access-control-expose-headers", CORS_EXPOSE_HEADERS)
   const vary = out.headers.get("vary")
-  if (!vary?.toLowerCase().includes("origin")) out.headers.set("vary", vary ? `${vary}, Origin` : "Origin")
+  if (!vary?.toLowerCase().includes("origin"))
+    out.headers.set("vary", vary ? `${vary}, Origin` : "Origin")
   return out
 }
 

@@ -25,7 +25,11 @@ export function activityModel(state, route, limit = PAGE) {
       steps: [
         { name: "queued", at: at(c.created_ns), reached: true },
         { name: "sent", at: at(c.delivered_ns), reached: c.status !== "queued" },
-        { name: final, at: at(c.completed_ns), reached: c.status === "done" || c.status === "failed" },
+        {
+          name: final,
+          at: at(c.completed_ns),
+          reached: c.status === "done" || c.status === "failed",
+        },
       ],
       result: c.result != null ? JSON.stringify(c.result).slice(0, 200) : "",
     }
@@ -42,30 +46,72 @@ export function mountActivity(panel, ctx, route) {
   let limit = PAGE
   const picker = devicePicker(ctx, route)
   const list = h("ol", { class: "activity-list" })
-  const more = h("button", { type: "button", hidden: true, onclick: () => ((limit += PAGE), update(ctx.store.getState())) })
-  panel.append(h("div", { class: "dash-section-head" }, h("h2", { text: `Activity · ${route.code}` }), h("span", { class: "spacer" }), picker.element), list, more)
+  const more = h("button", {
+    type: "button",
+    hidden: true,
+    onclick: () => ((limit += PAGE), update(ctx.store.getState())),
+  })
+  panel.append(
+    h(
+      "div",
+      { class: "dash-section-head" },
+      h("h2", { text: `Activity · ${route.code}` }),
+      h("span", { class: "spacer" }),
+      picker.element,
+    ),
+    list,
+    more,
+  )
 
   function update(state) {
     picker.fill(state)
     const m = activityModel(state, route, limit)
-    if (!m.loaded) return list.replaceChildren(h("li", { class: "muted", text: "Loading commands…" }))
-    if (!m.items.length) return list.replaceChildren(h("li", { class: "dash-empty", text: "No commands yet. Poll an instrument from the Device tab." }))
-    patchList(list, m.items, (i) => i.id,
-      () => h("li", { class: "cmd-card" },
-        h("header", {}, h("strong", { class: "mono", "data-kind": "" }), h("span", { class: "muted", "data-args": "" }), h("span", { class: "spacer" }), h("span", { "data-pill": "" })),
-        h("ol", { class: "cmd-steps", "data-steps": "" }),
-        h("p", { class: "muted", "data-foot": "" })),
+    if (!m.loaded)
+      return list.replaceChildren(h("li", { class: "muted", text: "Loading commands…" }))
+    if (!m.items.length)
+      return list.replaceChildren(
+        h("li", {
+          class: "dash-empty",
+          text: "No commands yet. Poll an instrument from the Device tab.",
+        }),
+      )
+    patchList(
+      list,
+      m.items,
+      (i) => i.id,
+      () =>
+        h(
+          "li",
+          { class: "cmd-card" },
+          h(
+            "header",
+            {},
+            h("strong", { class: "mono", "data-kind": "" }),
+            h("span", { class: "muted", "data-args": "" }),
+            h("span", { class: "spacer" }),
+            h("span", { "data-pill": "" }),
+          ),
+          h("ol", { class: "cmd-steps", "data-steps": "" }),
+          h("p", { class: "muted", "data-foot": "" }),
+        ),
       (node, i) => {
         setText(node.querySelector("[data-kind]"), i.kind)
         setText(node.querySelector("[data-args]"), i.args)
         const p = node.querySelector("[data-pill]")
         if (p.textContent !== i.status) p.replaceChildren(pill(i.status))
-        patchList(node.querySelector("[data-steps]"), i.steps, (s) => s.name, () => h("li"), (li, s) => {
-          li.className = s.reached ? `reached step-${s.name}` : "pending"
-          setText(li, s.at ? `${s.name} ${s.at}` : s.name)
-        })
+        patchList(
+          node.querySelector("[data-steps]"),
+          i.steps,
+          (s) => s.name,
+          () => h("li"),
+          (li, s) => {
+            li.className = s.reached ? `reached step-${s.name}` : "pending"
+            setText(li, s.at ? `${s.name} ${s.at}` : s.name)
+          },
+        )
         setText(node.querySelector("[data-foot]"), `by ${i.by}${i.result ? " · " + i.result : ""}`)
-      })
+      },
+    )
     more.hidden = m.more <= 0
     more.textContent = `Show ${Math.min(PAGE, m.more)} more`
   }

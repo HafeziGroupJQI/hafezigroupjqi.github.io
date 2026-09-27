@@ -16,7 +16,9 @@ export function createSseParser(onEvent) {
       let index
       while ((index = buffer.search(/\r\n|\r|\n/)) >= 0) {
         const line = buffer.slice(0, index)
-        buffer = buffer.slice(index + (buffer[index] === "\r" && buffer[index + 1] === "\n" ? 2 : 1))
+        buffer = buffer.slice(
+          index + (buffer[index] === "\r" && buffer[index + 1] === "\n" ? 2 : 1),
+        )
         if (line === "") dispatch()
         else if (line.startsWith(":")) continue
         else {

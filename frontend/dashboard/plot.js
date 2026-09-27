@@ -22,19 +22,27 @@ export function planPlot(series, { window = "all", now = Date.now(), hidden = ne
   const overflow = colored.length - shown.length
   const visible = shown
     .filter((s) => !hidden.has(s.name))
-    .map((s) => ({ ...s, points: s.points.filter((p) => Number.isFinite(p.y) && now - p.x <= span) }))
+    .map((s) => ({
+      ...s,
+      points: s.points.filter((p) => Number.isFinite(p.y) && now - p.x <= span),
+    }))
   // One shared chart only when the series share units and fit the palette; otherwise small
   // multiples per units group (never two scales on one axis).
   const unitSet = new Set(visible.map((s) => s.units || ""))
   let panels
-  if (visible.length <= 8 && unitSet.size <= 1) panels = [{ title: null, units: commonUnits(visible), series: visible }]
+  if (visible.length <= 8 && unitSet.size <= 1)
+    panels = [{ title: null, units: commonUnits(visible), series: visible }]
   else {
     const groups = new Map()
     for (const s of visible) {
       const key = s.units || ""
       groups.set(key, [...(groups.get(key) ?? []), s])
     }
-    panels = [...groups].map(([units, list]) => ({ title: units || "no units", units: units || null, series: list }))
+    panels = [...groups].map(([units, list]) => ({
+      title: units || "no units",
+      units: units || null,
+      series: list,
+    }))
   }
   return {
     legend: shown.map((s) => ({ name: s.name, color: s.color, hidden: hidden.has(s.name) })),
@@ -97,26 +105,59 @@ export function livePlot(host, { mini = false } = {}) {
     const time = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour12: false })
     el("text", { x: pad.l, y: H - 6, class: "plot-tick" }, time(xMin))
     el("text", { x: W - pad.r, y: H - 6, class: "plot-tick", "text-anchor": "end" }, time(xMax))
-    el("text", { x: pad.l - 6, y: pad.t + 8, class: "plot-tick", "text-anchor": "end" }, fmtValue(yMax))
-    el("text", { x: pad.l - 6, y: H - pad.b, class: "plot-tick", "text-anchor": "end" }, fmtValue(yMin))
+    el(
+      "text",
+      { x: pad.l - 6, y: pad.t + 8, class: "plot-tick", "text-anchor": "end" },
+      fmtValue(yMax),
+    )
+    el(
+      "text",
+      { x: pad.l - 6, y: H - pad.b, class: "plot-tick", "text-anchor": "end" },
+      fmtValue(yMin),
+    )
     if (panel.units)
-      el("text", { x: 12, y: H / 2, class: "plot-tick", transform: `rotate(-90 12 ${H / 2})`, "text-anchor": "middle" }, panel.units)
+      el(
+        "text",
+        {
+          x: 12,
+          y: H / 2,
+          class: "plot-tick",
+          transform: `rotate(-90 12 ${H / 2})`,
+          "text-anchor": "middle",
+        },
+        panel.units,
+      )
     for (const s of panel.series) {
       if (!s.points.length) continue
       const color = `var(--viz-${s.color})`
-      const d = s.points.map((p, j) => `${j ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ")
+      const d = s.points
+        .map((p, j) => `${j ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`)
+        .join(" ")
       el("path", { d, fill: "none", "stroke-width": "2", style: `stroke:${color}` })
       const last = s.points[s.points.length - 1]
       el("circle", { cx: sx(last.x), cy: sy(last.y), r: "3.5", style: `fill:${color}` })
       if (directLabels)
-        el("text", { x: sx(last.x) - 6, y: sy(last.y) - 6, class: "plot-label", "text-anchor": "end" }, `${s.name} ${fmtValue(last.y)}`)
+        el(
+          "text",
+          { x: sx(last.x) - 6, y: sy(last.y) - 6, class: "plot-label", "text-anchor": "end" },
+          `${s.name} ${fmtValue(last.y)}`,
+        )
     }
     // Hover readout: nearest x across the panel's series.
-    const cursor = el("line", { x1: 0, y1: pad.t, x2: 0, y2: H - pad.b, class: "plot-cursor", visibility: "hidden" })
+    const cursor = el("line", {
+      x1: 0,
+      y1: pad.t,
+      x2: 0,
+      y2: H - pad.b,
+      class: "plot-cursor",
+      visibility: "hidden",
+    })
     const readout = h("p", { class: "plot-readout muted", "aria-live": "off" }, " ")
     svg.addEventListener("pointermove", (event) => {
       const rect = svg.getBoundingClientRect()
-      const x = xMin + (((event.clientX - rect.left) / rect.width) * W - pad.l) / (W - pad.l - pad.r) * spanX
+      const x =
+        xMin +
+        ((((event.clientX - rect.left) / rect.width) * W - pad.l) / (W - pad.l - pad.r)) * spanX
       const parts = []
       let nearestX = null
       for (const s of panel.series) {
@@ -140,14 +181,25 @@ export function livePlot(host, { mini = false } = {}) {
 
   function table() {
     const t = h("table", { class: "plot-table" })
-    const head = h("tr", {}, h("th", { text: "time" }), series.map((s) => h("th", { text: s.name })))
+    const head = h(
+      "tr",
+      {},
+      h("th", { text: "time" }),
+      series.map((s) => h("th", { text: s.name })),
+    )
     t.append(h("thead", {}, head))
     const body = h("tbody")
-    const times = [...new Set(series.flatMap((s) => s.points.map((p) => p.x)))].sort((a, b) => a - b).slice(-12)
+    const times = [...new Set(series.flatMap((s) => s.points.map((p) => p.x)))]
+      .sort((a, b) => a - b)
+      .slice(-12)
     for (const x of times)
       body.append(
-        h("tr", {}, h("td", { text: new Date(x).toLocaleTimeString("en-US", { hour12: false }) }),
-          series.map((s) => h("td", { text: fmtValue(s.points.find((p) => p.x === x)?.y) }))),
+        h(
+          "tr",
+          {},
+          h("td", { text: new Date(x).toLocaleTimeString("en-US", { hour12: false }) }),
+          series.map((s) => h("td", { text: fmtValue(s.points.find((p) => p.x === x)?.y) })),
+        ),
       )
     t.append(body)
     return t
@@ -162,27 +214,48 @@ export function livePlot(host, { mini = false } = {}) {
     const plan = planPlot(series, { window, hidden })
     const bar = h("div", { class: "plot-bar" })
     bar.append(
-      h("button", { type: "button", onclick: () => ((showTable = !showTable), render()) }, showTable ? "Show chart" : "Show table"),
+      h(
+        "button",
+        { type: "button", onclick: () => ((showTable = !showTable), render()) },
+        showTable ? "Show chart" : "Show table",
+      ),
     )
     const windows = h("div", { class: "seg", role: "radiogroup", "aria-label": "Time window" })
     for (const key of Object.keys(WINDOWS))
       windows.append(
-        h("button", { type: "button", role: "radio", "aria-checked": String(window === key), onclick: () => ((window = key), render()) },
-          key === "all" ? "All" : key.replace("m", " min")),
+        h(
+          "button",
+          {
+            type: "button",
+            role: "radio",
+            "aria-checked": String(window === key),
+            onclick: () => ((window = key), render()),
+          },
+          key === "all" ? "All" : key.replace("m", " min"),
+        ),
       )
     bar.append(windows)
     if (plan.legend.length >= 2) {
       const legend = h("div", { class: "plot-legend" })
       for (const item of plan.legend)
         legend.append(
-          h("button", {
-            type: "button",
-            class: `legend-item${item.hidden ? " is-off" : ""}`,
-            "aria-pressed": String(!item.hidden),
-            onclick: () => (hidden.has(item.name) ? hidden.delete(item.name) : hidden.add(item.name), render()),
-          }, h("span", { class: "swatch", style: `background:var(--viz-${item.color})` }), item.name),
+          h(
+            "button",
+            {
+              type: "button",
+              class: `legend-item${item.hidden ? " is-off" : ""}`,
+              "aria-pressed": String(!item.hidden),
+              onclick: () => (
+                hidden.has(item.name) ? hidden.delete(item.name) : hidden.add(item.name),
+                render()
+              ),
+            },
+            h("span", { class: "swatch", style: `background:var(--viz-${item.color})` }),
+            item.name,
+          ),
         )
-      if (plan.overflow > 0) legend.append(h("span", { class: "muted", text: `${plan.overflow} more` }))
+      if (plan.overflow > 0)
+        legend.append(h("span", { class: "muted", text: `${plan.overflow} more` }))
       bar.append(legend)
     }
     wrap.append(bar)

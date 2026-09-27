@@ -3,7 +3,13 @@ import test from "node:test"
 import { buildHref, legacyRedirect, parseRoute } from "./router.js"
 
 test("defaults to the overview grid", () => {
-  assert.deepEqual(parseRoute(""), { tab: "overview", code: null, id: null, layout: "grid", focus: null })
+  assert.deepEqual(parseRoute(""), {
+    tab: "overview",
+    code: null,
+    id: null,
+    layout: "grid",
+    focus: null,
+  })
 })
 
 test("invalid values fall back", () => {
@@ -37,8 +43,14 @@ test("canonical hrefs round-trip", () => {
 
 test("legacy pages map onto dashboard tabs", () => {
   assert.equal(legacyRedirect("/device", "?code=x"), "/devices?tab=device&code=x")
-  assert.equal(legacyRedirect("/instrument", "?code=x&id=y"), "/devices?tab=instruments&code=x&id=y")
-  assert.equal(legacyRedirect("/experiments", "?code=x&focus=E"), "/devices?tab=experiments&code=x&focus=E")
+  assert.equal(
+    legacyRedirect("/instrument", "?code=x&id=y"),
+    "/devices?tab=instruments&code=x&id=y",
+  )
+  assert.equal(
+    legacyRedirect("/experiments", "?code=x&focus=E"),
+    "/devices?tab=experiments&code=x&focus=E",
+  )
   assert.equal(legacyRedirect("/experiment-builder.html", "?code=x"), "/devices?tab=builder&code=x")
   assert.equal(legacyRedirect("/experiments", ""), "/devices?tab=experiments")
 })

@@ -73,7 +73,12 @@ function acceptLogs(state, code, logs) {
     const key = `${l.ts_ns}|${l.message}`
     if (seen.has(key)) continue
     seen.add(key)
-    fresh.push({ ts_ns: String(l.ts_ns), level: l.level ?? "info", local_id: l.local_id ?? null, message: l.message ?? "" })
+    fresh.push({
+      ts_ns: String(l.ts_ns),
+      level: l.level ?? "info",
+      local_id: l.local_id ?? null,
+      message: l.message ?? "",
+    })
   }
   if (!fresh.length) return state
   const next = ring.concat(fresh).sort((a, b) => (big(a.ts_ns) < big(b.ts_ns) ? -1 : 1))
@@ -104,7 +109,13 @@ export function reduce(state, action) {
       const seed = []
       for (const i of action.instruments)
         for (const [metric, r] of Object.entries(i.latest ?? {}))
-          seed.push({ local_id: i.local_id, metric, value: r.value, ts_ns: r.ts_ns, units: r.units })
+          seed.push({
+            local_id: i.local_id,
+            metric,
+            value: r.value,
+            ts_ns: r.ts_ns,
+            units: r.units,
+          })
       return acceptReadings({ ...state, instruments }, action.code, seed)
     }
     case "instrumentLoaded": {
@@ -114,12 +125,21 @@ export function reduce(state, action) {
       map.set(detail.local_id, { ...map.get(detail.local_id), ...detail })
       instruments.set(code, map)
       const history = (detail.history ?? [])
-        .map((p) => ({ local_id: detail.local_id, metric: p.metric, value: p.value, ts_ns: p.ts_ns }))
+        .map((p) => ({
+          local_id: detail.local_id,
+          metric: p.metric,
+          value: p.value,
+          ts_ns: p.ts_ns,
+        }))
         .sort((a, b) => (big(a.ts_ns) < big(b.ts_ns) ? -1 : 1))
       return acceptReadings({ ...state, instruments }, code, history)
     }
     case "hello":
-      return acceptLogs(acceptReadings(state, action.code, action.readings), action.code, action.logs)
+      return acceptLogs(
+        acceptReadings(state, action.code, action.readings),
+        action.code,
+        action.logs,
+      )
     case "readings":
       return acceptReadings(state, action.code, action.readings)
     case "logs":
@@ -142,7 +162,11 @@ export function reduce(state, action) {
         action.code,
         rows.map((c) =>
           c.id === action.command_id
-            ? { ...c, status: action.status === "ok" ? "done" : "failed", result: action.result ?? c.result }
+            ? {
+                ...c,
+                status: action.status === "ok" ? "done" : "failed",
+                result: action.result ?? c.result,
+              }
             : c,
         ),
       )

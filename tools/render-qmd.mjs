@@ -20,8 +20,9 @@ const contentDir = fs.realpathSync(path.resolve(here, "..", process.env.CONTENT_
 const vaultRoot = path.dirname(contentDir) // _quarto.yml lives one level above content/
 
 const walk = (dir) =>
-  fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
-    d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)])
+  fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]))
 const qmds = walk(contentDir).filter((f) => f.endsWith(".qmd"))
 if (qmds.length === 0) {
   console.log("render-qmd: no .qmd files")
@@ -57,11 +58,14 @@ for (const qmd of qmds) {
   if (!fm.title) fm.title = path.basename(md, ".md")
   if (!fm.tags) fm.tags = []
   if (fm.date instanceof Date) fm.date = fm.date.toISOString().slice(0, 10)
-  if (typeof fm.date === "string" && /^\d{4}-\d{2}-\d{2}T00:00:00(\.000)?Z$/.test(fm.date)) fm.date = fm.date.slice(0, 10)
+  if (typeof fm.date === "string" && /^\d{4}-\d{2}-\d{2}T00:00:00(\.000)?Z$/.test(fm.date))
+    fm.date = fm.date.slice(0, 10)
   // header-includes: hoist script tags into the body so raw-HTML widgets work
   const hi = fm["header-includes"]
   if (hi) {
-    const scripts = (Array.isArray(hi) ? hi : [hi]).filter((s) => typeof s === "string" && /<script/i.test(s))
+    const scripts = (Array.isArray(hi) ? hi : [hi]).filter(
+      (s) => typeof s === "string" && /<script/i.test(s),
+    )
     if (scripts.length) body = scripts.join("\n") + "\n\n" + body
     delete fm["header-includes"]
   }

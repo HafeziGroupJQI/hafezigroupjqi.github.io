@@ -26,19 +26,25 @@ export function parseDrawing(filename, source = fs.readFileSync(filename, "utf8"
   } else {
     const block = source.match(/```(compressed-json|json)\s*\r?\n([\s\S]*?)\r?\n```/)
     if (!block) throw new Error(`${filename}: no Excalidraw JSON block`)
-    const decoded = block[1] === "compressed-json"
-      ? LZString.decompressFromBase64(block[2].replace(/\s/g, ""))
-      : block[2]
+    const decoded =
+      block[1] === "compressed-json"
+        ? LZString.decompressFromBase64(block[2].replace(/\s/g, ""))
+        : block[2]
     if (!decoded) throw new Error(`${filename}: compressed Excalidraw data could not be decoded`)
     scene = JSON.parse(decoded)
   }
   const elements = Array.isArray(scene) ? scene : scene.elements
-  if (!Array.isArray(elements) || elements.length === 0) throw new Error(`${filename}: drawing has no elements`)
+  if (!Array.isArray(elements) || elements.length === 0)
+    throw new Error(`${filename}: drawing has no elements`)
   const files = Object.fromEntries(
-    Object.entries(scene.files ?? {}).map(([id, file]) => [id, { mimeType: file.mimeType, dataURL: file.dataURL }]),
+    Object.entries(scene.files ?? {}).map(([id, file]) => [
+      id,
+      { mimeType: file.mimeType, dataURL: file.dataURL },
+    ]),
   )
   for (const element of elements.filter((candidate) => candidate.type === "image")) {
-    if (!element.fileId || !files[element.fileId]) throw new Error(`${filename}: missing embedded file ${element.fileId ?? "(unset)"}`)
+    if (!element.fileId || !files[element.fileId])
+      throw new Error(`${filename}: missing embedded file ${element.fileId ?? "(unset)"}`)
   }
   return { elements, files }
 }
@@ -52,7 +58,7 @@ const drawingTitle = (filename) => {
   if (!filename.endsWith(".md")) return path.basename(filename).replace(/\.excalidraw$/, "")
   const text = fs.readFileSync(filename, "utf8")
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
-  const frontmatter = match ? yaml.parse(match[1]) ?? {} : {}
+  const frontmatter = match ? (yaml.parse(match[1]) ?? {}) : {}
   return String(frontmatter.title ?? path.basename(filename).replace(/\.excalidraw\.md$/, ""))
 }
 
@@ -72,7 +78,9 @@ export function drawingAliases(root, filename) {
 export function rewriteDrawingEmbeds(text, drawings, pageRelative = "index.md") {
   return text.replace(/!\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g, (match, raw) => {
     const target = raw.trim().replace(/\\$/, "")
-    const candidates = drawings.filter((drawing) => drawing.aliases.has(target) || drawing.aliases.has(path.basename(target)))
+    const candidates = drawings.filter(
+      (drawing) => drawing.aliases.has(target) || drawing.aliases.has(path.basename(target)),
+    )
     if (candidates.length === 0) return match
     if (candidates.length > 1) throw new Error(`ambiguous Excalidraw embed [[${raw}]]`)
     const drawing = candidates[0]
@@ -85,8 +93,10 @@ export function rewriteDrawingEmbeds(text, drawings, pageRelative = "index.md") 
 
 const sanitizeSvg = (filename) => {
   const svg = fs.readFileSync(filename, "utf8")
-  if (!/<svg\b/i.test(svg) || !/viewBox=/i.test(svg)) throw new Error(`${filename}: renderer produced an invalid SVG`)
-  if (/<script\b|\son[a-z]+\s*=|(?:href|src)=["']https?:/i.test(svg)) throw new Error(`${filename}: renderer produced unsafe external content`)
+  if (!/<svg\b/i.test(svg) || !/viewBox=/i.test(svg))
+    throw new Error(`${filename}: renderer produced an invalid SVG`)
+  if (/<script\b|\son[a-z]+\s*=|(?:href|src)=["']https?:/i.test(svg))
+    throw new Error(`${filename}: renderer produced unsafe external content`)
 }
 
 export async function renderDrawings(rootDirectory) {
@@ -98,7 +108,11 @@ export async function renderDrawings(rootDirectory) {
   }
 
   const client = new Client({ name: "hafezi-site-build", version: "1.0.0" })
-  const transport = new StdioClientTransport({ command: process.execPath, args: [rendererEntry], stderr: "inherit" })
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [rendererEntry],
+    stderr: "inherit",
+  })
   await client.connect(transport)
   const drawings = []
   try {
@@ -115,7 +129,12 @@ export async function renderDrawings(rootDirectory) {
           format: "svg",
         },
       })
-      if (result.isError) throw new Error(result.content.map((item) => item.type === "text" ? item.text : "render error").join("\n"))
+      if (result.isError)
+        throw new Error(
+          result.content
+            .map((item) => (item.type === "text" ? item.text : "render error"))
+            .join("\n"),
+        )
       sanitizeSvg(output)
       const relative = normalize(path.relative(root, filename))
       drawings.push({
@@ -130,7 +149,9 @@ export async function renderDrawings(rootDirectory) {
     await client.close()
   }
 
-  for (const page of walk(root).filter((filename) => pagePattern.test(filename) && !drawingPattern.test(filename))) {
+  for (const page of walk(root).filter(
+    (filename) => pagePattern.test(filename) && !drawingPattern.test(filename),
+  )) {
     const before = fs.readFileSync(page, "utf8")
     const after = rewriteDrawingEmbeds(before, drawings, normalize(path.relative(root, page)))
     if (after !== before) fs.writeFileSync(page, after)
@@ -147,4 +168,5 @@ async function main() {
   await renderDrawings(directory)
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href) await main()
+if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href)
+  await main()

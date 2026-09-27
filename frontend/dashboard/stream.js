@@ -25,7 +25,9 @@ export function openDeviceStream(code, dispatch, deps = {}) {
   const {
     connect = defaultConnect,
     onLoggedOut = () =>
-      location.assign("/auth/login?next=" + encodeURIComponent(location.pathname + location.search)),
+      location.assign(
+        "/auth/login?next=" + encodeURIComponent(location.pathname + location.search),
+      ),
     setTimeout: set = globalThis.setTimeout,
     clearTimeout: clear = globalThis.clearTimeout,
     now = () => Date.now(),
@@ -44,7 +46,13 @@ export function openDeviceStream(code, dispatch, deps = {}) {
     readings: (d) => dispatch({ type: "readings", code, readings: d }),
     logs: (d) => dispatch({ type: "logs", code, logs: d }),
     command_result: (d) =>
-      dispatch({ type: "commandResult", code, command_id: d.command_id, status: d.status, result: d.result }),
+      dispatch({
+        type: "commandResult",
+        code,
+        command_id: d.command_id,
+        status: d.status,
+        result: d.result,
+      }),
   }
   const onEvent = (name, text) => {
     const handler = handlers[name]

@@ -14,7 +14,10 @@ const KEY = "session"
 
 /** A stored session is usable until its expiry (seconds since epoch), with a minute to spare. */
 export const isLive = (auth, now = Date.now()) =>
-  !!auth && typeof auth.token === "string" && typeof auth.exp === "number" && auth.exp * 1000 - 60_000 > now
+  !!auth &&
+  typeof auth.token === "string" &&
+  typeof auth.exp === "number" &&
+  auth.exp * 1000 - 60_000 > now
 
 function withStore(mode, run) {
   return new Promise((resolve, reject) => {
@@ -51,7 +54,8 @@ export const clearAuth = () => withStore("readwrite", (store) => store.delete(KE
 
 /** Only same-site paths may be used as a post-login destination (mirrors the Worker's safeNext). */
 export function safeNext(value, fallback = "/") {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return fallback
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\"))
+    return fallback
   if (/^\/[^/]*:/.test(value) || /[\u0000-\u001f]/.test(value)) return fallback
   if (value.startsWith("/auth/")) return fallback
   return value

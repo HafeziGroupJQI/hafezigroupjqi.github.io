@@ -7,6 +7,7 @@ import {
   kernelFor,
   labRoot,
   launchUrl,
+  requestedFork,
   requestedPath,
 } from "./launch.js"
 
@@ -71,4 +72,11 @@ test("?open= names a file in the member's storage; absolute or parent paths are 
     launchUrl("Alice", null, "base", "forks/published/My notes.nb"),
     "/jupyter/user/alice/lab/tree/forks/published/My%20notes.nb",
   )
+})
+
+test("?fork= names a vault notebook to copy in; unsafe paths are ignored", () => {
+  assert.equal(requestedFork("?fork=wolfram-guide/EIWL3-01.nb"), "wolfram-guide/EIWL3-01.nb")
+  assert.equal(requestedFork("?fork=%2Fetc%2Fpasswd"), null)
+  assert.equal(requestedFork("?fork=a/../../x"), null)
+  assert.equal(requestedFork("?open=x.nb"), null)
 })

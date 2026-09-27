@@ -51,21 +51,11 @@ export function mountWolframNotebook(root) {
           .catch(() => [])
       : Promise.resolve([]))
 
-  // Copy the notebook into the member's storage and open it in the Scratchpad's lab.
-  const fork = async (status) => {
-    status.textContent = "Copying into your Scratchpad…"
-    try {
-      const {
-        ok,
-        status: code,
-        data,
-      } = await post("/api/compute/fork", { source: { kind: "published", path: source } })
-      if (!ok) throw new Error(failureMessage(code, data))
-      status.textContent = `Saved as ${data.path}. Opening…`
-      location.assign(`/scratchpad?open=${encodeURIComponent(data.path)}`)
-    } catch (error) {
-      status.textContent = error.message
-    }
+  // Open the notebook in the Scratchpad: the page there starts the member's server (the host only
+  // knows members who have started one), copies the notebook into their storage and opens it.
+  const fork = (status) => {
+    status.textContent = "Opening the Scratchpad…"
+    location.assign(`/scratchpad?fork=${encodeURIComponent(source)}`)
   }
 
   if (source) {

@@ -14,6 +14,7 @@ import {
   describeStatus,
   labRoot,
   launchUrl,
+  requestedFork,
   requestedPath,
 } from "./launch.js"
 
@@ -270,6 +271,35 @@ export function mountScratchpad(root, { api, session }) {
     }
   }
 
+  // ---- "Open notebook in Scratchpad": start the server, copy the notebook in, open it ----
+  async function openFork(source) {
+    setBusy(true)
+    banner.hidden = true
+    try {
+      if (!status?.host?.online) throw new Error("The compute host is offline; try again later.")
+      if (status?.server?.server !== "running") await ensureServer(profile.value)
+      progress.hidden = false
+      setText(progressText, `Copying ${source.split("/").pop()} into your Scratchpad…`)
+      const data = await api("/api/compute/fork", {
+        method: "POST",
+        body: JSON.stringify({ source: { kind: "published", path: source } }),
+      })
+      progress.hidden = true
+      // A reload opens the copy rather than forking again.
+      const url = new URL(location.href)
+      url.searchParams.delete("fork")
+      url.searchParams.set("open", data.path)
+      history.replaceState(history.state, "", url)
+      open(launchUrl(login, null, profile.value, data.path))
+      await refresh()
+    } catch (error) {
+      progress.hidden = true
+      showError(error)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // ---- Hafezi GPT ----
   // The gpt-bridge lab extension posts {type: "hafezi-gpt:ask", context} from the iframe (its
   // Ctrl/⌘+J or a cell's "Ask Hafezi GPT"). The modal opens with that code attached, and code in
@@ -288,9 +318,11 @@ export function mountScratchpad(root, { api, session }) {
   })
 
   let pending = requestedPath(location.search)
+  const forkSource = requestedFork(location.search)
   refresh().then(() => {
+    if (forkSource) openFork(forkSource)
     // Re-open the lab after a reload when the server is already up (at the requested file).
-    if (status?.server?.server === "running") {
+    else if (status?.server?.server === "running") {
       open(pending ? launchUrl(login, null, profile.value, pending) : `${labRoot(login)}lab`)
       pending = null
     } else if (pending) showError(new Error(`Start your server to open ${pending}.`))

@@ -89,3 +89,11 @@ export function requestedPath(search) {
   const path = new URLSearchParams(search).get("open")
   return path && !path.startsWith("/") && !path.split("/").includes("..") ? path : null
 }
+
+// ?fork=<path in the private vault> ("Open notebook in Scratchpad" on a notebook page): the page
+// starts the member's server first, since the host only knows members who have started one, then
+// copies the notebook in and opens it. Absolute and parent paths are ignored.
+export function requestedFork(search) {
+  const path = new URLSearchParams(search).get("fork")
+  return path && !path.startsWith("/") && !path.split("/").includes("..") ? path : null
+}

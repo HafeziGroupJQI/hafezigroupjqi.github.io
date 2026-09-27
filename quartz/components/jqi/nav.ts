@@ -31,6 +31,7 @@ export const resourceNav: NavItem[] = [
       href: `/resources/${label.toLowerCase().replace(/ /g, "-")}/`,
     }),
   ),
+  { label: "Wolfram Language guide", href: "/resources/wolfram-guide/" },
   { label: "Topics", href: "/resources/topics/" },
 ]
 

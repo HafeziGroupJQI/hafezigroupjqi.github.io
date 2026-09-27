@@ -71,6 +71,17 @@ try {
   }
   await renderDrawings(output)
   execFileSync(process.execPath, ["tools/render-qmd.mjs"], { stdio: "inherit", env })
+  // Every other notebook (.ipynb, Wolfram .nb) becomes a page from its saved outputs
+  // (tools/notebooks/). Wolfram pages' figures and sounds are served at /notebook-assets/.
+  const notebookAssets = path.join(stage, "notebook-assets")
+  execFileSync(process.execPath, ["tools/notebooks/render-notebooks.mjs"], {
+    stdio: "inherit",
+    env: {
+      ...env,
+      NOTEBOOK_ASSETS: notebookAssets,
+      NOTEBOOK_FORK_PREFIX: options.mode === "internal" ? "resources/" : "",
+    },
+  })
   execFileSync(
     process.execPath,
     [
@@ -82,6 +93,8 @@ try {
     ],
     { stdio: "inherit", env },
   )
+  if (fs.existsSync(notebookAssets))
+    fs.cpSync(notebookAssets, path.join(options.output, "notebook-assets"), { recursive: true })
   if (options.mode === "internal") {
     await bundleMembers(options.output, "internal", membersApi)
     fs.writeFileSync(path.join(options.output, "robots.txt"), "User-agent: *\nDisallow: /\n")

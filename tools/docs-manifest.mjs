@@ -24,6 +24,7 @@ const contentTypes = {
   txt: "text/plain; charset=utf-8",
   py: "text/x-python; charset=utf-8",
   ipynb: "application/x-ipynb+json",
+  nb: "application/vnd.wolfram.mathematica",
   json: "application/json",
   yml: "application/yaml",
   yaml: "application/yaml",

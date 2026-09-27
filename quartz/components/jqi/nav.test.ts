@@ -15,6 +15,12 @@ test("members keep public navigation and gain native resource and tool menus", (
   const resources = items.find((item) => item.label === "Resources")!
   assert.ok(resources.children?.some((item) => item.href === "/calendar"))
   assert.ok(resources.children?.some((item) => item.href === "/resources/equipment/"))
+  // The Wolfram Language guide follows Equipment in the Resources menu.
+  const hrefs = resources.children?.map((item) => item.href) ?? []
+  assert.equal(
+    hrefs.indexOf("/resources/wolfram-guide/"),
+    hrefs.indexOf("/resources/equipment/") + 1,
+  )
   const tools = items.find((item) => item.label === "Tools")!
   assert.deepEqual(
     tools.children?.map((item) => item.href),

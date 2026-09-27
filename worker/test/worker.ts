@@ -11,6 +11,7 @@ export const upstreamCalls: string[] = []
 export const upstreamBodies: Record<string, [number, string]> = {
   "0123456789abcdef0123456789abcdef01234567": [200, "%PDF-1.4 laser"],
   fedcba9876543210fedcba9876543210fedcba98: [500, "boom"],
+  aaaabbbbccccddddeeeeffff0000111122223333: [200, "<svg></svg>"],
 }
 
 // A stand-in for GitHub OAuth + REST during sign-in (AUTH_MODE=github tests).

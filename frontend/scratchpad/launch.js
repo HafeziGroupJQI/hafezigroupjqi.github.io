@@ -3,7 +3,9 @@
 
 /** IPython profiles (compute/hafezi_profiles); each has a kernelspec named hafezi-<profile>. */
 export const PROFILES = [
-  ["base", "Base (course presets)"],
+  // The default: NumPy, SciPy, SymPy and matplotlib (the course helpers stay callable in every
+  // IPython profile, but nothing course-specific is set up).
+  ["base", "General (NumPy · SciPy · SymPy)"],
   ["lumerical", "Lumerical"],
   ["fdtd", "FDTD"],
   ["gds", "GDS layout"],

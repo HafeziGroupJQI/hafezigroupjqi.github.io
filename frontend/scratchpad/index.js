@@ -32,12 +32,19 @@ export function mountScratchpad(root, { api, session }) {
   const pill = h("span", { class: "status status-pending", text: "checking…" })
   const stop = h("button", {
     type: "button",
+    hidden: true,
     class: "danger",
     text: "Stop server",
     onclick: () => stopServer(),
   })
-  const restart = h("button", { type: "button", text: "Restart", onclick: () => restartServer() })
+  const restart = h("button", {
+    type: "button",
+    hidden: true,
+    text: "Restart",
+    onclick: () => restartServer(),
+  })
   const newTab = h("a", {
+    hidden: true,
     class: "btn",
     href: `${labRoot(login)}lab`,
     target: "_blank",
@@ -107,7 +114,10 @@ export function mountScratchpad(root, { api, session }) {
     const online = !!status?.host?.online
     for (const button of launchers.children) button.disabled = value || !online
     profile.disabled = value || !online
-    stop.disabled = restart.disabled = value || status?.server?.server !== "running"
+    // Stop, Restart and Open in new tab only make sense for a running server.
+    const running = status?.server?.server === "running"
+    stop.hidden = restart.hidden = newTab.hidden = !running
+    stop.disabled = restart.disabled = value || !running
   }
 
   // ---- status ----

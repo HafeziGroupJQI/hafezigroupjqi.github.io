@@ -143,6 +143,61 @@ describe("admin console", () => {
     expect(lines).toHaveLength(4)
   })
 
+  it("lets admins read members' Hafezi GPT conversations", async () => {
+    const now = Date.now()
+    await env.DB.prepare(
+      `INSERT INTO gpt_conversations (id, owner, title, model, created_at, updated_at)
+       VALUES ('c-mia-1', 'mia', 'Ring resonator loss', 'claude-sonnet-5', ?1, ?1)`,
+    )
+      .bind(now)
+      .run()
+    await env.DB.prepare(
+      `INSERT INTO gpt_messages (conversation_id, role, content_json, meta_json, created_at)
+       VALUES ('c-mia-1', 'user', ?1, ?4, ?3), ('c-mia-1', 'assistant', ?2, '{}', ?3)`,
+    )
+      .bind(
+        JSON.stringify([{ type: "text", text: "Why is my Q so low?" }]),
+        JSON.stringify([{ type: "text", text: "Check the **bend loss** first." }]),
+        now,
+        // Stored the way chat.ts stores a prompt: the display text lives in meta.
+        JSON.stringify({ kind: "prompt", text: "Why is my Q so low?" }),
+      )
+      .run()
+
+    const member = await as("nora", "member")
+    expect((await member.fetch("/api/admin/gpt/members")).status).toBe(403)
+    expect((await member.fetch("/api/admin/gpt/conversations/c-mia-1")).status).toBe(403)
+
+    const owner = await as("olivia", "owner")
+    const members = await owner.json("/api/admin/gpt/members")
+    expect(members.body.members.find((m: any) => m.login === "mia")).toMatchObject({
+      conversations: 1,
+      messages: 2,
+    })
+    const list = await owner.json("/api/admin/gpt/conversations?login=mia")
+    expect(list.body.conversations.map((c: any) => [c.id, c.title, c.messages])).toEqual([
+      ["c-mia-1", "Ring resonator loss", 2],
+    ])
+    expect((await owner.fetch("/api/admin/gpt/conversations?login=../x")).status).toBe(422)
+    const chat = await owner.json("/api/admin/gpt/conversations/c-mia-1")
+    expect(chat.body.conversation).toMatchObject({ owner: "mia", title: "Ring resonator loss" })
+    expect(chat.body.turns[0]).toMatchObject({ role: "user", text: "Why is my Q so low?" })
+    expect(chat.body.turns[1].role).toBe("assistant")
+    expect(JSON.stringify(chat.body.turns[1].blocks)).toContain("bend loss")
+    expect((await owner.fetch("/api/admin/gpt/conversations/nope")).status).toBe(404)
+    // Reading is not recorded: after a later audited write lands, olivia has only that row.
+    await owner.json("/api/admin/budgets/mia", {
+      method: "PUT",
+      body: JSON.stringify({ monthly_tokens: 1000 }),
+    })
+    const rows = await auditRows("login = 'olivia' AND target = 'mia'")
+    expect(rows.map((r) => r.action)).toEqual(["admin.budget"])
+    const { results } = await env.DB.prepare(
+      "SELECT action, target FROM audit_log WHERE login = 'olivia' AND (target LIKE '%gpt%' OR target = 'c-mia-1')",
+    ).all()
+    expect(results).toEqual([])
+  })
+
   it("sets and clears monthly GPT budgets and reports usage", async () => {
     const owner = await as("olivia", "owner")
     const set = await owner.json("/api/admin/budgets/frank", {

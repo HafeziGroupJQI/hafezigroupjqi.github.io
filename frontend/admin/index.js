@@ -17,6 +17,7 @@ const TABS = [
   ["audit", "Audit log"],
   ["admins", "Admins"],
   ["usage", "Usage & budgets"],
+  ["conversations", "Conversations"],
 ]
 
 export function mountAdmin(root, { api, session }) {
@@ -80,7 +81,9 @@ export function mountAdmin(root, { api, session }) {
     url.searchParams.set("tab", id)
     history.replaceState(history.state, "", url)
     panel.replaceChildren()
-    ;({ audit: auditTab, admins: adminsTab, usage: usageTab })[id](panel).catch(fail)
+    ;({ audit: auditTab, admins: adminsTab, usage: usageTab, conversations: conversationsTab })
+      [id](panel)
+      .catch(fail)
   }
 
   // ---- audit log ----
@@ -365,6 +368,190 @@ export function mountAdmin(root, { api, session }) {
     }
     month.onchange = () => load().catch(fail)
     await load()
+  }
+
+  // ---- Hafezi GPT conversations: members → their chats → a transcript ----
+  async function conversationsTab(panel) {
+    const view = h("div", { class: "admin-conversations" })
+    panel.append(view)
+    // Deep links: ?tab=conversations&member=<login>&c=<conversation id>.
+    const setQuery = (values) => {
+      const url = new URL(location.href)
+      for (const [key, value] of Object.entries(values))
+        value ? url.searchParams.set(key, value) : url.searchParams.delete(key)
+      history.replaceState(history.state, "", url)
+    }
+    const back = (text, onclick) => h("button", { type: "button", class: "link", text, onclick })
+    const table = (heads, rows) =>
+      h(
+        "div",
+        { class: "table-scroll" },
+        h(
+          "table",
+          { class: "bases-table" },
+          h(
+            "thead",
+            {},
+            h(
+              "tr",
+              {},
+              heads.map((t) => h("th", { text: t })),
+            ),
+          ),
+          h("tbody", {}, rows),
+        ),
+      )
+
+    async function members() {
+      setQuery({ member: null, c: null })
+      const data = await api("/api/admin/gpt/members")
+      view.replaceChildren(
+        data.members.length
+          ? table(
+              ["Member", "Conversations", "Messages", "Last active"],
+              data.members.map((m) =>
+                h(
+                  "tr",
+                  {},
+                  h(
+                    "td",
+                    {},
+                    h("button", {
+                      type: "button",
+                      class: "link mono",
+                      text: m.login,
+                      onclick: () => chats(m.login).catch(fail),
+                    }),
+                  ),
+                  h("td", { text: String(m.conversations) }),
+                  h("td", { text: String(m.messages) }),
+                  h("td", { text: m.last_at ? formatWhen(m.last_at) : "—" }),
+                ),
+              ),
+            )
+          : h("p", { class: "dash-empty", text: "No Hafezi GPT conversations yet." }),
+      )
+    }
+
+    async function chats(login) {
+      setQuery({ member: login, c: null })
+      const data = await api(`/api/admin/gpt/conversations?login=${encodeURIComponent(login)}`)
+      view.replaceChildren(
+        h(
+          "div",
+          { class: "dash-toolbar" },
+          back("← All members", () => members().catch(fail)),
+          h("h2", { class: "mono", text: login }),
+        ),
+        table(
+          ["Conversation", "Project", "Messages", "Updated"],
+          data.conversations.map((c) =>
+            h(
+              "tr",
+              {},
+              h(
+                "td",
+                {},
+                h("button", {
+                  type: "button",
+                  class: "link",
+                  text: c.title,
+                  onclick: () => transcript(login, c.id).catch(fail),
+                }),
+              ),
+              h("td", { text: c.project ?? "—" }),
+              h("td", { text: String(c.messages) }),
+              h("td", { text: formatWhen(c.updated_at) }),
+            ),
+          ),
+        ),
+      )
+    }
+
+    async function transcript(login, id) {
+      setQuery({ member: login, c: id })
+      const [{ renderMarkdown }, data] = await Promise.all([
+        import("../gpt/render.js"),
+        api(`/api/admin/gpt/conversations/${encodeURIComponent(id)}`),
+      ])
+      const { conversation } = data
+      const markdown = (text, citations) => {
+        const div = h("div", { class: "gpt-md" })
+        div.innerHTML = renderMarkdown(text, citations)
+        return div
+      }
+      const turn = (t) =>
+        t.role === "user"
+          ? h(
+              "article",
+              { class: "gpt-msg gpt-msg--user" },
+              h("div", { class: "gpt-msg-meta muted", text: formatWhen(t.at) }),
+              t.context ? h("div", { class: "gpt-msg-meta", text: `🧪 ${t.context.label}` }) : null,
+              h("div", { class: "gpt-msg-text", text: t.text }),
+            )
+          : h(
+              "article",
+              { class: "gpt-msg" },
+              h("div", {
+                class: "gpt-msg-meta muted",
+                text: [formatWhen(t.at), t.model].filter(Boolean).join(" · "),
+              }),
+              h(
+                "div",
+                { class: "gpt-msg-body" },
+                t.blocks.map((block) =>
+                  block.type === "text"
+                    ? markdown(block.text, block.citations)
+                    : block.type === "thinking"
+                      ? h(
+                          "details",
+                          { class: "gpt-thinking" },
+                          h("summary", { text: "Thought process" }),
+                          markdown(block.text),
+                        )
+                      : block.type === "tool"
+                        ? h("div", {
+                            class: `gpt-tool gpt-tool--${block.is_error ? "error" : "done"}`,
+                            text: block.summary || block.label,
+                          })
+                        : null,
+                ),
+              ),
+            )
+      view.replaceChildren(
+        h(
+          "div",
+          { class: "dash-toolbar" },
+          back(`← ${login}'s conversations`, () => chats(login).catch(fail)),
+        ),
+        h("h2", { text: conversation.title }),
+        h("p", {
+          class: "muted",
+          text: [
+            conversation.owner,
+            conversation.project,
+            conversation.model,
+            `started ${formatWhen(conversation.created_at)}`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        }),
+        h(
+          "div",
+          { class: "gpt-thread admin-transcript" },
+          data.turns.length
+            ? data.turns.map(turn)
+            : h("p", { class: "dash-empty", text: "No messages." }),
+        ),
+      )
+    }
+
+    const query = new URLSearchParams(location.search)
+    const login = query.get("member")
+    const id = query.get("c")
+    if (login && id) await transcript(login, id)
+    else if (login) await chats(login)
+    else await members()
   }
 
   show(tab)

@@ -2532,11 +2532,29 @@ a.device-card:hover {
 .admin-console meter {
   width: 90px;
 }
+// Conversations tab: rows open a member's chats, then a transcript in the chat's own styles.
+.admin-console button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.admin-console button.link:hover {
+  text-decoration: underline;
+}
+.admin-console .admin-transcript {
+  overflow: visible;
+  padding: 8px 0;
+}
 
 // ---- Hafezi GPT (/gpt, and the "Ask Hafezi GPT" modal on every member page) ----
 .gpt-app,
 .gpt-modal,
-.gpt-fab {
+.gpt-fab,
+.admin-transcript {
   --gpt-bg: #fff;
   --gpt-panel: #fafafa;
   --gpt-soft: #f3f3f4;
@@ -2549,7 +2567,7 @@ a.device-card:hover {
   --gpt-radius: 10px;
   --gpt-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-[saved-theme="dark"] :is(.gpt-app, .gpt-modal, .gpt-fab) {
+[saved-theme="dark"] :is(.gpt-app, .gpt-modal, .gpt-fab, .admin-transcript) {
   --gpt-bg: #17171a;
   --gpt-panel: #1d1d21;
   --gpt-soft: #26262b;

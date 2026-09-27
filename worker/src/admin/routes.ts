@@ -1,11 +1,14 @@
 import { requireMutation } from "../auth"
 import { type Auditor, requireAdmin } from "../audit"
 import type { Env } from "../env"
+import { displayTurns } from "../gpt/chat"
+import { GptStore } from "../gpt/store"
 import { HttpError, json, readJson } from "../http"
 import type { Session } from "../session"
 
-// Group-admin console: the audit log, the admin allow-list, and Hafezi GPT usage + budgets.
-// Everything here is admin-only (org owners, or members an admin promoted).
+// Group-admin console: the audit log, the admin allow-list, Hafezi GPT usage + budgets, and
+// members' Hafezi GPT conversations (read-only). Everything here is admin-only (org owners, or
+// members an admin promoted).
 
 const PAGE = 100
 const LOGIN = /^[A-Za-z0-9-]{1,39}$/
@@ -198,6 +201,46 @@ export async function adminRoutes(
     }
     record("admin.budget", login, { monthly_tokens: body.monthly_tokens ?? null })
     return json({ login, monthly_tokens: body.monthly_tokens ?? null })
+  }
+
+  // ---- Hafezi GPT conversations, per member (read-only) ----
+  if (path === "/gpt/members" && request.method === "GET") {
+    const { results } = await env.DB.prepare(
+      `SELECT c.owner AS login, COUNT(DISTINCT c.id) AS conversations, COUNT(m.id) AS messages,
+              MAX(c.updated_at) AS last_at
+       FROM gpt_conversations c LEFT JOIN gpt_messages m ON m.conversation_id = c.id
+       GROUP BY c.owner ORDER BY last_at DESC`,
+    ).all()
+    return json({ members: results })
+  }
+
+  if (path === "/gpt/conversations" && request.method === "GET") {
+    const login = url.searchParams.get("login")?.trim() ?? ""
+    if (!LOGIN.test(login)) throw new HttpError(422, "login must be a GitHub login")
+    const { results } = await env.DB.prepare(
+      `SELECT c.id, c.title, c.model, p.name AS project, c.origin_slug, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM gpt_messages m WHERE m.conversation_id = c.id) AS messages
+       FROM gpt_conversations c LEFT JOIN gpt_projects p ON p.id = c.project_id
+       WHERE c.owner = ? COLLATE NOCASE ORDER BY c.updated_at DESC LIMIT 500`,
+    )
+      .bind(login)
+      .all()
+    return json({ login, conversations: results })
+  }
+
+  const conversation = path.match(/^\/gpt\/conversations\/([^/]+)$/)
+  if (conversation && request.method === "GET") {
+    const id = decodeURIComponent(conversation[1])
+    const row = await env.DB.prepare(
+      `SELECT c.id, c.owner, c.title, c.model, p.name AS project, c.origin_slug, c.forked_from,
+              c.created_at, c.updated_at
+       FROM gpt_conversations c LEFT JOIN gpt_projects p ON p.id = c.project_id WHERE c.id = ?`,
+    )
+      .bind(id)
+      .first()
+    if (!row) throw new HttpError(404, "no such conversation")
+    const turns = displayTurns(await new GptStore(env.DB).messages(id))
+    return json({ conversation: row, turns })
   }
 
   throw new HttpError(404, "not found")

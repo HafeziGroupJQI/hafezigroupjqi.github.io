@@ -89,3 +89,9 @@ test("server memory reads in MiB or GiB, with the limit when known", () => {
   assert.equal(formatMemory(1.5 * 2 ** 30, 4 * 2 ** 30), "1.5 GiB of 4.0 GiB")
   assert.equal(formatMemory(null), "—")
 })
+
+test("the ENEE graduate courses profile has its own kernel", () => {
+  const ipython = LAUNCHERS.find((item) => item.id === "ipython")
+  assert.equal(kernelFor(ipython, "courses"), "hafezi-courses")
+  assert.equal(kernelFor(ipython, "base"), "hafezi-base")
+})

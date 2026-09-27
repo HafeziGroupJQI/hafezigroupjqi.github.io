@@ -6,6 +6,8 @@ export const PROFILES = [
   // The default: NumPy, SciPy, SymPy and matplotlib (the course helpers stay callable in every
   // IPython profile, but nothing course-specific is set up).
   ["base", "General (NumPy · SciPy · SymPy)"],
+  // enee680() enee690() phys612() enee789p() combs(), loaded at kernel start.
+  ["courses", "ENEE graduate courses"],
   ["lumerical", "Lumerical"],
   ["fdtd", "FDTD"],
   ["gds", "GDS layout"],

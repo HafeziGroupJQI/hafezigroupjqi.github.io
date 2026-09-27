@@ -21,6 +21,7 @@ const WS_PREFIX = "/api/compute/ws"
 
 export const PROFILES = [
   "base",
+  "courses",
   "lumerical",
   "fdtd",
   "gds",

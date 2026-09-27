@@ -32,9 +32,16 @@ export const MEMBER_PAGES = [
 
 const SITE_PREFIX = "/api/site"
 
-const isHashedAsset = (pathname: string) =>
-  /\.(?:css|js|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico)$/i.test(pathname) &&
-  !pathname.startsWith("/resources/")
+// Assets that may sit in the browser cache for an hour. Scripts and styles only when their name
+// carries a content hash (Quartz's `-1a2b3c4d.css`, esbuild's `static/chunks/`): an entry like
+// /static/member-tools.js keeps its name across deploys, so caching it would run the previous
+// deploy's code (and ask for chunks that no longer exist) for up to an hour.
+const isHashedAsset = (pathname: string) => {
+  if (pathname.startsWith("/resources/")) return false
+  if (/\.(?:css|js)$/i.test(pathname))
+    return /-[0-9a-f]{8}\.(?:css|js)$/.test(pathname) || pathname.startsWith("/static/chunks/")
+  return /\.(?:woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico)$/i.test(pathname)
+}
 
 export interface HandlerOptions {
   /** Outbound fetch for the GitHub blob API; tests substitute a stub. */

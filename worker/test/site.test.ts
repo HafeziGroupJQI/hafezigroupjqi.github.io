@@ -20,6 +20,15 @@ describe("the member edition behind /api/site", () => {
     expect((await client.fetch("/api/site/nowhere")).status).toBe(404)
   })
 
+  it("caches only content-hashed scripts, so a deploy's entry script is never stale", async () => {
+    const client = await member()
+    const cache = async (path: string) =>
+      (await client.fetch("/api/site" + path)).headers.get("cache-control")
+    expect(await cache("/static/member-tools.js")).toBe("private, no-store")
+    expect(await cache("/static/chunks/gpt-UBPAR44W.js")).toBe("private, max-age=3600")
+    expect(await cache("/postscript-a66fbddf.js")).toBe("private, max-age=3600")
+  })
+
   it("reports canonical paths instead of redirecting across origins", async () => {
     const client = await member()
     const html = await client.fetch("/api/site/resources/notes.html")

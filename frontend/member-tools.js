@@ -6,6 +6,7 @@ import luxonPlugin from "@fullcalendar/luxon3"
 import { DateTime } from "luxon"
 import { mountAdmin } from "./admin/index.js"
 import { installLauncher } from "./gpt/launcher.js"
+import { h } from "./dashboard/dom.js"
 import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
 
@@ -264,7 +265,18 @@ if (session.user) {
   mount("data-admin", (root) => mountAdmin(root, { api, session }))
   // Hafezi GPT: the full app at /gpt, and "Ask Hafezi GPT" (Ctrl/⌘+J) on every other page.
   mount("data-hafezi-gpt", (root) =>
-    import("./gpt/index.js").then(({ mountGpt }) => mountGpt(root, { api, session })),
+    import("./gpt/index.js")
+      .then(({ mountGpt }) => mountGpt(root, { api, session }))
+      .catch((error) => {
+        console.error(error)
+        root.replaceChildren(
+          h("div", {
+            class: "dash-error",
+            role: "alert",
+            text: "Hafezi GPT did not load. Reload the page to try again.",
+          }),
+        )
+      }),
   )
   installLauncher({ api, session })
   for (const attr of [

@@ -78,10 +78,18 @@ UsingFrontEnd[
    kernels = launch[Min[jobs, Length[small]]];
    If[kernels =!= {},
     With[{pkg = FileNameJoin[{$here, "WolframNotebook.wl"}], c = cache, f = force, salt = salt},
-     ParallelEvaluate[Get[pkg]; WolframNotebook`$CacheDir = c; WolframNotebook`$Salt = salt;, kernels];
-     DistributeDefinitions[renderOne, root, out, memLimit];
-     results = ParallelMap[renderOne[#, f] &, SortBy[small, -FileByteCount[#] &], Method -> "FinestGrained", DistributedContexts -> None];
+     (* Loaded on first use in each subkernel, not once up front: a subkernel that crashes is
+        relaunched by the parallel tools without anything ParallelEvaluate set up. *)
+     ensureRenderer[] := If[!TrueQ[rendererLoaded],
+       Get[pkg]; WolframNotebook`$CacheDir = c; WolframNotebook`$Salt = salt; rendererLoaded = True];
+     DistributeDefinitions[ensureRenderer, renderOne, root, out, memLimit];
+     results = ParallelMap[(ensureRenderer[]; renderOne[#, f]) &, SortBy[small, -FileByteCount[#] &],
+       Method -> "FinestGrained", DistributedContexts -> None];
+     (* A notebook that failed on a subkernel is rendered again below, in this kernel. *)
+     retry = Select[results, KeyExistsQ[#, "error"] &];
+     results = Complement[results, retry];
      report /@ results;
+     If[retry =!= {}, Print[Length[retry], " notebook(s) failed on a subkernel; rendering them here"]];
      CloseKernels[kernels]],
     Print["no subkernels available; rendering serially"]]];
   (* Anything not done in parallel (and every big notebook) runs here, one at a time. *)

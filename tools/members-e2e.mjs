@@ -155,6 +155,10 @@ await shot("members-device")
 // Hafezi GPT (offline here: no ANTHROPIC_API_KEY, so replies list the context they would send).
 await page.goto(`${pages}/gpt`)
 await page.waitForSelector(".gpt-composer .gpt-input", { timeout: 20_000 })
+check(
+  !(await page.textContent(".gpt-header")).includes("null"),
+  "/gpt: a new chat's header has no stray null",
+)
 await page.click(".gpt-input")
 await page.keyboard.type("@onboarding")
 await page.waitForSelector(".gpt-popup [role=option]", { timeout: 15_000 })

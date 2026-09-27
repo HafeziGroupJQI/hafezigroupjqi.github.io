@@ -1,6 +1,6 @@
 // Hafezi GPT dialogs: project editor (instructions, topics, pinned pages, files), chat sharing,
 // and the skills library. All use the site's <dialog class="member-editor"> styling.
-import { h } from "../dashboard/dom.js"
+import { h, present } from "../dashboard/dom.js"
 import { formatTokens } from "../admin/model.js"
 
 function dialog(title, ...body) {
@@ -223,15 +223,17 @@ export function editProject(gpt, boot, existing = null) {
         upload.value = ""
       }
       filesBox.append(
-        h("h3", { text: "Files" }),
-        h("p", {
-          class: "muted",
-          text: "Text and code files join the project's context; PDFs and images are read when asked about.",
-        }),
-        list,
-        upload,
-        h("button", { type: "button", text: "Upload files", onclick: () => upload.click() }),
-        note ? h("p", { class: "muted", text: note }) : null,
+        ...present(
+          h("h3", { text: "Files" }),
+          h("p", {
+            class: "muted",
+            text: "Text and code files join the project's context; PDFs and images are read when asked about.",
+          }),
+          list,
+          upload,
+          h("button", { type: "button", text: "Upload files", onclick: () => upload.click() }),
+          note ? h("p", { class: "muted", text: note }) : null,
+        ),
       )
     }
 

@@ -1,6 +1,6 @@
 // Instruments tab: one device's instruments as chips; the focused one's meta, ports, live plot
 // (history backfill + SSE) and latest values.
-import { h, patchList, pill, setText } from "../dom.js"
+import { h, patchList, pill, present, setText } from "../dom.js"
 import { instrumentLiveness } from "../liveness.js"
 import { livePlot } from "../plot.js"
 import { devicePicker, link, needDevice } from "./common.js"
@@ -105,35 +105,37 @@ export function mountInstruments(panel, ctx, route) {
     if (current !== s.id) {
       current = s.id
       detail.replaceChildren(
-        h(
-          "header",
-          { class: "dash-section-head" },
-          h("h3", { "data-t": "" }),
-          h("span", { "data-p": "" }),
-          h("span", { class: "spacer" }),
-          h("button", {
-            type: "button",
-            text: "Poll",
-            onclick: (e) => ctx.command(code, "poll", { local_id: s.id }, e.currentTarget),
-          }),
-        ),
-        h("p", { class: "muted", "data-meta": "" }),
-        s.ports.length
-          ? h(
-              "div",
-              { class: "port-map" },
-              s.ports.map((p) =>
-                h(
-                  "span",
-                  { class: `port port-${p.direction}` },
-                  h("strong", { text: p.label || p.id }),
-                  h("span", { text: ` ${p.direction}` }),
+        ...present(
+          h(
+            "header",
+            { class: "dash-section-head" },
+            h("h3", { "data-t": "" }),
+            h("span", { "data-p": "" }),
+            h("span", { class: "spacer" }),
+            h("button", {
+              type: "button",
+              text: "Poll",
+              onclick: (e) => ctx.command(code, "poll", { local_id: s.id }, e.currentTarget),
+            }),
+          ),
+          h("p", { class: "muted", "data-meta": "" }),
+          s.ports.length
+            ? h(
+                "div",
+                { class: "port-map" },
+                s.ports.map((p) =>
+                  h(
+                    "span",
+                    { class: `port port-${p.direction}` },
+                    h("strong", { text: p.label || p.id }),
+                    h("span", { text: ` ${p.direction}` }),
+                  ),
                 ),
-              ),
-            )
-          : null,
-        h("div", { class: "latest-grid", "data-latest": "" }),
-        h("div", { "data-plot": "" }),
+              )
+            : null,
+          h("div", { class: "latest-grid", "data-latest": "" }),
+          h("div", { "data-plot": "" }),
+        ),
       )
       plot = livePlot(detail.querySelector("[data-plot]"))
       lastPlot = 0

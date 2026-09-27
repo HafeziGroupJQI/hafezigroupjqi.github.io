@@ -1,5 +1,5 @@
 // Experiments tab: cards grouped by status (running first), 20 at a time; the focused one opens.
-import { h, patchList, pill, setText } from "../dom.js"
+import { h, patchList, pill, present, setText } from "../dom.js"
 import { relTime } from "../format.js"
 import { devicePicker, link } from "./common.js"
 
@@ -89,20 +89,22 @@ export function mountExperiments(panel, ctx, route) {
       try {
         const full = await ctx.api(`/api/experiments/${encodeURIComponent(item.id)}`)
         bodyEl.replaceChildren(
-          h("p", { text: full.spec?.experiment_prompt || "" }),
-          h("p", {
-            class: "muted",
-            text: `id ${full.id}${item.device ? " · device " + item.device : ""}`,
-          }),
-          full.status === "running" && item.device
-            ? h("button", {
-                type: "button",
-                class: "danger",
-                text: "Stop",
-                onclick: (e) => ctx.stopExperiment(item.device, full.id, e.currentTarget),
-              })
-            : null,
-          h("pre", { class: "script", text: full.script || "(script pending)" }),
+          ...present(
+            h("p", { text: full.spec?.experiment_prompt || "" }),
+            h("p", {
+              class: "muted",
+              text: `id ${full.id}${item.device ? " · device " + item.device : ""}`,
+            }),
+            full.status === "running" && item.device
+              ? h("button", {
+                  type: "button",
+                  class: "danger",
+                  text: "Stop",
+                  onclick: (e) => ctx.stopExperiment(item.device, full.id, e.currentTarget),
+                })
+              : null,
+            h("pre", { class: "script", text: full.script || "(script pending)" }),
+          ),
         )
       } catch (error) {
         details.dataset.loaded = ""

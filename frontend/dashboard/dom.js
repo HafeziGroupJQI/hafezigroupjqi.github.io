@@ -18,6 +18,13 @@ export function h(tag, attrs = {}, ...children) {
   return node
 }
 
+/**
+ * The children h() would keep: drops null/false so `cond ? h(...) : null` can go straight into
+ * replaceChildren()/append(), which would otherwise insert the text "null".
+ */
+export const present = (...children) =>
+  children.flat().filter((child) => child != null && child !== false)
+
 /** Set text only when it differs (avoids layout churn on the 1 s tick). */
 export function setText(node, text) {
   if (node && node.textContent !== text) node.textContent = text

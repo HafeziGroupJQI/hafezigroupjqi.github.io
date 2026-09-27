@@ -1,7 +1,7 @@
 // /gpt: Hafezi GPT's full-screen app. Left: projects and chat history (mine / shared with me).
 // Centre: the chat. Right: the current project's context and the chat's sharing.
 // State lives in the query string (?c=<chat>&p=<project>) so links and reloads land in place.
-import { h } from "../dashboard/dom.js"
+import { h, present } from "../dashboard/dom.js"
 import { formatTokens } from "../admin/model.js"
 import { gptApi } from "./api.js"
 import { createChat } from "./chat.js"
@@ -249,58 +249,64 @@ export async function mountGpt(root, { api, session }) {
     const c = chat.conversation
     const project = projects.find((p) => p.id === (c?.project_id ?? projectId))
     header.replaceChildren(
-      railToggle,
-      h(
-        "div",
-        { class: "gpt-header-title" },
-        h("strong", { text: c?.title ?? (project ? `New chat in ${project.name}` : "New chat") }),
-        project ? h("span", { class: "muted", text: ` · ${project.name}` }) : null,
-        c?.origin_slug
-          ? h("a", { class: "muted", href: `/${c.origin_slug}`, text: ` · about ${c.origin_slug}` })
+      ...present(
+        railToggle,
+        h(
+          "div",
+          { class: "gpt-header-title" },
+          h("strong", { text: c?.title ?? (project ? `New chat in ${project.name}` : "New chat") }),
+          project ? h("span", { class: "muted", text: ` · ${project.name}` }) : null,
+          c?.origin_slug
+            ? h("a", {
+                class: "muted",
+                href: `/${c.origin_slug}`,
+                text: ` · about ${c.origin_slug}`,
+              })
+            : null,
+        ),
+        h("span", { class: "spacer" }),
+        c && c.owner === boot.me
+          ? h("button", {
+              type: "button",
+              text: "Share",
+              onclick: async () => (await shareChat(gpt, boot, c), loadConversations()),
+            })
           : null,
+        c && c.owner === boot.me
+          ? h("button", {
+              type: "button",
+              class: "gpt-link-button",
+              text: "Rename",
+              onclick: async () => {
+                const title = prompt("Rename chat", c.title)
+                if (!title) return
+                await gpt.updateConversation(c.id, { title })
+                await openChat(c.id)
+                loadConversations()
+              },
+            })
+          : null,
+        c && c.owner === boot.me
+          ? h("button", {
+              type: "button",
+              class: "gpt-link-button danger-text",
+              text: "Delete",
+              onclick: async () => {
+                if (!confirm(`Delete “${c.title}”? This can't be undone.`)) return
+                await gpt.deleteConversation(c.id)
+                newChat()
+                loadConversations()
+              },
+            })
+          : null,
+        h("button", {
+          type: "button",
+          class: "gpt-icon-button gpt-side-toggle",
+          "aria-label": "Show context",
+          text: "ⓘ",
+          onclick: () => root.classList.toggle("gpt-side-open"),
+        }),
       ),
-      h("span", { class: "spacer" }),
-      c && c.owner === boot.me
-        ? h("button", {
-            type: "button",
-            text: "Share",
-            onclick: async () => (await shareChat(gpt, boot, c), loadConversations()),
-          })
-        : null,
-      c && c.owner === boot.me
-        ? h("button", {
-            type: "button",
-            class: "gpt-link-button",
-            text: "Rename",
-            onclick: async () => {
-              const title = prompt("Rename chat", c.title)
-              if (!title) return
-              await gpt.updateConversation(c.id, { title })
-              await openChat(c.id)
-              loadConversations()
-            },
-          })
-        : null,
-      c && c.owner === boot.me
-        ? h("button", {
-            type: "button",
-            class: "gpt-link-button danger-text",
-            text: "Delete",
-            onclick: async () => {
-              if (!confirm(`Delete “${c.title}”? This can't be undone.`)) return
-              await gpt.deleteConversation(c.id)
-              newChat()
-              loadConversations()
-            },
-          })
-        : null,
-      h("button", {
-        type: "button",
-        class: "gpt-icon-button gpt-side-toggle",
-        "aria-label": "Show context",
-        text: "ⓘ",
-        onclick: () => root.classList.toggle("gpt-side-open"),
-      }),
     )
   }
 
@@ -338,85 +344,87 @@ export async function mountGpt(root, { api, session }) {
       const project = await gpt.project(id)
       const k = project.knowledge
       side.replaceChildren(
-        h(
-          "div",
-          { class: "gpt-side-head" },
-          h("h2", { text: project.name }),
-          project.can_edit || project.visibility === "group"
-            ? h("button", {
-                type: "button",
-                class: "gpt-link-button",
-                text: "Edit",
-                onclick: async () => {
-                  const saved = await editProject(gpt, boot, project)
-                  projects = await gpt.projects()
-                  if (saved === null) selectProject(null)
-                  else (renderProjects(), renderSide(), renderHeader())
-                },
-              })
+        ...present(
+          h(
+            "div",
+            { class: "gpt-side-head" },
+            h("h2", { text: project.name }),
+            project.can_edit || project.visibility === "group"
+              ? h("button", {
+                  type: "button",
+                  class: "gpt-link-button",
+                  text: "Edit",
+                  onclick: async () => {
+                    const saved = await editProject(gpt, boot, project)
+                    projects = await gpt.projects()
+                    if (saved === null) selectProject(null)
+                    else (renderProjects(), renderSide(), renderHeader())
+                  },
+                })
+              : null,
+          ),
+          project.description ? h("p", { text: project.description }) : null,
+          h("p", {
+            class: "muted",
+            text: `${project.visibility === "group" ? "Group project" : "Private project"} · by ${project.owner}`,
+          }),
+          project.instructions
+            ? h(
+                "details",
+                { class: "gpt-instructions" },
+                h("summary", { text: "Instructions" }),
+                h("p", { text: project.instructions }),
+              )
             : null,
-        ),
-        project.description ? h("p", { text: project.description }) : null,
-        h("p", {
-          class: "muted",
-          text: `${project.visibility === "group" ? "Group project" : "Private project"} · by ${project.owner}`,
-        }),
-        project.instructions
-          ? h(
-              "details",
-              { class: "gpt-instructions" },
-              h("summary", { text: "Instructions" }),
-              h("p", { text: project.instructions }),
-            )
-          : null,
-        h("h3", { text: `Knowledge · ${formatTokens(k.tokens)} tokens` }),
-        h(
-          "div",
-          {
-            class: "gpt-meter-bar",
-            role: "meter",
-            "aria-valuemin": "0",
-            "aria-valuemax": "150000",
-            "aria-valuenow": String(k.tokens),
-            title: "Share of the project context budget",
-          },
-          h("span", { style: `width:${Math.min(100, (k.tokens / 150_000) * 100).toFixed(1)}%` }),
-        ),
-        project.topics.length
-          ? h(
-              "div",
-              { class: "gpt-chips" },
-              project.topics.map((t) =>
-                h("a", { class: "gpt-chip", href: `/tags/${t}`, text: `#${t}` }),
+          h("h3", { text: `Knowledge · ${formatTokens(k.tokens)} tokens` }),
+          h(
+            "div",
+            {
+              class: "gpt-meter-bar",
+              role: "meter",
+              "aria-valuemin": "0",
+              "aria-valuemax": "150000",
+              "aria-valuenow": String(k.tokens),
+              title: "Share of the project context budget",
+            },
+            h("span", { style: `width:${Math.min(100, (k.tokens / 150_000) * 100).toFixed(1)}%` }),
+          ),
+          project.topics.length
+            ? h(
+                "div",
+                { class: "gpt-chips" },
+                project.topics.map((t) =>
+                  h("a", { class: "gpt-chip", href: `/tags/${t}`, text: `#${t}` }),
+                ),
+              )
+            : null,
+          h(
+            "ul",
+            { class: "gpt-source-list" },
+            k.included.map((s) =>
+              h(
+                "li",
+                {},
+                s.source === "file"
+                  ? h("span", { text: `📎 ${s.title}` })
+                  : h("a", { href: `/${s.slug}`, text: s.title }),
+                h("span", { class: "muted", text: ` ${formatTokens(s.tokens)}` }),
               ),
-            )
-          : null,
-        h(
-          "ul",
-          { class: "gpt-source-list" },
-          k.included.map((s) =>
-            h(
-              "li",
-              {},
-              s.source === "file"
-                ? h("span", { text: `📎 ${s.title}` })
-                : h("a", { href: `/${s.slug}`, text: s.title }),
-              h("span", { class: "muted", text: ` ${formatTokens(s.tokens)}` }),
             ),
           ),
+          k.overflow.length
+            ? h(
+                "details",
+                {},
+                h("summary", { class: "muted", text: `${k.overflow.length} more read on demand` }),
+                h(
+                  "ul",
+                  { class: "gpt-source-list" },
+                  k.overflow.map((s) => h("li", { text: s.title })),
+                ),
+              )
+            : null,
         ),
-        k.overflow.length
-          ? h(
-              "details",
-              {},
-              h("summary", { class: "muted", text: `${k.overflow.length} more read on demand` }),
-              h(
-                "ul",
-                { class: "gpt-source-list" },
-                k.overflow.map((s) => h("li", { text: s.title })),
-              ),
-            )
-          : null,
       )
     } catch (error) {
       side.replaceChildren(h("p", { class: "gpt-error", text: error.message }))

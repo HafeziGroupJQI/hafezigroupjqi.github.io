@@ -139,7 +139,8 @@ export async function adminRoutes(
       const login = typeof body.login === "string" ? body.login.trim().replace(/^@/, "") : ""
       if (!LOGIN.test(login)) throw new HttpError(422, "enter a GitHub login")
       await env.DB.prepare(
-        "INSERT OR IGNORE INTO admins (login, added_by, added_at) VALUES (?, ?, ?)",
+        `INSERT INTO admins (login, added_by, added_at) SELECT ?1, ?2, ?3
+         WHERE NOT EXISTS (SELECT 1 FROM admins WHERE login = ?1 COLLATE NOCASE)`,
       )
         .bind(login, session.login, Date.now())
         .run()
@@ -153,7 +154,9 @@ export async function adminRoutes(
   if (demote && request.method === "DELETE") {
     requireMutation(request, env)
     const login = decodeSegment(demote[1])
-    const { meta } = await env.DB.prepare("DELETE FROM admins WHERE login = ?").bind(login).run()
+    const { meta } = await env.DB.prepare("DELETE FROM admins WHERE login = ? COLLATE NOCASE")
+      .bind(login)
+      .run()
     if (!meta.changes) throw new HttpError(404, "not an admin (org owners are managed on GitHub)")
     record("admin.demote", login)
     return json({ removed: login })

@@ -114,10 +114,23 @@ describe("admin console", () => {
     expect(list.body.admins.map((a: any) => a.login)).toContain("dave")
     expect((await owner.fetch("/api/admin/admins/dave", { method: "DELETE" })).status).toBe(200)
     expect((await dave.fetch("/api/admin/audit")).status).toBe(403)
+    // GitHub logins are case-insensitive: "Dave" is dave, and is added only once.
+    for (let i = 0; i < 2; i++)
+      await owner.json("/api/admin/admins", {
+        method: "POST",
+        body: JSON.stringify({ login: "Dave" }),
+      })
+    expect((await dave.fetch("/api/admin/audit")).status).toBe(200)
+    expect((await owner.json("/api/admin/admins")).body.admins).toHaveLength(1)
+    expect((await owner.fetch("/api/admin/admins/DAVE", { method: "DELETE" })).status).toBe(200)
+    expect((await dave.fetch("/api/admin/audit")).status).toBe(403)
     const rows = await auditRows("login = 'olivia' AND action LIKE 'admin.%'")
     expect(rows.map((r) => [r.action, r.target])).toEqual([
       ["admin.promote", "dave"],
       ["admin.demote", "dave"],
+      ["admin.promote", "Dave"],
+      ["admin.promote", "Dave"],
+      ["admin.demote", "DAVE"],
     ])
   })
 

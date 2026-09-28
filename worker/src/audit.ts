@@ -11,7 +11,8 @@ export async function isAdmin(
   session: Pick<Session, "login" | "role">,
 ): Promise<boolean> {
   if (session.role === "owner") return true
-  const row = await env.DB.prepare("SELECT 1 FROM admins WHERE login = ?")
+  // GitHub logins are case-insensitive, so an admin added as "Dave" is the session's "dave".
+  const row = await env.DB.prepare("SELECT 1 FROM admins WHERE login = ? COLLATE NOCASE")
     .bind(session.login)
     .first()
   return row !== null

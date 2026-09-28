@@ -632,6 +632,8 @@ describe("Claude turns (scripted API)", () => {
     expect(request.body.tools).toBeUndefined()
     expect(request.body.thinking).toBeUndefined()
     expect(request.body.context_management).toBeUndefined()
+    // The prompt's tool instructions are countermanded, or the model writes tool calls as text.
+    expect(request.body.system.at(-1).text).toMatch(/no tools are available/)
     const content = request.body.messages[0].content
     expect(content.every((b: any) => b.type === "text")).toBe(true)
     expect(content[1].text).toContain('<document title="Santec TSL tunable laser"')

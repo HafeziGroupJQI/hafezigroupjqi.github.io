@@ -4,7 +4,7 @@
 // the member's server, and launches consoles and documents into the iframe.
 // member-tools.js lazy-loads mountScratchpad() with its api() (JSON + 401 → login) and the session.
 
-import { h, setText } from "../dashboard/dom.js"
+import { h, present, setText } from "../dashboard/dom.js"
 import { openGpt } from "../gpt/launcher.js"
 import { gptContext, insertMessage } from "./gpt.js"
 import {
@@ -278,62 +278,64 @@ export function mountScratchpad(root, { api, session }) {
     }
     servers.hidden = false
     servers.replaceChildren(
-      h(
-        "div",
-        { class: "dash-section-head" },
-        h("h2", { text: "Member servers" }),
-        h("button", { type: "button", text: "Refresh", onclick: () => loadServers() }),
-      ),
-      manage
-        ? null
-        : h("p", {
-            class: "muted",
-            text: "Owner access is off, so members' servers can be listed but not opened or stopped.",
-          }),
-      list.length
-        ? h(
-            "table",
-            { class: "scratch-table" },
-            h(
-              "thead",
-              {},
+      ...present(
+        h(
+          "div",
+          { class: "dash-section-head" },
+          h("h2", { text: "Member servers" }),
+          h("button", { type: "button", text: "Refresh", onclick: () => loadServers() }),
+        ),
+        manage
+          ? null
+          : h("p", {
+              class: "muted",
+              text: "Owner access is off, so members' servers can be listed but not opened or stopped.",
+            }),
+        list.length
+          ? h(
+              "table",
+              { class: "scratch-table" },
               h(
-                "tr",
+                "thead",
                 {},
-                ["Member", "Server", "CPU", "Memory", "Last activity", ""].map((text) =>
-                  h("th", { text }),
-                ),
-              ),
-            ),
-            h(
-              "tbody",
-              {},
-              list.map((row) =>
                 h(
                   "tr",
                   {},
-                  h("td", { class: "mono", text: row.login }),
-                  h(
-                    "td",
-                    {},
-                    h("span", {
-                      class: `status status-${row.server === "running" ? "online" : "offline"}`,
-                      text: row.server,
-                    }),
+                  ["Member", "Server", "CPU", "Memory", "Last activity", ""].map((text) =>
+                    h("th", { text }),
                   ),
-                  h("td", {
-                    text: typeof row.cpu_percent === "number" ? `${row.cpu_percent}%` : "—",
-                  }),
-                  h("td", { text: formatMemory(row.memory_bytes, row.memory_max_bytes) }),
-                  h("td", {
-                    text: row.last_activity ? new Date(row.last_activity).toLocaleString() : "—",
-                  }),
-                  actions(row),
                 ),
               ),
-            ),
-          )
-        : h("p", { class: "dash-empty", text: "No member servers." }),
+              h(
+                "tbody",
+                {},
+                list.map((row) =>
+                  h(
+                    "tr",
+                    {},
+                    h("td", { class: "mono", text: row.login }),
+                    h(
+                      "td",
+                      {},
+                      h("span", {
+                        class: `status status-${row.server === "running" ? "online" : "offline"}`,
+                        text: row.server,
+                      }),
+                    ),
+                    h("td", {
+                      text: typeof row.cpu_percent === "number" ? `${row.cpu_percent}%` : "—",
+                    }),
+                    h("td", { text: formatMemory(row.memory_bytes, row.memory_max_bytes) }),
+                    h("td", {
+                      text: row.last_activity ? new Date(row.last_activity).toLocaleString() : "—",
+                    }),
+                    actions(row),
+                  ),
+                ),
+              ),
+            )
+          : h("p", { class: "dash-empty", text: "No member servers." }),
+      ),
     )
   }
 

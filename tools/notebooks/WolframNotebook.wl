@@ -39,11 +39,11 @@ NormalizeAsset::usage = "NormalizeAsset[bytes, ext] strips what makes identical 
 Begin["`Private`"];
 
 $ExporterVersion = "5";
-(* Every cache key includes the renderer's own bytes and the Engine version: a change to either
-   re-renders what it could affect, with no version number to remember to bump. *)
+(* Every cache key includes the renderer's own bytes and the Engine version and release: a change to
+   either re-renders what it could affect, with no version number to remember to bump. *)
 $RendererHash = If[StringQ[$InputFileName] && FileExistsQ[$InputFileName],
    FileHash[$InputFileName, "SHA256", All, "HexString"], "unknown"];
-renderer[] := {$ExporterVersion, $RendererHash, $VersionNumber};
+renderer[] := {$ExporterVersion, $RendererHash, $VersionNumber, $ReleaseNumber};
 (* Mixed into every cache key; render-nb.wls --salt sets it to re-render without bumping the version. *)
 $Salt = "";
 $CacheDir = FileNameJoin[{$HomeDirectory, ".cache", "hafezi-notebooks"}];
@@ -618,7 +618,9 @@ PageInfo[file_String, root_String] := Module[{rel = relPath[file, root]},
    <|"page" -> StringDrop[rel, -3], "source" -> rel|>];
 relPath[file_, root_] := StringRiffle[FileNameSplit[StringDrop[ExpandFileName[file], StringLength[ExpandFileName[root]] + 1]], "/"];
 
-NotebookKey[file_] := sha[{fileSHA[file], renderer[], $Salt}];
+(* The file's name too: a notebook with no title cell is titled by it (nbTitle), so a renamed copy
+   must not reuse the old page. *)
+NotebookKey[file_] := sha[{fileSHA[file], FileBaseName[file], renderer[], $Salt}];
 
 (* True when the notebook's rendered page data is already cached (no kernel work needed). *)
 NotebookCachedQ[file_String] := FileExistsQ[cachePath["notebooks", NotebookKey[file] <> ".json"]];

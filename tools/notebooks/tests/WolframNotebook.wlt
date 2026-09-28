@@ -173,6 +173,17 @@ VerificationTest[
    {x =!= y, NormalizeAsset[x, "ogg"] === NormalizeAsset[y, "ogg"], AudioQ[ImportByteArray[NormalizeAsset[x, "ogg"], "OGG"]]}],
   {True, True, True}, TestID -> "normalize-ogg"]
 
+(* A renamed notebook with no title cell takes its title from its new name, not the cache. *)
+VerificationTest[
+  Module[{dir = CreateDirectory[], a, b, r},
+   WolframNotebook`$CacheDir = FileNameJoin[{dir, "cache"}];
+   a = FileNameJoin[{dir, "ring notes.nb"}]; b = FileNameJoin[{dir, "coupler notes.nb"}];
+   Put[Notebook[{Cell["x", "Text"]}], a]; CopyFile[a, b];
+   r = {ExportNotebook[a, "Root" -> dir]["title"], ExportNotebook[b, "Root" -> dir]["title"]};
+   DeleteDirectory[dir, DeleteContents -> True];
+   r],
+  {"ring notes", "coupler notes"}, TestID -> "renamed-notebook-title"]
+
 (* Editing the renderer (its file hash) changes every cache key; nothing stale is ever served. *)
 VerificationTest[
   Module[{dir = CreateDirectory[], file, k1, k2},

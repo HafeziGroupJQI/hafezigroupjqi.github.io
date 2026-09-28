@@ -75,6 +75,9 @@ plugins:
   - source: "./quartz/plugins/local/heading-ids"
     enabled: true
     order: 41
+  - source: "./quartz/plugins/local/em-dashes"
+    enabled: true
+    order: 42
   - source: "@quartz-community/table-of-contents"
     enabled: true
     order: 50

@@ -17,7 +17,7 @@ import {
 } from "../src/compute/frames"
 import { authorizeTarget } from "../src/compute/policy"
 import { RELAY_NAME } from "../src/compute/relay"
-import { FORCED_CSP, stripToken } from "../src/compute/routes"
+import { FORCED_CSP, finish, stripToken } from "../src/compute/routes"
 import { issueAssertion, issueTicket, verifyAssertion, verifyTicket } from "../src/compute/tokens"
 import type { Env } from "../src/env"
 import { sign } from "../src/session"
@@ -141,6 +141,21 @@ describe("compute path policy", () => {
     expect(stripToken("?session_id=a%20b&token=t.x&x=1")).toBe("?session_id=a%20b&x=1")
     expect(stripToken("?token=abc")).toBe("")
     expect(stripToken("")).toBe("")
+  })
+
+  it("keeps the sandbox Jupyter puts on raw files, but not the rest of its policy", () => {
+    const raw = new Response("<script>", {
+      headers: { "content-security-policy": "frame-ancestors *; sandbox allow-scripts" },
+    })
+    expect(
+      finish(raw, "/jupyter/user/alice/files/x.html").headers.get("content-security-policy"),
+    ).toBe(`${FORCED_CSP}; sandbox allow-scripts`)
+    const lab = new Response("<html>", {
+      headers: { "content-security-policy": "frame-ancestors *" },
+    })
+    expect(finish(lab, "/jupyter/user/alice/lab").headers.get("content-security-policy")).toBe(
+      FORCED_CSP,
+    )
   })
 })
 

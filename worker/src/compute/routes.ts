@@ -358,7 +358,13 @@ export function finish(upstream: Response, target: string): Response {
       body = null
     }
   }
-  headers.set("content-security-policy", FORCED_CSP)
+  // Jupyter sandboxes the files it serves raw (/files/), so a member's HTML or SVG runs in an opaque
+  // origin rather than as the site: keep that directive alongside the forced framing policy.
+  const sandbox = (upstream.headers.get("content-security-policy") ?? "")
+    .split(";")
+    .map((directive) => directive.trim())
+    .find((directive) => /^sandbox\b/i.test(directive))
+  headers.set("content-security-policy", sandbox ? `${FORCED_CSP}; ${sandbox}` : FORCED_CSP)
   headers.set("x-frame-options", "SAMEORIGIN")
   headers.set("vary", "Origin, Authorization")
   headers.set("x-content-type-options", "nosniff")

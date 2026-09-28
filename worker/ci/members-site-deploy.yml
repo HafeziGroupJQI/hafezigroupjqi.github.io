@@ -26,9 +26,11 @@ on:
 permissions:
   contents: read
 
+# One deploy at a time. A newer push waits for the running one (only the newest waiting run is
+# kept), rather than cancelling it partway through its migrations or wrangler deploy.
 concurrency:
   group: members
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   notebooks:

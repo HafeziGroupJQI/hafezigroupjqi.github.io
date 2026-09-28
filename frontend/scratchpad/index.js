@@ -1,7 +1,8 @@
 // The /scratchpad page: live Jupyter/IPython/Quarto/Wolfram on the lab's compute host. The lab
-// itself is a same-origin iframe at /jupyter/user/<login>/lab, which the members service worker
-// answers through the Worker's compute relay; this page only shows host status, starts and stops
-// the member's server, and launches consoles and documents into the iframe.
+// itself is an iframe on its own origin (the Worker's, /lab/<ticket>/jupyter/user/<login>/lab), so
+// code running in it can never reach this site or the members token; the two talk only through
+// postMessage with explicit origins. This page shows host status, starts and stops the member's
+// server, and launches consoles and documents into the iframe.
 // member-tools.js lazy-loads mountScratchpad() with its api() (JSON + 401 → login) and the session.
 
 import { h, present, setText } from "../dashboard/dom.js"
@@ -13,7 +14,6 @@ import {
   createNdjsonParser,
   describeStatus,
   formatMemory,
-  labRoot,
   launchUrl,
   requestedFork,
   requestedPath,
@@ -46,7 +46,6 @@ export function mountScratchpad(root, { api, session }) {
   const newTab = h("a", {
     hidden: true,
     class: "btn",
-    href: `${labRoot(login)}lab`,
     target: "_blank",
     rel: "noopener",
     text: "Open in new tab",
@@ -130,6 +129,7 @@ export function mountScratchpad(root, { api, session }) {
       status = null
       showError(error)
     }
+    if (status?.lab) newTab.href = `${status.lab}lab`
     const { label, tone } = describeStatus(status)
     setText(pill, label)
     pill.className = `status status-${tone}`
@@ -183,7 +183,7 @@ export function mountScratchpad(root, { api, session }) {
     banner.hidden = true
     try {
       await ensureServer(profile.value)
-      open(launchUrl(login, id, profile.value, pending ?? ""))
+      open(launchUrl(status.lab, id, profile.value, pending ?? ""))
       pending = null
       await refresh()
     } catch (error) {
@@ -219,7 +219,7 @@ export function mountScratchpad(root, { api, session }) {
   async function restartServer() {
     setBusy(true)
     try {
-      const current = frame.getAttribute("src") || launchUrl(login, "notebook", profile.value)
+      const current = frame.getAttribute("src") || launchUrl(status.lab, "notebook", profile.value)
       await api("/api/compute/server", { method: "DELETE" })
       await ensureServer(profile.value)
       open(current)
@@ -249,13 +249,16 @@ export function mountScratchpad(root, { api, session }) {
       return h(
         "td",
         { class: "scratch-actions" },
-        h("a", {
-          class: "btn",
-          href: `${labRoot(row.login)}lab`,
-          target: "_blank",
-          rel: "noopener",
-          text: "Open lab",
-        }),
+        // On the lab origin, with a ticket for that one server: their lab code never sees this site.
+        row.lab_url
+          ? h("a", {
+              class: "btn",
+              href: row.lab_url,
+              target: "_blank",
+              rel: "noopener noreferrer",
+              text: "Open lab",
+            })
+          : null,
         h("button", {
           type: "button",
           class: "danger",
@@ -358,7 +361,7 @@ export function mountScratchpad(root, { api, session }) {
       url.searchParams.delete("fork")
       url.searchParams.set("open", data.path)
       history.replaceState(history.state, "", url)
-      open(launchUrl(login, null, profile.value, data.path))
+      open(launchUrl(status.lab, null, profile.value, data.path))
       await refresh()
     } catch (error) {
       progress.hidden = true
@@ -372,15 +375,29 @@ export function mountScratchpad(root, { api, session }) {
   // The gpt-bridge lab extension posts {type: "hafezi-gpt:ask", context} from the iframe (its
   // Ctrl/⌘+J or a cell's "Ask Hafezi GPT"). The modal opens with that code attached, and code in
   // replies gets buttons that post it back into the lab; the member runs it themselves.
-  const sendToLab = (mode) => (code) =>
-    frame.contentWindow?.postMessage(insertMessage(mode, code), location.origin)
+  const labOrigin = () => (status?.lab ? new URL(status.lab).origin : null)
+  const toLab = (message) => {
+    const origin = labOrigin()
+    if (origin) frame.contentWindow?.postMessage(message, origin)
+  }
+  const sendToLab = (mode) => (code) => toLab(insertMessage(mode, code))
   const codeActions = [
     { label: "Insert below", run: sendToLab("below") },
     { label: "Replace cell", run: sendToLab("replace") },
   ]
+  // The lab follows this site's light/dark mode: it asks once it has loaded, then gets each change.
+  const theme = () => ({
+    type: "hafezi-theme",
+    theme: document.documentElement.getAttribute("saved-theme") === "dark" ? "dark" : "light",
+  })
+  new MutationObserver(() => toLab(theme())).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["saved-theme"],
+  })
   window.addEventListener("message", (event) => {
-    if (event.origin !== location.origin || event.source !== frame.contentWindow) return
+    if (event.origin !== labOrigin() || event.source !== frame.contentWindow) return
     const data = event.data
+    if (data?.type === "hafezi-theme:ready") toLab(theme())
     if (!data || data.type !== "hafezi-gpt:ask") return
     openGpt({ context: gptContext(data.context), codeActions }).catch(showError)
   })
@@ -391,7 +408,7 @@ export function mountScratchpad(root, { api, session }) {
     if (forkSource) openFork(forkSource)
     // Re-open the lab after a reload when the server is already up (at the requested file).
     else if (status?.server?.server === "running") {
-      open(pending ? launchUrl(login, null, profile.value, pending) : `${labRoot(login)}lab`)
+      open(pending ? launchUrl(status.lab, null, profile.value, pending) : `${status.lab}lab`)
       pending = null
     } else if (pending) showError(new Error(`Start your server to open ${pending}.`))
     if (isOwner && status?.host?.online) loadServers()

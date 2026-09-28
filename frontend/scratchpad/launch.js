@@ -29,20 +29,18 @@ export const LAUNCHERS = [
   { id: "wolfram", label: "Wolfram notebook", view: "nb", kernel: "wolfram" },
 ]
 
-export const labRoot = (login) => `/jupyter/user/${encodeURIComponent(login.toLowerCase())}/`
-
 export function kernelFor(launcher, profile = "base") {
   if (launcher.kernel !== "profile") return launcher.kernel
   return `hafezi-${PROFILES.some(([id]) => id === profile) ? profile : "base"}`
 }
 
 /**
- * The lab URL for a launcher. JupyterLab has no URL command for "new console", so the request rides
- * in the query (hafezi-launch, hafezi-view, kernel) for the hafezi lab extension to act on; without
- * it the lab simply opens. `path` opens an existing file through JupyterLab's own tree URL.
+ * The lab URL for a launcher. `root` is the member's lab base from /api/compute/status (on the lab
+ * origin, ending in /jupyter/user/<login>/). JupyterLab has no URL command for "new console", so the
+ * request rides in the query (hafezi-launch, hafezi-view, kernel) for the hafezi lab extension to act
+ * on; without it the lab simply opens. `path` opens an existing file through JupyterLab's tree URL.
  */
-export function launchUrl(login, launcherId, profile = "base", path = "") {
-  const root = labRoot(login)
+export function launchUrl(root, launcherId, profile = "base", path = "") {
   if (path) return `${root}lab/tree/${path.split("/").map(encodeURIComponent).join("/")}`
   const launcher = LAUNCHERS.find((item) => item.id === launcherId)
   if (!launcher) return `${root}lab`

@@ -6,27 +6,29 @@ import {
   describeStatus,
   formatMemory,
   kernelFor,
-  labRoot,
   launchUrl,
   requestedFork,
   requestedPath,
 } from "./launch.js"
 
+// The member's lab base, as /api/compute/status gives it: on the lab origin, keyed by a ticket.
+const ROOT = "https://lab.test/lab/t.k/jupyter/user/alice/"
+
 test("launchers open the member's own lab with the requested kernel", () => {
-  assert.equal(labRoot("Alice"), "/jupyter/user/alice/")
-  const url = new URL(launchUrl("alice", "ipython", "gds"), "https://site.test")
-  assert.equal(url.pathname, "/jupyter/user/alice/lab")
+  const url = new URL(launchUrl(ROOT, "ipython", "gds"))
+  assert.equal(url.origin, "https://lab.test")
+  assert.equal(url.pathname, "/lab/t.k/jupyter/user/alice/lab")
   assert.equal(url.searchParams.get("hafezi-launch"), "ipython")
   assert.equal(url.searchParams.get("hafezi-view"), "console")
   assert.equal(url.searchParams.get("kernel"), "hafezi-gds")
-  const wolfram = new URL(launchUrl("alice", "wolfram", "gds"), "https://site.test")
+  const wolfram = new URL(launchUrl(ROOT, "wolfram", "gds"))
   assert.equal(wolfram.searchParams.get("kernel"), "wolfram")
   // A native Wolfram notebook (.nb), not a Jupyter one.
   assert.equal(wolfram.searchParams.get("hafezi-view"), "nb")
-  assert.equal(launchUrl("alice", "nope"), "/jupyter/user/alice/lab")
+  assert.equal(launchUrl(ROOT, "nope"), `${ROOT}lab`)
   assert.equal(
-    launchUrl("alice", "notebook", "base", "proj/a b.ipynb"),
-    "/jupyter/user/alice/lab/tree/proj/a%20b.ipynb",
+    launchUrl(ROOT, "notebook", "base", "proj/a b.ipynb"),
+    `${ROOT}lab/tree/proj/a%20b.ipynb`,
   )
 })
 
@@ -72,8 +74,8 @@ test("?open= names a file in the member's storage; absolute or parent paths are 
   assert.equal(requestedPath("?open=a%2F..%2F..%2Fx"), null)
   assert.equal(requestedPath(""), null)
   assert.equal(
-    launchUrl("Alice", null, "base", "forks/published/My notes.nb"),
-    "/jupyter/user/alice/lab/tree/forks/published/My%20notes.nb",
+    launchUrl(ROOT, null, "base", "forks/published/My notes.nb"),
+    `${ROOT}lab/tree/forks/published/My%20notes.nb`,
   )
 })
 

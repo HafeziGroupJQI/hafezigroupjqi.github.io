@@ -387,9 +387,12 @@ svgAsset[nb_] := Module[{bytes = Quiet@Check[ExportByteArray[nb, "SVG"], $Failed
    If[!ByteArrayQ[bytes] || Length[bytes] > $MaxSVG, Return[pngAsset[nb]]];
    putAsset[bytes, "svg", svgSize[bytes]]];
 
+(* Shown at the size the notebook shows it: a 720 px image at 144 dpi is 360 points across. *)
+imageResolution[img_Image] := Replace[Quiet[ImageResolution /. Options[img, ImageResolution]],
+   {{r_?Positive, ___} :> r, r_?Positive :> r, _ -> 72}];
 imageAsset[img_Image] := Module[{bytes = ExportByteArray[img, "PNG"], i = img},
    While[Length[bytes] > $DownscaleAbove, i = ImageResize[i, Scaled[1/2]]; bytes = ExportByteArray[i, "PNG"]];
-   putAsset[bytes, "png", ImageDimensions[img]]];
+   putAsset[bytes, "png", Round[ImageDimensions[img]*72/imageResolution[img]]]];
 
 (* Per-box cache: identical boxes render once across every notebook. Rendering can evaluate the
    box's dynamic content (a Manipulate snapshot calling RandomColor, say), in the kernel or in the

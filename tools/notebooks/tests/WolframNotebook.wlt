@@ -86,6 +86,16 @@ VerificationTest[
         Cases[ToExpression[b, StandardForm, HoldComplete], g_Graph :> Length[EdgeList[g]], Infinity]]}]],
   {True, True, True}, TestID -> "inputcode-embedded-graph-readable"]
 
+(* A raster output is shown at its notebook size (a 144 dpi image at half its pixel size). *)
+VerificationTest[
+  Module[{dir = CreateDirectory[], r},
+   WolframNotebook`$CacheDir = dir;
+   r = {WolframNotebook`Private`imageAsset[Image[ConstantArray[0.5, {40, 60}], ImageResolution -> 144]],
+     WolframNotebook`Private`imageAsset[Image[ConstantArray[0.5, {40, 60}]]]};
+   DeleteDirectory[dir, DeleteContents -> True];
+   Lookup[r, {"width", "height"}]],
+  {{30, 20}, {60, 40}}, TestID -> "raster-notebook-size"]
+
 (* ---- a page is the notebook's path; the title is the notebook's own ---- *)
 VerificationTest[
   PageInfo["/site/content/resources/code/wolfram-guide/EIWL3-04-displaying-lists.nb", "/site/content"],

@@ -53,4 +53,12 @@ describe("the Worker is not a website", () => {
       expect(response.headers.get("location")).toBe(new URL(page, SITE).toString())
     })
   }
+
+  it("never sends a path that names another host off the site", async () => {
+    for (const page of ["//evil.example/path", "/%5Cevil.example/", "///evil.example"]) {
+      const response = await SELF.fetch(ORIGIN + page, { redirect: "manual" })
+      expect(response.status).toBe(302)
+      expect(new URL(response.headers.get("location")!).origin).toBe(new URL(SITE).origin)
+    }
+  })
 })

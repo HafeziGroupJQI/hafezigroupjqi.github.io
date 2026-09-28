@@ -105,8 +105,15 @@ export function createHandler(
     if (path === "/api/health") return json({ ok: true, version: VERSION })
 
     // Anything that is not the API belongs to the github.io site (old links, bookmarks).
+    // Always on that site's own origin: "//host/…" or "/\\host/…" would otherwise name another host.
     if (!path.startsWith("/api/"))
-      return redirect(new URL(path + url.search, env.PUBLIC_SITE_URL).toString(), 302)
+      return redirect(
+        new URL(
+          path.replace(/^[/\\]+/, "/") + url.search,
+          new URL(env.PUBLIC_SITE_URL).origin,
+        ).toString(),
+        302,
+      )
 
     // Agent ingest is device-key authenticated, before the member bearer is ever parsed.
     const agent = await agentRoutes(request, url, env)

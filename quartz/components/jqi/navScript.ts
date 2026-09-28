@@ -59,7 +59,14 @@ export const navScript = `(function () {
         a.textContent = "Sign out (" + login + ")";
       });
   }
+  // Called directly and on Quartz's "nav" event, which also fires once on a plain page load: ask
+  // once per URL. Only the members service worker answers /api/session; without it the request
+  // reaches GitHub Pages and 404s, which already means signed out.
+  var authFor = null;
   function updateAuthNav() {
+    if (authFor === location.href) return;
+    authFor = location.href;
+    if (!(navigator.serviceWorker && navigator.serviceWorker.controller)) return applyAuth(false);
     fetch("/api/session", { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (s) { applyAuth(!!(s && s.user), s && s.user && s.user.login, s && s.user && s.user.is_admin); })

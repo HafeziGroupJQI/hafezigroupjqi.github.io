@@ -4,7 +4,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { assetRefs, problems, renderDirsIn, renderIpynb } from "./render-notebooks.mjs"
+import { assetRefs, problems, renderDirsIn, renderIpynb, stage1 } from "./render-notebooks.mjs"
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), "render-notebooks-"))
 const hex = (c) => c.repeat(64)
@@ -33,6 +33,37 @@ test("renderDirsIn accepts one stage-1 dir or a directory of them", () => {
     ["0", "1"],
   )
   assert.deepEqual(renderDirsIn(path.join(dir, "0")), [path.join(dir, "0")])
+})
+
+test("stage1 drops the renders an earlier run left in its output dir", () => {
+  const dir = temp()
+  const out = path.join(dir, "out")
+  // Last run rendered the notebook at its old path; this run's stand-in renders only the new one.
+  fs.mkdirSync(path.join(out, "notebooks", "old"), { recursive: true })
+  fs.writeFileSync(
+    path.join(out, "notebooks", "old", "a.nb.json"),
+    JSON.stringify({ source_sha: hex("a") }),
+  )
+  const fake = path.join(dir, "wolframscript")
+  fs.writeFileSync(
+    fake,
+    `#!/bin/sh
+while [ "$1" != --out ]; do shift; done
+mkdir -p "$2/notebooks/new" && echo '{"source_sha":"${hex("a")}"}' > "$2/notebooks/new/a.nb.json"
+echo '{"failed":[]}' > "$2/render.json"
+`,
+    { mode: 0o755 },
+  )
+  const saved = process.env.WOLFRAMSCRIPT
+  process.env.WOLFRAMSCRIPT = fake
+  try {
+    stage1({ root: dir, out, cache: path.join(dir, "cache") })
+  } finally {
+    if (saved === undefined) delete process.env.WOLFRAMSCRIPT
+    else process.env.WOLFRAMSCRIPT = saved
+  }
+  assert.ok(!fs.existsSync(path.join(out, "notebooks", "old")), "the stale render is gone")
+  assert.ok(fs.existsSync(path.join(out, "notebooks", "new", "a.nb.json")))
 })
 
 test("problems fails the build on a missing render, a conflict, failed cells or a Quarto error", () => {

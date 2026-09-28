@@ -76,6 +76,10 @@ export function stage1({ root, out, cache, force = false, jobs = 2 }) {
         "with a licensed Wolfram Engine (the compute host). Run the build there, or pass the renders " +
         "of this deploy in NOTEBOOK_RENDERS.",
     )
+  // Start from an empty stage-1 dir: a render left by an earlier run (a moved or deleted notebook)
+  // would be read with this run's and could stand in for it, since renders are matched by sha.
+  for (const name of ["notebooks", "assets", "render.json", "symbols.json"])
+    fs.rmSync(path.join(out, name), { recursive: true, force: true })
   fs.mkdirSync(out, { recursive: true })
   const args = ["-file", path.join(here, "render-nb.wls"), "--root", root, "--out", out]
   args.push("--cache", cache, "--jobs", String(jobs))

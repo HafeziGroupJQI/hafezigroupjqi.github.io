@@ -22,15 +22,14 @@ test("members keep public navigation and gain native resource and tool menus", (
     hrefs.indexOf("/resources/equipment/") + 1,
   )
   const tools = items.find((item) => item.label === "Tools")!
+  // The devices dashboard's tabs (experiments, the builder) are one entry: Command Center.
   assert.deepEqual(
-    tools.children?.map((item) => item.href),
+    tools.children?.map((item) => [item.label, item.href]),
     [
-      "/gpt",
-      "/scratchpad",
-      "/devices",
-      "/devices?tab=experiments",
-      "/devices?tab=builder",
-      "/admin",
+      ["Hafezi GPT", "/gpt"],
+      ["Scratchpad", "/scratchpad"],
+      ["Command Center", "/devices"],
+      ["Admin", "/admin"],
     ],
   )
   assert.deepEqual(

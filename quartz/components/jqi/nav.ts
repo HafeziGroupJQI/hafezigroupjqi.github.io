@@ -56,9 +56,8 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
           children: [
             { label: "Hafezi GPT", href: "/gpt" },
             { label: "Scratchpad", href: "/scratchpad" },
-            { label: "Devices", href: "/devices" },
-            { label: "Experiments", href: "/devices?tab=experiments" },
-            { label: "Experiment builder", href: "/devices?tab=builder" },
+            // The devices dashboard: its experiments and experiment builder are tabs of the page.
+            { label: "Command Center", href: "/devices" },
             { label: "Admin", href: "/admin", admin: true },
           ],
         },

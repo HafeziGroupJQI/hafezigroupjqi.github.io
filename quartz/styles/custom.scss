@@ -3603,6 +3603,10 @@ html.gpt-modal-open .gpt-fab {
 .scratchpad .scratch-table {
   border-collapse: collapse;
   font-size: 0.88rem;
+  /* The page clips horizontal overflow, so at phone width scroll the table itself to reach Stop. */
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 .scratchpad .scratch-table :is(th, td) {
   padding: 6px 14px 6px 0;

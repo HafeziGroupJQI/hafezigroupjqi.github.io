@@ -118,6 +118,17 @@ describe("bearer sessions", () => {
     expect(await (await SELF.fetch(`${ORIGIN}/api/health`)).json()).toMatchObject({ ok: true })
   })
 
+  it("answers a JSON null body with 422, not a 500", async () => {
+    for (const path of ["/api/auth/start", "/api/auth/exchange"]) {
+      const response = await SELF.fetch(`${ORIGIN}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      })
+      expect(response.status).toBe(422)
+    }
+  })
+
   it("identifies the signed-in member", async () => {
     const client = await member()
     expect((await client.json("/api/session")).body.user).toEqual({

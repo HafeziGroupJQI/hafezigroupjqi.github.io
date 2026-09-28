@@ -31,11 +31,15 @@ export function withPrivateHeaders(response: Response, { store = false } = {}): 
 }
 
 export async function readJson(request: Request): Promise<unknown> {
+  let body: unknown
   try {
-    return await request.json()
+    body = await request.json()
   } catch {
     throw new HttpError(422, "request body must be JSON")
   }
+  // Callers read fields straight off the body; a JSON null would throw there and answer 500.
+  if (body === null) throw new HttpError(422, "request body must not be null")
+  return body
 }
 
 // x-compute-* carry the Scratchpad envelope (src/compute/routes.ts): one preflight covers every

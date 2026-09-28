@@ -76,6 +76,16 @@ VerificationTest[
    DeleteDirectory[dir, DeleteContents -> True]; r],
   {True, True, True}, TestID -> "render-graph-and-pie-charts"]
 
+(* An input with a Graph typed into it reads as code, and runs to the same graph. *)
+VerificationTest[
+  With[{b = FirstCase[inputs["EIWL3-21-graphs-and-networks.nb"], x_ /; !FreeQ[x, NamespaceBox["NetworkGraphics", __]], $Failed]},
+   With[{code = InputCode[b]},
+    {StringQ[code] && StringFreeQ[code, "\\!\\(" | "1:eJ" | "Typeset`"],
+     StringContainsQ[code, "Graph[{"],
+     Quiet[Cases[ToExpression[code, InputForm, HoldComplete], g_Graph :> Length[EdgeList[g]], Infinity] ===
+        Cases[ToExpression[b, StandardForm, HoldComplete], g_Graph :> Length[EdgeList[g]], Infinity]]}]],
+  {True, True, True}, TestID -> "inputcode-embedded-graph-readable"]
+
 (* ---- a page is the notebook's path; the title is the notebook's own ---- *)
 VerificationTest[
   PageInfo["/site/content/resources/code/wolfram-guide/EIWL3-04-displaying-lists.nb", "/site/content"],

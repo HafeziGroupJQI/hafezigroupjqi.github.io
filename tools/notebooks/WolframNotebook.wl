@@ -267,8 +267,18 @@ codeHTML[b_] := boxLinear[b, "Quotes" -> True, "HTML" -> True];
 
 (* ---------- input code ---------- *)
 
+(* A Graph typed into an input (a picture in the cell) comes out of InputText as linear syntax
+   around its compressed box data; write it as the Graph expression it holds instead, so the code
+   reads, edits and runs as code. *)
+graphCode[g_Graph] := ToString[g, InputForm];
+graphCode[_] := $Failed;
+readableGraphs[b_] := b /. gb : GraphicsBox[NamespaceBox["NetworkGraphics", dm_DynamicModuleBox, ___], ___] :>
+    With[{code = graphCode[FirstCase[dm, HoldPattern[Set[s_Symbol, HoldComplete[g_]]] /;
+           SymbolName[Unevaluated[s]] === "graph" :> Quiet@Check[ReleaseHold[HoldComplete[g]], $Failed], $Failed, Infinity]]},
+     If[StringQ[code], code, gb]];
+
 InputCode[b_] := Module[{t},
-   t = Quiet@Check[First@FrontEndExecute[ExportPacket[Cell[BoxData[b], "Input"], "InputText"]], $Failed];
+   t = Quiet@Check[First@FrontEndExecute[ExportPacket[Cell[BoxData[readableGraphs[b]], "Input"], "InputText"]], $Failed];
    If[!StringQ[t], Return[$Failed]];
    (* Named characters that are ordinary Unicode read better as themselves; both parse. *)
    StringReplace[t, "\\[" ~~ name : WordCharacter .. ~~ "]" :> With[{c = Quiet@ToExpression["\"\\[" <> name <> "]\""]},

@@ -191,6 +191,9 @@ export async function labRoute(
 
 // ---- member routes ----
 
+/** Wolfram licence activations a member may try in an hour (each signs in to Wolfram). */
+const ACTIVATIONS_PER_HOUR = 5
+
 async function control(
   env: Env,
   session: Session,
@@ -343,6 +346,46 @@ export async function computeRoutes(
         limit: "wolfram",
         timeout_ms: 45_000,
       },
+    )
+  }
+
+  // The member's own Wolfram Engine licence on the compute host (hafezi_compute/wolfram/licences.py):
+  // its state, activating it with their Wolfram ID and password (used once there, never kept, and
+  // never logged here), and removing it.
+  if (route === "/wolfram/licence") {
+    if (method === "GET")
+      return control(env, session, "wolfram_licence", { action: "status" }, { timeout_ms: 30_000 })
+    requireMutation(request, env)
+    if (method === "DELETE") {
+      record("compute.wolfram_licence", "remove")
+      return control(env, session, "wolfram_licence", { action: "remove" }, { timeout_ms: 60_000 })
+    }
+    if (method !== "POST") throw new HttpError(405, "method not allowed")
+    const body = (await readJson(request)) as { wolfram_id?: unknown; password?: unknown }
+    const wolframId = typeof body.wolfram_id === "string" ? body.wolfram_id.trim() : ""
+    const password = typeof body.password === "string" ? body.password : ""
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wolframId) || wolframId.length > 254)
+      throw new HttpError(
+        422,
+        "enter your Wolfram ID: the email address you sign in to Wolfram with",
+      )
+    if (!password || password.length > 256)
+      throw new HttpError(422, "enter your Wolfram account's password")
+    const recent = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM audit_log WHERE login = ? AND action = 'compute.wolfram_licence'
+         AND target = 'activate' AND at > ?`,
+    )
+      .bind(session.login, Date.now() - 3600_000)
+      .first<{ n: number }>()
+    if ((recent?.n ?? 0) >= ACTIVATIONS_PER_HOUR)
+      throw new HttpError(429, "too many activation attempts; try again in an hour")
+    record("compute.wolfram_licence", "activate")
+    return control(
+      env,
+      session,
+      "wolfram_licence",
+      { action: "activate", wolfram_id: wolframId, password },
+      { timeout_ms: 150_000 },
     )
   }
 

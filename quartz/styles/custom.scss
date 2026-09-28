@@ -451,6 +451,30 @@ article.popover-hint > *:first-child {
     font-size: 16px;
   }
 }
+// Signed in: the member's photo and name before "Sign out", linking to their settings.
+.site-header__nav li[data-auth="out"]:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.site-header__nav ul li a.nav-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 16ch;
+}
+.nav-identity .nav-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--jqi-rule, #ddd);
+}
 // The explorer is its own scroll container so a long file list never scrolls the page.
 @media (min-width: 1000px) {
   .page-content__sidebar .explorer {

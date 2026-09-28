@@ -43,7 +43,47 @@ export const navScript = `(function () {
   // out" ([data-auth="out"]) and hide "Sign in" ([data-auth="in"]) when /api/session returns a
   // user; do the reverse when logged out. Degrades to the logged-out default where there is no API
   // (e.g. the GitHub Pages public deployment), so nothing member-only ever leaks into the markup.
-  function applyAuth(loggedIn, login, isAdmin) {
+  // Signed in, "Sign out" gets the member's photo and name before it, linking to /settings: the
+  // name and photo they chose there (the session's display_name and avatar), else GitHub's.
+  function identity(user) {
+    var out = document.querySelector('[data-auth="out"]');
+    if (!out) return;
+    var chip = out.querySelector(".nav-identity");
+    if (!user) { if (chip) chip.remove(); return; }
+    if (!chip) {
+      chip = document.createElement("a");
+      chip.className = "nav-identity";
+      chip.href = "/settings";
+      var pic = document.createElement("img");
+      pic.className = "nav-avatar";
+      pic.alt = "";
+      pic.width = 24;
+      pic.height = 24;
+      // An uploaded photo that fails to load (say, a stale link) falls back to GitHub's avatar.
+      pic.addEventListener("error", function () {
+        var fallback = "https://avatars.githubusercontent.com/" + encodeURIComponent(chip.dataset.login || "") + "?s=48";
+        if (pic.src !== fallback) pic.src = fallback;
+      });
+      var name = document.createElement("span");
+      name.className = "nav-name";
+      chip.append(pic, name);
+      out.prepend(chip);
+    }
+    chip.dataset.login = user.login;
+    chip.title = "Your settings (" + user.login + ")";
+    var avatar = user.avatar || "https://avatars.githubusercontent.com/" + encodeURIComponent(user.login) + "?s=48";
+    var img = chip.querySelector("img");
+    if (img.getAttribute("src") !== avatar) img.src = avatar;
+    chip.querySelector(".nav-name").textContent = user.display_name || user.name || user.login;
+  }
+  // /settings announces a new name or photo as soon as it is saved.
+  window.addEventListener("hafezi:identity", function (event) {
+    var chip = document.querySelector(".nav-identity");
+    if (!chip || !event.detail) return;
+    if (event.detail.display_name) chip.querySelector(".nav-name").textContent = event.detail.display_name;
+    if (event.detail.avatar) chip.querySelector("img").src = event.detail.avatar;
+  });
+  function applyAuth(loggedIn, login, isAdmin, user) {
     document.body.classList.toggle("is-authed", !!loggedIn);
     document.querySelectorAll('[data-member], [data-auth="out"]').forEach(function (el) {
       if (loggedIn) el.removeAttribute("hidden"); else el.setAttribute("hidden", "");
@@ -55,9 +95,11 @@ export const navScript = `(function () {
       if (loggedIn && isAdmin) el.removeAttribute("hidden"); else el.setAttribute("hidden", "");
     });
     if (loggedIn && login)
-      document.querySelectorAll('[data-auth="out"] > a').forEach(function (a) {
-        a.textContent = "Sign out (" + login + ")";
+      document.querySelectorAll('[data-auth="out"] > a:not(.nav-identity)').forEach(function (a) {
+        a.textContent = "Sign out";
+        a.title = "Sign out (" + login + ")";
       });
+    identity(loggedIn && user ? user : null);
   }
   // Called directly and on Quartz's "nav" event, which also fires once on a plain page load: ask
   // once per URL. Only the members service worker answers /api/session; without it the request
@@ -69,7 +111,7 @@ export const navScript = `(function () {
     if (!(navigator.serviceWorker && navigator.serviceWorker.controller)) return applyAuth(false);
     fetch("/api/session", { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (s) { applyAuth(!!(s && s.user), s && s.user && s.user.login, s && s.user && s.user.is_admin); })
+      .then(function (s) { applyAuth(!!(s && s.user), s && s.user && s.user.login, s && s.user && s.user.is_admin, s && s.user); })
       .catch(function () { applyAuth(false); });
   }
   document.addEventListener("nav", updateAuthNav);

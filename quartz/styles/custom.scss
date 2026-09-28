@@ -3887,7 +3887,7 @@ html.gpt-modal-open .gpt-fab {
 }
 @media (hover: hover) and (min-width: 800px) {
   .wl-notebook figure.wl-cell .wl-toolbar {
-    opacity: 0.35;
+    opacity: 0.8;
     transition: opacity 0.15s;
   }
   .wl-notebook figure.wl-cell:is(:hover, :focus-within) .wl-toolbar {

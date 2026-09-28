@@ -25,6 +25,7 @@ test("members keep public navigation and gain native resource and tool menus", (
       ["Hafezi GPT", "/gpt"],
       ["Scratchpad", "/scratchpad"],
       ["Command Center", "/devices"],
+      ["Settings", "/settings"],
       ["Admin", "/admin"],
     ],
   )

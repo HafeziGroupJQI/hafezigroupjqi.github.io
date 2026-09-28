@@ -210,7 +210,7 @@ export function mountAdmin(root, { api, session }) {
         { class: "muted" },
         "Owners of the ",
         h("code", { text: data.org }),
-        " GitHub organization are always admins. Admins can see the audit log, add or remove admins, and set Hafezi GPT budgets. Chat contents are never visible here.",
+        " GitHub organization are always admins. Admins can see the audit log and members' Hafezi GPT conversations, add or remove admins, and set Hafezi GPT budgets.",
       ),
       form,
       list,

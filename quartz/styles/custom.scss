@@ -2867,6 +2867,18 @@ a.gpt-chip:hover {
 .gpt-md :is(p, ul, ol, pre, table, blockquote) {
   margin: 0.6em 0;
 }
+.gpt-md :is(ul, ol) {
+  padding-left: 1.6em;
+}
+.gpt-md ul {
+  list-style: disc outside;
+}
+.gpt-md ul ul {
+  list-style-type: circle;
+}
+.gpt-md ol {
+  list-style: decimal outside;
+}
 .gpt-md pre {
   position: relative;
   background: var(--gpt-soft);

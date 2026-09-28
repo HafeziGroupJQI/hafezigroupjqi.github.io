@@ -174,7 +174,15 @@ export function renderIpynb(file, contentDir, { quarto = "quarto", cache = null 
         cache,
         "ipynb",
         sha256(
-          JSON.stringify([sourceSha, rel, quartoVersion(quarto), sha256(quartoConfig(file)), SELF]),
+          // The page links its raw notebook at documentHref (wolfram-pages.mjs): that too.
+          JSON.stringify([
+            sourceSha,
+            rel,
+            documentHref(rel),
+            quartoVersion(quarto),
+            sha256(quartoConfig(file)),
+            SELF,
+          ]),
         ),
       )
     : null

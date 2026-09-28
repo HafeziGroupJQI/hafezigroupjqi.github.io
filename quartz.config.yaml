@@ -97,6 +97,9 @@ plugins:
     options:
       renderEngine: katex
     order: 80
+  - source: "./quartz/plugins/local/display-math"
+    enabled: true
+    order: 81
   - source: "@quartz-community/citations"
     enabled: false
     order: 85

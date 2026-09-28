@@ -384,8 +384,15 @@ imageAsset[img_Image] := Module[{bytes = ExportByteArray[img, "PNG"], i = img},
 (* Per-box cache: identical boxes render once across every notebook. Rendering can evaluate the
    box's dynamic content (a Manipulate snapshot calling RandomColor, say), in the kernel or in the
    front end's own sandboxed kernel, so the random generator is seeded from the box itself in both:
-   around the render here, and as the first step of every DynamicModule's Initialization. *)
-seedDynamics[b_, seed_Integer] := b /. DynamicModuleBox[vars_, body_, opts___] :>
+   around the render here, and as the first step of a DynamicModule's Initialization. Only a module
+   the front end initializes synchronously in the kernel (a Manipulate's) can take that first step:
+   given an Initialization, any other module (a Graph's NetworkGraphics, with
+   AllowKernelInitialization -> False; a PieChart's click state; Iconize; summary boxes) was drawn
+   uninitialized, as an empty white box. *)
+(* By name: AllowKernelInitialization is not a System` symbol, so a notebook's is not this file's. *)
+seedableQ[opts_List] := MemberQ[opts, SynchronousInitialization -> True] &&
+   FreeQ[opts, (s_Symbol -> False) /; SymbolName[Unevaluated[s]] === "AllowKernelInitialization"];
+seedDynamics[b_, seed_Integer] := b /. DynamicModuleBox[vars_, body_, opts___] /; seedableQ[{opts}] :>
     With[{init = Cases[{opts}, (Initialization :> i_) :> Hold[i]], rest = Sequence @@ DeleteCases[{opts}, Initialization :> _]},
      If[init === {},
       DynamicModuleBox[vars, body, Initialization :> SeedRandom[seed], rest],

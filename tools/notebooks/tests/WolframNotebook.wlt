@@ -48,6 +48,34 @@ VerificationTest[With[{k = Quiet[OutputKind /@ outputs["EIWL3-46-audio-and-video
 VerificationTest[BoxText[RowBox[{"{", RowBox[{"1", ",", "\"a\"", ",", " ", "2"}], "}"}]], "{1, a, 2}", TestID -> "boxtext-strings"]
 VerificationTest[BoxText[GraphicsBox[DiskBox[{0, 0}]]], $Failed, TestID -> "boxtext-graphics-fails"]
 
+(* ---- graphs and charts: seeded only where the front end initializes in the kernel ---- *)
+netGraph[name_] := FirstCase[outputs[name], b_ /; !FreeQ[b, NamespaceBox["NetworkGraphics", __]], $Failed];
+pieChart[name_] := FirstCase[outputs[name], b_ /; StringContainsQ[ToString[b, InputForm], "DynamicChart`click"], $Failed];
+pieList[name_] := FirstCase[outputs[name], b : RowBox[{"{", RowBox[{_GraphicsBox, ",", ___}], "}"}] /;
+     StringContainsQ[ToString[b, InputForm], "DynamicChart`click"], $Failed];
+(* Whether an SVG asset (as pages show these outputs) draws its content: not an empty white box, and
+   not the front end's pink box for a dynamic module it could not draw. *)
+drawn[a_Association] := With[{svg = ReadString[FileNameJoin[{WolframNotebook`$CacheDir, "assets", a["sha"] <> "." <> a["ext"]}]]},
+   StringFreeQ[svg, "fill:rgb(100%,33%,33%)"] && StringCount[svg, "<path" | "<use" | "<image"] > 3];
+drawn[_] := False;
+
+VerificationTest[
+  With[{g = netGraph["EIWL3-21-graphs-and-networks.nb"], p = pieChart["EIWL3-04-displaying-lists.nb"],
+    m = First@outputs["EIWL3-09-interactive-manipulation.nb"]},
+   {g =!= $Failed, p =!= $Failed, WolframNotebook`Private`seedDynamics[g, 7] === g,
+    WolframNotebook`Private`seedDynamics[p, 7] === p, !FreeQ[WolframNotebook`Private`seedDynamics[m, 7], HoldPattern[SeedRandom[7]]]}],
+  {True, True, True, True, True}, TestID -> "seed-only-synchronous-modules"]
+
+(* A Graph, a PieChart and a list of pie charts are drawn, not left as an empty white box. *)
+VerificationTest[
+  Module[{dir = CreateDirectory[], r},
+   WolframNotebook`$CacheDir = dir;
+   r = drawn[WolframNotebook`Private`renderBoxes[#, "Output", "svg"]] & /@ {
+      netGraph["EIWL3-21-graphs-and-networks.nb"], pieChart["EIWL3-04-displaying-lists.nb"],
+      pieList["EIWL3-04-displaying-lists.nb"]};
+   DeleteDirectory[dir, DeleteContents -> True]; r],
+  {True, True, True}, TestID -> "render-graph-and-pie-charts"]
+
 (* ---- a page is the notebook's path; the title is the notebook's own ---- *)
 VerificationTest[
   PageInfo["/site/content/resources/code/wolfram-guide/EIWL3-04-displaying-lists.nb", "/site/content"],

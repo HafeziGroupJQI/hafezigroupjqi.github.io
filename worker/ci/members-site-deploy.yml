@@ -64,8 +64,10 @@ jobs:
           echo "website=$(git -C website rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "vault=$(git -C vault rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "vault_private=$(git -C vault-private rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      # The host's own node and wolframscript (no setup actions: the runner is not Ubuntu).
-      - run: npm ci --no-audit --no-fund
+      # The host's own node and wolframscript (no setup actions: the runner is not Ubuntu). No
+      # dependency's install script runs on the compute host: stage 1 needs none (sharp's binary
+      # is a package of its own).
+      - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: website
       - name: render the Wolfram notebooks of both vaults
         working-directory: website

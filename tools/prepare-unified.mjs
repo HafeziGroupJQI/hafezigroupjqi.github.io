@@ -62,6 +62,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "gpt",
       "admin",
       "scratchpad",
+      "settings",
       // The Scratchpad's JupyterLab: the service worker answers /jupyter/* from the compute relay.
       "jupyter",
     ]) {
@@ -362,6 +363,14 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "scratchpad",
       "Scratchpad",
       '<div class="member-tools dashboard scratchpad" data-scratchpad></div>',
+      [],
+      { layout: "dashboard" },
+    )
+    // A member's own settings (frontend/settings/): their People page, photo and Wolfram licence.
+    page(
+      "settings",
+      "Settings",
+      '<div class="member-tools dashboard" data-settings><h1 class="dash-title">Settings</h1><p class="muted">Loading…</p></div>',
       [],
       { layout: "dashboard" },
     )

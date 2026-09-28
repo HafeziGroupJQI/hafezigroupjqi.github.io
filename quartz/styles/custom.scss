@@ -2550,6 +2550,65 @@ a.device-card:hover {
   padding: 8px 0;
 }
 
+// ---- Settings (/settings): a member's People page, photo and Wolfram licence ----
+.settings-page {
+  max-width: 760px;
+}
+.settings-section {
+  margin: 24px 0 32px;
+  padding-top: 8px;
+  border-top: 1px solid var(--jqi-rule);
+}
+.settings-form {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  margin: 12px 0;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 11rem) minmax(0, 24rem);
+  align-items: center;
+  gap: 6px 12px;
+  width: 100%;
+}
+.settings-form :is(input:not([type="file"]), select) {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 4px;
+  font: inherit;
+}
+.settings-photo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 12px 0;
+}
+.settings-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--jqi-rule);
+}
+.settings-photo .sr-only:focus-visible + label {
+  outline: 2px solid var(--viz-1);
+  outline-offset: 2px;
+}
+.settings-steps li {
+  margin: 4px 0;
+}
+.settings-note {
+  margin: 8px 0;
+  color: var(--jqi-muted);
+}
+@media (max-width: 600px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 // ---- Hafezi GPT (/gpt, and the "Ask Hafezi GPT" modal on every member page) ----
 .gpt-app,
 .gpt-modal,

@@ -285,6 +285,12 @@ if (session.user) {
       .then(({ mountScratchpad }) => mountScratchpad(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
+  // A member's own settings: their People page, photo and Wolfram Engine licence.
+  mount("data-settings", (root) =>
+    import("./settings/index.js")
+      .then(({ mountSettings }) => mountSettings(root, { api, session }))
+      .catch((error) => showError(root, error)),
+  )
   // Wolfram notebook pages (tools/notebooks/, frontend/wolfram-notebook/): Run / Edit / Copy /
   // Open in Scratchpad on every code cell.
   mount("data-wolfram-notebook", (root) =>

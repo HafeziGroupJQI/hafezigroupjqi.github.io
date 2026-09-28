@@ -78,6 +78,8 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     // The Scratchpad is another full-bleed member tool.
     assert.match(read("scratchpad.md"), /layout: dashboard/)
     assert.match(read("scratchpad.md"), /data-scratchpad/)
+    // A member's own settings page.
+    assert.match(read("settings.md"), /data-settings/)
     assert.ok(!fs.existsSync(path.join(built.output, "resources/.git")))
     fs.mkdirSync(path.join(publicRoot, "resources"))
     assert.throws(() => prepareUnified(publicRoot, privateRoot, yaml), /collides/)

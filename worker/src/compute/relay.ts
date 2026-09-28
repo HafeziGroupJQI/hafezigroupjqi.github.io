@@ -33,6 +33,9 @@ import {
 
 export const RELAY_NAME = "hafezi-compute"
 
+/** Marks the relay's own "no free stream" answers (429 per member, 503 per host), which a
+ *  caller may wait out, apart from anything Jupyter itself answers. */
+export const RELAY_BUSY = "x-relay-busy"
 export const HTTP_PER_LOGIN = 32
 export const WS_PER_LOGIN = 32
 export const MAX_BODY = 95 * 1024 * 1024
@@ -349,11 +352,12 @@ export class ComputeRelay extends DurableObject<Env> {
     if (!this.host()) return offline()
     const max = this.hello()?.max_streams ?? DEFAULT_MAX_STREAMS
     if (this.liveStreamCount() >= max)
-      return problem(503, "compute host busy", { "retry-after": "2" })
+      return problem(503, "compute host busy", { "retry-after": "2", [RELAY_BUSY]: "1" })
     const cap = kind === "http" ? HTTP_PER_LOGIN : WS_PER_LOGIN
     if (this.countFor(login, kind) >= cap)
       return problem(429, `too many open ${kind === "http" ? "requests" : "connections"}`, {
         "retry-after": "2",
+        [RELAY_BUSY]: "1",
       })
     return null
   }

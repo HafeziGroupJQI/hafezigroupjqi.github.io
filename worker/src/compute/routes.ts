@@ -4,7 +4,7 @@ import type { Env } from "../env"
 import { HttpError, decodeSegment, json, readJson, withPrivateHeaders } from "../http"
 import { type Session, bearer, timingSafeEqual } from "../session"
 import { authorizeTarget } from "./policy"
-import { type ControlRequest, MAX_BODY, type OpenMeta, RELAY_NAME } from "./relay"
+import { type ControlRequest, MAX_BODY, type OpenMeta, RELAY_BUSY, RELAY_NAME } from "./relay"
 import { audit, type Auditor } from "../audit"
 import { issueAssertion, issueLabTicket, verifyLabTicket } from "./tokens"
 
@@ -65,6 +65,9 @@ export async function computeHostRoute(
 
 // ---- the lab origin: JupyterLab served by the Worker itself (ticket in the path) ----
 
+// How long a lab read waits for a free relay stream, and how often it looks.
+const BUSY_WAIT_MS = 60_000
+const BUSY_POLL_MS = 100
 const LAB_PATH = /^\/lab\/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(\/jupyter\/user\/.*)$/
 
 /** Paths the lab origin answers (everything else on the Worker is the API or a redirect). */
@@ -167,12 +170,22 @@ export async function labRoute(
   }
   const hasBody = method !== "GET" && method !== "HEAD" && request.body != null
   const meta: OpenMeta = { ...base, method, headers, has_body: hasBody }
-  const upstream = await relay(env).fetch("https://relay/http", {
-    method: "POST",
-    redirect: "manual",
-    headers: { "x-relay-meta": encodeURIComponent(JSON.stringify(meta)) },
-    body: hasBody ? request.body : null,
-  })
+  const open = () =>
+    relay(env).fetch("https://relay/http", {
+      method: "POST",
+      redirect: "manual",
+      headers: { "x-relay-meta": encodeURIComponent(JSON.stringify(meta)) },
+      body: hasBody ? request.body : null,
+    })
+  // A cold lab load asks for a hundred files at once, more streams than a member or the host may
+  // have open, and a page never retries a script that failed: reads wait for a free stream.
+  let upstream = await open()
+  for (let waited = 0; !hasBody && upstream.headers.get(RELAY_BUSY) && waited < BUSY_WAIT_MS;) {
+    await upstream.body?.cancel()
+    await new Promise((resolve) => setTimeout(resolve, BUSY_POLL_MS))
+    waited += BUSY_POLL_MS
+    upstream = await open()
+  }
   return finish(upstream, target, { prefix, siteOrigin })
 }
 

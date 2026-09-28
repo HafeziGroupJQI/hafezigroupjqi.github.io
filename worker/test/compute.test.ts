@@ -543,13 +543,22 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect((await pending).status).toBe(413)
   })
 
-  it("caps a member at 32 concurrent requests", async () => {
+  it("caps a member at 32 concurrent requests: reads wait for a free stream, writes are refused", async () => {
     const pending = Array.from({ length: 32 }, () => lab("GET", "/jupyter/user/alice/api/slow"))
     const opens: Frame[] = []
     for (let i = 0; i < 32; i++) opens.push(await host.next(ofType(FrameType.OPEN_HTTP)))
-    const over = await lab("GET", "/jupyter/user/alice/api/slow")
-    expect(over.status).toBe(429)
-    for (const open of opens) await respond(host, open.streamId, 200, [], "ok")
+    const write = await lab("PUT", "/jupyter/user/alice/api/contents/a.txt", {}, { body: "x" })
+    expect(write.status).toBe(429)
+    // A 33rd read (a lab page's script) is held, not failed, until one of the 32 finishes.
+    const read = lab("GET", "/jupyter/user/alice/static/x.js")
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(host.frames.filter(ofType(FrameType.OPEN_HTTP))).toHaveLength(0)
+    await respond(host, opens[0].streamId, 200, [], "ok")
+    const late = await host.next(ofType(FrameType.OPEN_HTTP))
+    expect(readJsonPayload<any>(late).target).toBe("/jupyter/user/alice/static/x.js")
+    await respond(host, late.streamId, 200, [], "late")
+    expect(await (await read).text()).toBe("late")
+    for (const open of opens.slice(1)) await respond(host, open.streamId, 200, [], "ok")
     for (const response of await Promise.all(pending)) expect(await response.text()).toBe("ok")
   })
 

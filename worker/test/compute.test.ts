@@ -1,4 +1,10 @@
-import { SELF, env, runInDurableObject } from "cloudflare:test"
+import {
+  SELF,
+  createExecutionContext,
+  env,
+  runInDurableObject,
+  waitOnExecutionContext,
+} from "cloudflare:test"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import {
   Flag,
@@ -23,6 +29,7 @@ import type { Env } from "../src/env"
 import { sign } from "../src/session"
 import vectors from "./fixtures/compute-vectors.json"
 import { ORIGIN, SITE, member } from "./helpers"
+import worker from "./worker"
 
 const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
 const unhex = (text: string) =>
@@ -631,13 +638,28 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect((await owner.json("/api/compute/servers")).body.servers).toHaveLength(1)
     await list
 
-    // An owner stops a member's server; a member cannot, and the login is checked first.
+    // An owner stops a member's server only with COMPUTE_OWNER_ACCESS on (the test config leaves it
+    // off); a member cannot, and the login is checked first.
+    const ownerStop = async (login: string) => {
+      const ctx = createExecutionContext()
+      const response = await (worker as ExportedHandler).fetch!(
+        new Request(`${ORIGIN}/api/compute/servers/${login}`, {
+          method: "DELETE",
+          headers: owner.headers,
+        }) as any,
+        { ...env, COMPUTE_OWNER_ACCESS: "true" } as any,
+        ctx,
+      )
+      await waitOnExecutionContext(ctx)
+      return response
+    }
     expect((await alice.fetch("/api/compute/servers/bob", { method: "DELETE" })).status).toBe(403)
-    expect((await owner.fetch("/api/compute/servers/..%2Fx", { method: "DELETE" })).status).toBe(
-      422,
-    )
+    const off = await owner.fetch("/api/compute/servers/bob", { method: "DELETE" })
+    expect(off.status).toBe(403)
+    expect(await off.json()).toEqual({ detail: "owner access is off" })
+    expect((await ownerStop("..%2Fx")).status).toBe(422)
     const stopOther = answer("stop_server", { server: "stopped" })
-    const stoppedOther = await owner.fetch("/api/compute/servers/Bob", { method: "DELETE" })
+    const stoppedOther = await ownerStop("Bob")
     expect(await stoppedOther.json()).toEqual({ server: "stopped" })
     expect((await stopOther).args).toEqual({ login: "bob" })
   })

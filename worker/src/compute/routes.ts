@@ -222,12 +222,13 @@ export async function computeRoutes(
     return control(env, session, "list", {}, { timeout_ms: 15_000 })
   }
 
-  // An owner stopping a member's server. The host also requires its owner access to be on.
+  // An owner stopping a member's server: both switches must be on, this one and the host's.
   const other = route.match(/^\/servers\/([^/]+)$/)
   if (other) {
     if (method !== "DELETE") throw new HttpError(405, "method not allowed")
     requireMutation(request, env)
     requireOwner(session)
+    if (env.COMPUTE_OWNER_ACCESS !== "true") throw new HttpError(403, "owner access is off")
     const login = decodeURIComponent(other[1]).toLowerCase()
     if (!/^[a-z0-9](?:[a-z0-9-]{0,38})$/.test(login)) throw new HttpError(422, "bad login")
     record("compute.stop", login)

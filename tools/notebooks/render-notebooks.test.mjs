@@ -100,7 +100,19 @@ test(
       nbformat_minor: 5,
       metadata: { kernelspec: { name: "python3", display_name: "Python 3", language: "python" } },
       cells: [
-        { cell_type: "markdown", id: "a", metadata: {}, source: ["# Ring sweep\n", "Notes."] },
+        {
+          cell_type: "markdown",
+          id: "a",
+          metadata: {},
+          source: [
+            "# Ring sweep\n",
+            "Notes on \\(t^2 + \\kappa^2 = 1\\).\n",
+            "\n",
+            "\\begin{align}\n",
+            "T &= |H|^2\n",
+            "\\end{align}\n",
+          ],
+        },
         {
           cell_type: "code",
           id: "b",
@@ -130,6 +142,9 @@ test(
       /^---\ntitle: Ring sweep\ntags:\n {2}- internal\n {2}- notebook\n {2}- notebook\/jupyter\n/,
     )
     assert.match(page, /rendered_from: code\/sweep.ipynb/)
+    // Math as Jupyter writes it: \(…\) and LaTeX environments are kept as math.
+    assert.match(page, /\$t\^2 \+ \\kappa\^2 = 1\$/)
+    assert.match(page, /\$\$\\begin\{align\}\nT &= \|H\|\^2\n\\end\{align\}\$\$/)
     assert.match(page, /saved output/)
     assert.match(
       page,

@@ -131,9 +131,13 @@ const DROP_KEYS = [
 // A page depends on the notebook's bytes, its path, Quarto's version, the Quarto project config
 // in effect (the nearest _quarto.yml above it) and this file: all of them are in the key, so an
 // unchanged notebook is never rendered twice and a changed one never comes from the cache.
+// Pandoc reads a notebook's Markdown cells as Jupyter does (MathJax): $…$, $$…$$, \(…\), \[…\] and
+// LaTeX math environments (jupyter-math.lua) are all math.
+const JUPYTER_MATH = path.join(here, "jupyter-math.lua")
 const SELF = crypto
   .createHash("sha256")
   .update(fs.readFileSync(fileURLToPath(import.meta.url)))
+  .update(fs.readFileSync(JUPYTER_MATH))
   .digest("hex")
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex")
 function quartoConfig(file) {
@@ -190,10 +194,24 @@ export function renderIpynb(file, contentDir, { quarto = "quarto", cache = null 
       entry,
     }
   }
-  const run = spawnSync(quarto, ["render", file, "--to", "gfm", "--no-execute"], {
-    cwd: path.dirname(file),
-    encoding: "utf8",
-  })
+  const run = spawnSync(
+    quarto,
+    [
+      "render",
+      file,
+      "--to",
+      "gfm",
+      "--no-execute",
+      "-M",
+      "from:markdown+tex_math_single_backslash",
+      "--lua-filter",
+      JUPYTER_MATH,
+    ],
+    {
+      cwd: path.dirname(file),
+      encoding: "utf8",
+    },
+  )
   if (run.status !== 0 || !fs.existsSync(md))
     return {
       source: rel,

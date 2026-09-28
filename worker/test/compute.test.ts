@@ -944,6 +944,33 @@ describe("JupyterLab WebSockets through the relay", { timeout: 30_000 }, () => {
     expect((await closed).code).toBe(1000)
   })
 
+  it("audits an owner's socket into another member's server", async () => {
+    const owner = await issueLabTicket(
+      workerEnv,
+      { login: "boss", role: "owner", exp: Math.floor(Date.now() / 1000) + 3600 },
+      "alice",
+    )
+    const ctx = createExecutionContext()
+    const pending = (worker as ExportedHandler).fetch!(
+      new Request(`${ORIGIN}/lab/${owner}${path}`, {
+        headers: { upgrade: "websocket", origin: ORIGIN, "sec-websocket-protocol": PROTOCOL },
+      }) as any,
+      { ...workerEnv, COMPUTE_OWNER_ACCESS: "true" } as any,
+      ctx,
+    )
+    const frame = await host.next(ofType(FrameType.OPEN_WS))
+    host.send(jsonFrame(FrameType.WS_ACCEPT, frame.streamId, { protocol: PROTOCOL }))
+    const ws = (await pending).webSocket!
+    ws.accept()
+    await waitOnExecutionContext(ctx)
+    const rows = await auditRows("login = 'boss' AND action = 'compute.access_other'")
+    expect(rows.map((r) => [r.target, JSON.parse(r.detail_json)])).toContainEqual([
+      "alice",
+      { websocket: "/jupyter/user/alice/api/kernels/k1/channels" },
+    ])
+    ws.close(1000, "done")
+  })
+
   it("tells the host when the member closes, and fails fast when the host refuses", async () => {
     const pending = open(ticket)
     const frame = await host.next(ofType(FrameType.OPEN_WS))

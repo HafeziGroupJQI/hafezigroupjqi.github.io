@@ -145,6 +145,15 @@ export async function labRoute(
       .map((value) => value.trim())
       .filter(Boolean)
     const meta: OpenMeta = { ...base, method: "GET", headers: [], protocols }
+    // An owner's socket into another member's server (a kernel, a terminal) runs code as them.
+    if (crossUser)
+      audit(env, ctx, request, {
+        login: ticket.login,
+        role: ticket.role,
+        action: "compute.access_other",
+        target: login,
+        detail: { websocket: target.split("?")[0] },
+      })
     return relay(env).fetch("https://relay/ws", {
       headers: { upgrade: "websocket", "x-relay-meta": encodeURIComponent(JSON.stringify(meta)) },
     })

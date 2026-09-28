@@ -129,6 +129,12 @@ describe("bearer sessions", () => {
     }
   })
 
+  it("answers a malformed escape in the path with 400, not a 500", async () => {
+    const client = await member()
+    for (const path of ["/api/gpt/conversations/%E0%A4", "/api/calendar/events/%E0%A4"])
+      expect((await client.fetch(path)).status, path).toBe(400)
+  })
+
   it("identifies the signed-in member", async () => {
     const client = await member()
     expect((await client.json("/api/session")).body.user).toEqual({

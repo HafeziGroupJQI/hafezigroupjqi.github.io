@@ -10,7 +10,16 @@ import type { DocsManifest, Env } from "./env"
 import type { AnthropicFetch } from "./gpt/chat"
 import { gptRoutes } from "./gpt/routes"
 import type { SkillsManifest } from "./gpt/skills"
-import { HttpError, json, preflight, problem, redirect, withCors, withPrivateHeaders } from "./http"
+import {
+  HttpError,
+  decodeSegment,
+  json,
+  preflight,
+  problem,
+  redirect,
+  withCors,
+  withPrivateHeaders,
+} from "./http"
 import { type Session, readSession } from "./session"
 
 // The Worker is an API. Browsers only ever show https://hafezigroupjqi.github.io: its service
@@ -235,7 +244,7 @@ export function createHandler(
       }
     }
     if (asset.status !== 404) return withPrivateHeaders(asset, { store: isHashedAsset(sitePath) })
-    const docPath = decodeURIComponent(sitePath).replace(/^\//, "")
+    const docPath = decodeSegment(sitePath).replace(/^\//, "")
     const entry = documents[docPath]
     if (entry) {
       // One row per opened document, not per byte-range a PDF viewer asks for.

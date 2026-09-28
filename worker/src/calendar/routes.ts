@@ -1,7 +1,7 @@
 import { DateTime } from "luxon"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
-import { HttpError, json, readJson } from "../http"
+import { HttpError, decodeSegment, json, readJson } from "../http"
 import type { Session } from "../session"
 import { parseEvent } from "./model"
 import { CalendarStore } from "./store"
@@ -28,7 +28,7 @@ export async function calendarRoutes(
 ): Promise<Response | null> {
   const match = url.pathname.match(/^\/api\/calendar\/events(?:\/([^/]+))?$/)
   if (!match) return null
-  const id = match[1] ? decodeURIComponent(match[1]) : null
+  const id = match[1] ? decodeSegment(match[1]) : null
   const store = new CalendarStore(env.DB)
   const occurrence = url.searchParams.get("occurrence") || null
   if (request.method === "GET") {

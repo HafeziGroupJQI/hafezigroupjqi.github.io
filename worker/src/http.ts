@@ -30,6 +30,15 @@ export function withPrivateHeaders(response: Response, { store = false } = {}): 
   return out
 }
 
+/** decodeURIComponent for a piece of the request path: a malformed escape is a 400, not a 500. */
+export function decodeSegment(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    throw new HttpError(400, "malformed percent-encoding in the path")
+  }
+}
+
 export async function readJson(request: Request): Promise<unknown> {
   let body: unknown
   try {

@@ -1,7 +1,7 @@
 import { type Auditor, isAdmin } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
-import { HttpError, json, readJson } from "../http"
+import { HttpError, decodeSegment, json, readJson } from "../http"
 import type { Session } from "../session"
 import { type GptDeps, displayTurns, postMessage, readTurn } from "./chat"
 import { estimateTokens, projectKnowledge, uploadKind } from "./context"
@@ -107,7 +107,7 @@ export async function gptRoutes(
   }
   const projectMatch = path.match(/^\/projects\/([^/]+)(?:\/(files))?$/)
   if (projectMatch) {
-    const project = await store.project(decodeURIComponent(projectMatch[1]), login)
+    const project = await store.project(decodeSegment(projectMatch[1]), login)
     const canEdit = project.owner === login || (await isAdmin(env, session))
     if (projectMatch[2] === "files") {
       if (method !== "POST") throw new HttpError(405, "method not allowed")
@@ -158,7 +158,7 @@ export async function gptRoutes(
   // ---- files ----
   const fileMatch = path.match(/^\/files\/([^/]+)$/)
   if (fileMatch) {
-    const file = await store.file(decodeURIComponent(fileMatch[1]))
+    const file = await store.file(decodeSegment(fileMatch[1]))
     if (!file) throw new HttpError(404, "file not found")
     await requireFileAccess(file, store, login)
     if (method === "GET") {
@@ -205,7 +205,7 @@ export async function gptRoutes(
   }
   const skillMatch = path.match(/^\/skills\/([^/]+)$/)
   if (skillMatch) {
-    const skill = await store.skill(decodeURIComponent(skillMatch[1]))
+    const skill = await store.skill(decodeSegment(skillMatch[1]))
     if (!skill || (skill.visibility !== "group" && skill.owner !== login))
       throw new HttpError(404, "skill not found")
     write()
@@ -275,7 +275,7 @@ export async function gptRoutes(
     /^\/conversations\/([^/]+)(?:\/(messages|files|shares|fork)(?:\/([^/]+))?)?$/,
   )
   if (conv) {
-    const id = decodeURIComponent(conv[1])
+    const id = decodeSegment(conv[1])
     const sub = conv[2]
     if (sub === "messages") {
       if (method !== "POST") throw new HttpError(405, "method not allowed")
@@ -328,7 +328,7 @@ export async function gptRoutes(
         return json(await store.shares(conversation.id), 201)
       }
       if (method === "DELETE" && conv[3]) {
-        const grantee = decodeURIComponent(conv[3])
+        const grantee = decodeSegment(conv[3])
         if (!(await store.unshare(conversation.id, grantee)))
           throw new HttpError(404, "not shared with them")
         record("gpt.unshare", conversation.id, { grantee })

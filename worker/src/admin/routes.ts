@@ -3,7 +3,7 @@ import { type Auditor, requireAdmin } from "../audit"
 import type { Env } from "../env"
 import { displayTurns } from "../gpt/chat"
 import { GptStore } from "../gpt/store"
-import { HttpError, json, readJson } from "../http"
+import { HttpError, decodeSegment, json, readJson } from "../http"
 import type { Session } from "../session"
 
 // Group-admin console: the audit log, the admin allow-list, Hafezi GPT usage + budgets, and
@@ -150,7 +150,7 @@ export async function adminRoutes(
   const demote = path.match(/^\/admins\/([^/]+)$/)
   if (demote && request.method === "DELETE") {
     requireMutation(request, env)
-    const login = decodeURIComponent(demote[1])
+    const login = decodeSegment(demote[1])
     const { meta } = await env.DB.prepare("DELETE FROM admins WHERE login = ?").bind(login).run()
     if (!meta.changes) throw new HttpError(404, "not an admin (org owners are managed on GitHub)")
     record("admin.demote", login)
@@ -183,7 +183,7 @@ export async function adminRoutes(
   const budget = path.match(/^\/budgets\/([^/]+)$/)
   if (budget && request.method === "PUT") {
     requireMutation(request, env)
-    const login = decodeURIComponent(budget[1])
+    const login = decodeSegment(budget[1])
     if (!LOGIN.test(login)) throw new HttpError(422, "invalid login")
     const body = (await readJson(request)) as { monthly_tokens?: unknown }
     if (body.monthly_tokens === null) {
@@ -230,7 +230,7 @@ export async function adminRoutes(
 
   const conversation = path.match(/^\/gpt\/conversations\/([^/]+)$/)
   if (conversation && request.method === "GET") {
-    const id = decodeURIComponent(conversation[1])
+    const id = decodeSegment(conversation[1])
     const row = await env.DB.prepare(
       `SELECT c.id, c.owner, c.title, c.model, p.name AS project, c.origin_slug, c.forked_from,
               c.created_at, c.updated_at

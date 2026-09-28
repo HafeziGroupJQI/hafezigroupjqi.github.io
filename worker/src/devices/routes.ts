@@ -1,7 +1,7 @@
 import type { Auditor } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
-import { HttpError, json, readJson } from "../http"
+import { HttpError, decodeSegment, json, readJson } from "../http"
 import type { Session } from "../session"
 import { generateAndDispatch, stopExperiment } from "./experiments"
 import { hubEnqueue, hubStream } from "./hub-client"
@@ -33,7 +33,7 @@ export async function deviceRoutes(
   const exp = url.pathname.match(/^\/api\/experiments\/([^/]+)(?:\/(datasets))?$/)
   if (exp) {
     if (request.method !== "GET") throw new HttpError(405, "method not allowed")
-    const id = decodeURIComponent(exp[1])
+    const id = decodeSegment(exp[1])
     const experiment = await store.getExperiment(id)
     if (!experiment) throw new HttpError(404, "experiment not found")
     if (exp[2] === "datasets") return json(await store.listDatasets(id))
@@ -58,7 +58,7 @@ export async function deviceRoutes(
 
   const match = url.pathname.match(/^\/api\/devices\/([^/]+)(?:\/(.*))?$/)
   if (!match) return null
-  const code = decodeURIComponent(match[1])
+  const code = decodeSegment(match[1])
   const rest = match[2] ?? ""
 
   // ---- reads (GET) ----
@@ -88,7 +88,7 @@ export async function deviceRoutes(
     if (instMatch) {
       const d = await store.getDevice(code)
       const live = liveness(d.last_seen_ns, d.enrolled_at != null, Date.now())
-      const inst = await store.instrumentDetail(code, decodeURIComponent(instMatch[1]))
+      const inst = await store.instrumentDetail(code, decodeSegment(instMatch[1]))
       return json({ ...inst, effective_status: effectiveStatus(inst.status, live) })
     }
     if (rest === "stream") {
@@ -140,7 +140,7 @@ export async function deviceRoutes(
   }
 
   if (request.method === "POST" && rest.match(/^experiments\/([^/]+)\/stop$/)) {
-    const id = decodeURIComponent(rest.match(/^experiments\/([^/]+)\/stop$/)![1])
+    const id = decodeSegment(rest.match(/^experiments\/([^/]+)\/stop$/)![1])
     await store.getDevice(code)
     return json(await stopExperiment(env, store, code, id, session.login), 202)
   }

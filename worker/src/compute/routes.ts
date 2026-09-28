@@ -2,7 +2,7 @@ import type { Auditor } from "../audit"
 import { allowedOrigins, requireMutation } from "../auth"
 import { hashSecret } from "../devices/keys"
 import type { Env } from "../env"
-import { HttpError, json, readJson, withPrivateHeaders } from "../http"
+import { HttpError, decodeSegment, json, readJson, withPrivateHeaders } from "../http"
 import { type Session, bearer, timingSafeEqual } from "../session"
 import { authorizeTarget } from "./policy"
 import { type ControlRequest, MAX_BODY, type OpenMeta, RELAY_NAME } from "./relay"
@@ -229,7 +229,7 @@ export async function computeRoutes(
     requireMutation(request, env)
     requireOwner(session)
     if (env.COMPUTE_OWNER_ACCESS !== "true") throw new HttpError(403, "owner access is off")
-    const login = decodeURIComponent(other[1]).toLowerCase()
+    const login = decodeSegment(other[1]).toLowerCase()
     if (!/^[a-z0-9](?:[a-z0-9-]{0,38})$/.test(login)) throw new HttpError(422, "bad login")
     record("compute.stop", login)
     return control(env, session, "stop_server", { login }, { timeout_ms: 60_000 })

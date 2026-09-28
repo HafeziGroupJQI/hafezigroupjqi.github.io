@@ -18,7 +18,7 @@ test("members keep public navigation and gain native resource and tool menus", (
   // The Wolfram Language guide follows Equipment in the Resources menu.
   const hrefs = resources.children?.map((item) => item.href) ?? []
   assert.equal(
-    hrefs.indexOf("/resources/wolfram-guide/"),
+    hrefs.indexOf("/resources/code/wolfram-guide/"),
     hrefs.indexOf("/resources/equipment/") + 1,
   )
   const tools = items.find((item) => item.label === "Tools")!

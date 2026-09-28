@@ -15,12 +15,8 @@ test("members keep public navigation and gain native resource and tool menus", (
   const resources = items.find((item) => item.label === "Resources")!
   assert.ok(resources.children?.some((item) => item.href === "/calendar"))
   assert.ok(resources.children?.some((item) => item.href === "/resources/equipment/"))
-  // The Wolfram Language guide follows Equipment in the Resources menu.
-  const hrefs = resources.children?.map((item) => item.href) ?? []
-  assert.equal(
-    hrefs.indexOf("/resources/code/wolfram-guide/"),
-    hrefs.indexOf("/resources/equipment/") + 1,
-  )
+  // The Wolfram Language guide is part of Code, not an entry of its own.
+  assert.ok(!resources.children?.some((item) => /wolfram/i.test(item.label)))
   const tools = items.find((item) => item.label === "Tools")!
   // The devices dashboard's tabs (experiments, the builder) are one entry: Command Center.
   assert.deepEqual(

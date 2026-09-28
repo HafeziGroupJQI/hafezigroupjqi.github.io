@@ -87,52 +87,57 @@ test("combined content keeps homepage, namespaces private links and aliases, and
   }
 })
 
-test("notebooks are listed in their section by path; a wolfram-guide folder is a section", () => {
+test("notebooks are listed by path; list_pages works in nested folders", () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "unified-notebooks-"))
   const publicRoot = path.join(fixture, "public")
   const privateRoot = path.join(fixture, "private")
   let built
-  let plain
+  let listed
   try {
     fs.mkdirSync(publicRoot)
     fs.writeFileSync(path.join(publicRoot, "index.md"), "---\ntitle: Hafezi Group\n---\nHome")
-    fs.mkdirSync(path.join(privateRoot, "wolfram-guide"), { recursive: true })
-    fs.mkdirSync(path.join(privateRoot, "code"), { recursive: true })
-    fs.writeFileSync(path.join(privateRoot, "wolfram-guide", "01-starting-out.nb"), "Notebook[{}]")
+    fs.mkdirSync(path.join(privateRoot, "code", "wolfram-guide"), { recursive: true })
+    fs.writeFileSync(
+      path.join(privateRoot, "code", "wolfram-guide", "01-starting-out.nb"),
+      "Notebook[{}]",
+    )
     fs.writeFileSync(path.join(privateRoot, "code", "analysis.ipynb"), '{"cells": []}')
     fs.writeFileSync(path.join(privateRoot, "code", "note.md"), "---\ntitle: Note\n---\nText")
     built = prepareUnified(publicRoot, privateRoot, yaml)
     const read = (file) => fs.readFileSync(path.join(built.output, file), "utf8")
     // The notebooks themselves are staged; their pages are made later in the build.
-    assert.ok(fs.existsSync(path.join(built.output, "resources/wolfram-guide/01-starting-out.nb")))
-    assert.match(read("resources/wolfram-guide/index.md"), /title: Wolfram Language guide/)
-    assert.match(
-      read("resources/wolfram-guide/index.md"),
-      /\[\[resources\/wolfram-guide\/01-starting-out\|01-starting-out\]\]/,
+    assert.ok(
+      fs.existsSync(path.join(built.output, "resources/code/wolfram-guide/01-starting-out.nb")),
     )
+    // A generated section index lists every page under it, nested ones included.
     assert.match(read("resources/code/index.md"), /\[\[resources\/code\/analysis\|analysis\]\]/)
     assert.match(read("resources/code/index.md"), /\[\[resources\/code\/note\|note\]\]/)
-    // A hand-written section index keeps its text; with list_pages it also lists the pages.
+    assert.match(
+      read("resources/code/index.md"),
+      /\[\[resources\/code\/wolfram-guide\/01-starting-out\|01-starting-out\]\]/,
+    )
+    // No top-level section is made for a course folder any more.
+    assert.ok(!fs.existsSync(path.join(built.output, "resources/wolfram-guide")))
+    // A hand-written index in a nested folder keeps its text; with list_pages it also lists the
+    // pages of its own folder.
     fs.writeFileSync(
-      path.join(privateRoot, "wolfram-guide", "index.md"),
+      path.join(privateRoot, "code", "wolfram-guide", "index.md"),
       "---\ntitle: Guide\ntags: [internal]\nlist_pages: true\n---\n\nAbout this guide.\n",
     )
-    const listed = prepareUnified(publicRoot, privateRoot, yaml)
+    listed = prepareUnified(publicRoot, privateRoot, yaml)
     const guideIndex = fs.readFileSync(
-      path.join(listed.output, "resources/wolfram-guide/index.md"),
+      path.join(listed.output, "resources/code/wolfram-guide/index.md"),
       "utf8",
     )
-    fs.rmSync(listed.stage, { recursive: true, force: true })
     assert.match(
       guideIndex,
-      /About this guide\.\n\n## Pages\n\n- \[\[resources\/wolfram-guide\/01-starting-out\|01-starting-out\]\]\n$/,
+      /About this guide\.\n\n## Pages\n\n- \[\[resources\/code\/wolfram-guide\/01-starting-out\|01-starting-out\]\]\n$/,
     )
-    // Without the folder there is no section.
-    fs.rmSync(path.join(privateRoot, "wolfram-guide"), { recursive: true })
-    plain = prepareUnified(publicRoot, privateRoot, yaml)
-    assert.ok(!fs.existsSync(path.join(plain.output, "resources/wolfram-guide")))
+    // An index without list_pages is left as written.
+    const plainIndex = path.join(listed.output, "resources/code/note.md")
+    assert.doesNotMatch(fs.readFileSync(plainIndex, "utf8"), /## Pages/)
   } finally {
-    for (const prepared of [built, plain])
+    for (const prepared of [built, listed])
       if (prepared) fs.rmSync(prepared.stage, { recursive: true, force: true })
     fs.rmSync(fixture, { recursive: true, force: true })
   }

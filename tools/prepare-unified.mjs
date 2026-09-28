@@ -206,43 +206,39 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       ...(drawings.length
         ? [["Drawings", "drawings", "Excalidraw sketches from sessions and notes."]]
         : []),
-      // Wolfram notebooks (.nb) in this folder become pages like any other notebook.
-      ...(fs.existsSync(path.join(root, "wolfram-guide"))
-        ? [
-            [
-              "Wolfram Language guide",
-              "wolfram-guide",
-              "Wolfram notebooks for learning the language, rendered from the notebooks themselves.",
-            ],
-          ]
-        : []),
     ]
     fs.mkdirSync(destination, { recursive: true })
-    for (const [title, slug] of sections) {
-      const directory = path.join(destination, slug)
-      fs.mkdirSync(directory, { recursive: true })
-      const index = path.join(directory, "index.md")
-      // Notebooks become pages later in the build (render-qmd, tools/notebooks/), at their own
-      // paths, so they are listed here by those paths.
-      const pageFile = /\.(md|qmd|ipynb|nb)$/
-      const links = walk(directory)
+    // Notebooks become pages later in the build (render-qmd, tools/notebooks/), at their own
+    // paths, so indexes list them by those paths.
+    const pageFile = /\.(md|qmd|ipynb|nb)$/
+    const pageLinks = (directory, index) =>
+      walk(directory)
         .filter((file) => pageFile.test(file) && file !== index)
         .map((file) => {
           const relative = path.relative(prepared.output, file).replace(pageFile, "")
           return `- [[${relative}|${path.basename(file).replace(pageFile, "")}]]`
         })
-      if (!fs.existsSync(index)) {
-        page(`resources/${slug}/index`, title, links.join("\n") || "No resources added yet.", [
-          "internal",
-          slug,
-        ])
-      } else if (links.length) {
-        // A hand-written index with `list_pages: true` gets the same listing appended.
-        const text = fs.readFileSync(index, "utf8")
-        const front = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)
-        if (front && yaml.parse(front[1])?.list_pages === true)
-          fs.writeFileSync(index, `${text.trimEnd()}\n\n## Pages\n\n${links.join("\n")}\n`)
-      }
+    for (const [title, slug] of sections) {
+      const directory = path.join(destination, slug)
+      fs.mkdirSync(directory, { recursive: true })
+      const index = path.join(directory, "index.md")
+      if (!fs.existsSync(index))
+        page(
+          `resources/${slug}/index`,
+          title,
+          pageLinks(directory, index).join("\n") || "No resources added yet.",
+          ["internal", slug],
+        )
+    }
+    // Any hand-written index.md with `list_pages: true`, at any depth (a course folder under
+    // code/, say), gets its folder's pages appended.
+    for (const index of walk(destination).filter((file) => path.basename(file) === "index.md")) {
+      const text = fs.readFileSync(index, "utf8")
+      const front = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+      if (!front || yaml.parse(front[1])?.list_pages !== true) continue
+      const links = pageLinks(path.dirname(index), index)
+      if (links.length)
+        fs.writeFileSync(index, `${text.trimEnd()}\n\n## Pages\n\n${links.join("\n")}\n`)
     }
     // Every topic tag used by private notes, grouped by its root, so members can browse
     // by function (code/simulation), tool, equipment, project, research area, or person.

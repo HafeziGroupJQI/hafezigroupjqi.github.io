@@ -40,6 +40,8 @@ export const HTTP_PER_LOGIN = 32
 export const WS_PER_LOGIN = 32
 export const MAX_BODY = 95 * 1024 * 1024
 const DEFAULT_MAX_STREAMS = 64
+/** The host pings every 20 s: after this long without a word from it, it counts as offline. */
+export const HOST_SILENT_MS = 90_000
 const HEAD_TIMEOUT_MS = 120_000
 const ACCEPT_TIMEOUT_MS = 10_000
 const REASSEMBLY_CAP = 16 * 1024 * 1024
@@ -165,6 +167,8 @@ function concat(parts: Uint8Array[], total: number): Uint8Array {
 
 export class ComputeRelay extends DurableObject<Env> {
   private hostSocket: WebSocket | null = null
+  /** When the host last sent a frame (in memory; its pings are answered without waking us). */
+  private hostFrameAt = 0
   private readonly streams = new Map<number, Stream>()
   private readonly rpcs = new Map<
     number,
@@ -220,11 +224,21 @@ export class ComputeRelay extends DurableObject<Env> {
     return (this.host()?.deserializeAttachment() as HostAttachment | null)?.hello
   }
 
+  /** When the host was last heard from: connected, pinged (every 20 s) or sent a frame. */
+  private lastSeen(host: WebSocket): number {
+    const attachment = host.deserializeAttachment() as HostAttachment | null
+    const pinged = this.ctx.getWebSocketAutoResponseTimestamp(host)?.getTime() ?? 0
+    return Math.max(attachment?.connected_at ?? 0, pinged, this.hostFrameAt)
+  }
+
   private status() {
     const host = this.host()
     const hello = this.hello()
+    const seen = host ? this.lastSeen(host) : 0
     return {
-      online: host != null,
+      // A socket that stopped answering (a sleeping or cut-off host) is not online.
+      online: host != null && Date.now() - seen < HOST_SILENT_MS,
+      last_seen: seen || null,
       host_id: hello?.host_id ?? null,
       version: hello?.version ?? null,
       streams: this.liveStreamCount(),
@@ -840,6 +854,7 @@ export class ComputeRelay extends DurableObject<Env> {
         ? received
         : await (received as Blob).arrayBuffer()
     if (tags.includes("host")) {
+      this.hostFrameAt = Date.now()
       if (typeof message === "string") return // only "ping", answered by the auto-response
       if (!this.isCurrentHost(ws)) return
       this.fromHost(ws, message)

@@ -582,6 +582,25 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect(await (await next).text()).toBe("again")
   })
 
+  it("reports a host that has gone silent as offline, until it is heard from again", async () => {
+    const inRelay = runInDurableObject as unknown as (
+      stub: unknown,
+      fn: (instance: any) => void,
+    ) => Promise<void>
+    const stub = workerEnv.COMPUTE_RELAY.get(workerEnv.COMPUTE_RELAY.idFromName(RELAY_NAME))
+    const connectedAt = (at: number) =>
+      inRelay(stub, (instance) => {
+        const ws = instance.host()
+        ws.serializeAttachment({ ...ws.deserializeAttachment(), connected_at: at })
+        instance.hostFrameAt = 0
+      })
+    await connectedAt(Date.now() - 10 * 60_000)
+    const silent = (await (await alice.fetch("/api/compute/status")).json()) as any
+    expect(silent.host.online).toBe(false)
+    expect(silent.server).toBeNull()
+    await connectedAt(Date.now())
+  })
+
   it("runs control RPCs: status, start with progress, stop, the owner's list", async () => {
     const answer = (op: string, result: unknown, progress: unknown[] = []) =>
       host

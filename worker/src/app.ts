@@ -8,6 +8,7 @@ import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
 import type { DocsManifest, Env } from "./env"
 import type { AnthropicFetch } from "./gpt/chat"
+import { isLabGptPath, labGptRequest } from "./gpt/lab"
 import { gptRoutes } from "./gpt/routes"
 import { navIdentity, profileRoutes } from "./profile/routes"
 import type { VaultFetch } from "./profile/vault"
@@ -122,6 +123,17 @@ export function createHandler(
   ): Promise<Response> {
     const path = url.pathname
     if (path === "/api/health") return json({ ok: true, version: VERSION })
+
+    // Hafezi GPT in the lab's own panel, on the lab origin: the lab ticket is its credential there.
+    if (isLabGptPath(path)) {
+      const lab = await labGptRequest(request, url, env)
+      const record = auditor(env, ctx, lab.request, lab.session)
+      const response = await gptRoutes(lab.request, lab.url, env, ctx, lab.session, record, gptDeps)
+      if (!response) throw new HttpError(404, "not found")
+      if (request.method !== "GET" && request.method !== "HEAD" && !record.recorded)
+        record(`api.${request.method}`, lab.url.pathname)
+      return withPrivateHeaders(response)
+    }
 
     // JupyterLab on its own origin: the ticket in the path is its only credential.
     const lab = await labRoute(request, url, env, ctx)

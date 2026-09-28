@@ -78,7 +78,10 @@ test("?open= names a file in the member's storage; absolute or parent paths are 
 })
 
 test("?fork= names a vault notebook to copy in; unsafe paths are ignored", () => {
-  assert.equal(requestedFork("?fork=wolfram-guide/EIWL3-01.nb"), "wolfram-guide/EIWL3-01.nb")
+  assert.equal(
+    requestedFork("?fork=code/wolfram-guide/EIWL3-01.nb"),
+    "code/wolfram-guide/EIWL3-01.nb",
+  )
   assert.equal(requestedFork("?fork=%2Fetc%2Fpasswd"), null)
   assert.equal(requestedFork("?fork=a/../../x"), null)
   assert.equal(requestedFork("?open=x.nb"), null)

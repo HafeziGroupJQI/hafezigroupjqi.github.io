@@ -669,7 +669,11 @@ describe("the compute relay", { timeout: 30_000 }, () => {
       alice.fetch("/api/compute/wolfram/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: "2+2", prelude: [], page: "resources/wolfram-guide/ch01" }),
+        body: JSON.stringify({
+          code: "2+2",
+          prelude: [],
+          page: "resources/code/wolfram-guide/ch01",
+        }),
       })
     const first = run()
     const rpc = readJsonPayload<any>(
@@ -677,7 +681,11 @@ describe("the compute relay", { timeout: 30_000 }, () => {
         (f) => f.type === FrameType.CONTROL && readJsonPayload<any>(f).op === "wolfram_run",
       ),
     )
-    expect(rpc.args).toEqual({ code: "2+2", prelude: [], page: "resources/wolfram-guide/ch01" })
+    expect(rpc.args).toEqual({
+      code: "2+2",
+      prelude: [],
+      page: "resources/code/wolfram-guide/ch01",
+    })
     expect((await run()).status).toBe(429)
     host.send(
       jsonFrame(FrameType.CONTROL_RESULT, 0, {
@@ -697,11 +705,11 @@ describe("the compute relay", { timeout: 30_000 }, () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ source }),
       })
-    const pending = fork({ kind: "published", path: "wolfram-guide/EIWL3-01.nb" })
+    const pending = fork({ kind: "published", path: "code/wolfram-guide/EIWL3-01.nb" })
     const rpc = readJsonPayload<any>(
       await host.next((f) => f.type === FrameType.CONTROL && readJsonPayload<any>(f).op === "fork"),
     )
-    expect(rpc.args).toEqual({ source: "published:wolfram-guide/EIWL3-01.nb" })
+    expect(rpc.args).toEqual({ source: "published:code/wolfram-guide/EIWL3-01.nb" })
     host.send(
       jsonFrame(FrameType.CONTROL_RESULT, 0, {
         rpc_id: rpc.rpc_id,

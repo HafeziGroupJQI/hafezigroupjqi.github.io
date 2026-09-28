@@ -50,8 +50,8 @@ VerificationTest[BoxText[GraphicsBox[DiskBox[{0, 0}]]], $Failed, TestID -> "boxt
 
 (* ---- a page is the notebook's path; the title is the notebook's own ---- *)
 VerificationTest[
-  PageInfo["/site/content/resources/wolfram-guide/EIWL3-04-displaying-lists.nb", "/site/content"],
-  <|"page" -> "resources/wolfram-guide/EIWL3-04-displaying-lists", "source" -> "resources/wolfram-guide/EIWL3-04-displaying-lists.nb"|>,
+  PageInfo["/site/content/resources/code/wolfram-guide/EIWL3-04-displaying-lists.nb", "/site/content"],
+  <|"page" -> "resources/code/wolfram-guide/EIWL3-04-displaying-lists", "source" -> "resources/code/wolfram-guide/EIWL3-04-displaying-lists.nb"|>,
   TestID -> "page-is-path"]
 
 VerificationTest[

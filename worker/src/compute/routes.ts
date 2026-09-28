@@ -329,6 +329,10 @@ export async function computeRoutes(
     const prelude = Array.isArray(body.prelude) ? body.prelude : []
     if (prelude.some((item) => typeof item !== "string") || prelude.join("").length > 100_000)
       throw new HttpError(422, "prelude must be a list of code strings")
+    // The run crosses the tunnel in one frame of at most 256 KiB, so count bytes, not characters:
+    // an oversize frame failed as "compute host offline".
+    if (new TextEncoder().encode(JSON.stringify({ code: body.code, prelude })).byteLength > 200_000)
+      throw new HttpError(413, "this cell and the page's definitions before it are too long to run")
     // The notebook page the cell is on (its path), for the host's logs.
     const page = typeof body.page === "string" ? body.page.slice(0, 512) : null
     // The optional COMPUTE_LIMIT binding is a coarse edge limit; the relay enforces the real

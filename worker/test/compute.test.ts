@@ -777,6 +777,14 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect((await removal).args).toEqual({ action: "remove" })
   })
 
+  it("refuses a Wolfram run too big for one tunnel frame, counting bytes", async () => {
+    const run = await alice.fetch("/api/compute/wolfram/run", {
+      method: "POST",
+      body: JSON.stringify({ code: "x", prelude: ["\u20ac".repeat(70_000)] }),
+    })
+    expect(run.status).toBe(413)
+  })
+
   it("limits Wolfram licence activations to a few an hour", async () => {
     for (let i = 0; i < 5; i++)
       await env.DB.prepare(

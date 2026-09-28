@@ -7,8 +7,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/vault
           path: vault-src
@@ -16,7 +16,7 @@ jobs:
           # PAT with contents:read on the vault (secret VAULT_READ_TOKEN) covers a private vault
           token: ${{ secrets.VAULT_READ_TOKEN || github.token }}
       - run: rm -f content && ln -s vault-src/content content
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -26,12 +26,12 @@ jobs:
       - uses: quarto-dev/quarto-actions/setup@v2
         with:
           version: 1.10.18
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install -r vault-src/requirements.txt
       - run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: site-preview
           path: public

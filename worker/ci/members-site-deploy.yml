@@ -43,17 +43,17 @@ jobs:
       vault_private: ${{ steps.commits.outputs.vault_private }}
     steps:
       - name: checkout the website (the renderer)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/hafezigroupjqi.github.io
           path: website
       - name: checkout the public vault
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/vault
           path: vault
       - name: checkout the private vault
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/vault-private
           path: vault-private
@@ -75,7 +75,7 @@ jobs:
         run: >
           node tools/notebooks/render-notebooks.mjs stage1
           --root ../vault/content --root ../vault-private --out ../notebook-renders
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: notebook-renders
           path: notebook-renders
@@ -87,30 +87,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout the website (layout, build tools, worker)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/hafezigroupjqi.github.io
           ref: ${{ needs.notebooks.outputs.website }}
           path: website
       - name: checkout the public vault
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/vault
           ref: ${{ needs.notebooks.outputs.vault }}
           path: vault
       - name: checkout the private vault
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/vault-private
           ref: ${{ needs.notebooks.outputs.vault_private }}
           path: vault-private
           token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
       - name: the notebook renders made for these commits
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: notebook-renders
           path: notebook-renders
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -120,7 +120,7 @@ jobs:
       - uses: quarto-dev/quarto-actions/setup@v2
         with:
           version: 1.10.18
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -144,7 +144,7 @@ jobs:
       - name: notebook page caches from earlier deploys
         # .ipynb pages and Wolfram asset conversions, keyed by content: an unchanged notebook is
         # served from here, a changed one re-renders. Pruned to what this deploy used, then saved.
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/hafezi-notebooks
           key: notebook-pages-${{ github.run_id }}
@@ -165,14 +165,14 @@ jobs:
       - run: npm test
         working-directory: website/worker
       - name: apply D1 migrations
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: website/worker
           command: d1 migrations apply hafezi-members --remote
       - name: deploy the worker and static assets
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

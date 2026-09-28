@@ -22,9 +22,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: checkout the vault (public content)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/vault
           path: vault-src
@@ -32,7 +32,7 @@ jobs:
           # PAT with contents:read on the vault (secret VAULT_READ_TOKEN) covers a private vault
           token: ${{ secrets.VAULT_READ_TOKEN || github.token }}
       - run: rm -f content && ln -s vault-src/content content
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -42,7 +42,7 @@ jobs:
       - uses: quarto-dev/quarto-actions/setup@v2
         with:
           version: 1.10.18
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # the member site (private repo members-site, Cloudflare Worker) shares this layout, so a
   # website change rebuilds it too; vault changes reach it through the vault's own dispatch
@@ -74,7 +74,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: peter-evans/repository-dispatch@v3
+      - uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.MEMBERS_DISPATCH_TOKEN }}
           repository: HafeziGroupJQI/members-site

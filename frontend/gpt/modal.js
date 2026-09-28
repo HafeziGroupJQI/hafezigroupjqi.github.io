@@ -137,7 +137,10 @@ export function createModal({ api, session }) {
 
   /** `context` ({label, text}) is attached to the next message; `codeActions` go under code. */
   function open({ context = null, codeActions = null } = {}) {
-    if (!dialog.open) dialog.showModal()
+    if (!dialog.open) {
+      opener = document.activeElement
+      dialog.showModal()
+    }
     document.documentElement.classList.add("gpt-modal-open")
     ready ??= setup().catch((error) => {
       ready = null
@@ -155,9 +158,18 @@ export function createModal({ api, session }) {
     dialog.close()
     document.documentElement.classList.remove("gpt-modal-open")
   }
-  dialog.addEventListener("close", () =>
-    document.documentElement.classList.remove("gpt-modal-open"),
-  )
+  // The floating button is hidden while the modal is open, so the dialog's own focus return finds
+  // nothing to focus: give focus back to whatever opened it once it is visible again.
+  let opener = null
+  dialog.addEventListener("close", () => {
+    document.documentElement.classList.remove("gpt-modal-open")
+    if (
+      opener?.isConnected &&
+      (!document.activeElement || document.activeElement === document.body)
+    )
+      opener.focus()
+    opener = null
+  })
 
   return { open, close, isOpen: () => dialog.open }
 }

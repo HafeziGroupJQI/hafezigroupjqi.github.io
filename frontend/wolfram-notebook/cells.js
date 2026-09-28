@@ -39,6 +39,20 @@ export function failureMessage(status, data) {
   return `The compute host returned an error (${status}).`
 }
 
+/**
+ * A failure message in pieces, with "Settings (/settings)" as a link: Wolfram code runs on the
+ * member's own licence, and the host's message for a missing one says where to add it.
+ */
+export function messageParts(message) {
+  const at = message.indexOf("Settings (/settings)")
+  if (at === -1) return [message]
+  return [
+    message.slice(0, at),
+    { href: "/settings", text: "Settings" },
+    message.slice(at + "Settings (/settings)".length),
+  ].filter((part) => part !== "")
+}
+
 /** Parse data-controls: [{name, label, values}] with at least one value each. */
 export function parseControls(raw) {
   try {

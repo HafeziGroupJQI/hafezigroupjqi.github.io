@@ -6,6 +6,7 @@
 import { h } from "../dashboard/dom.js"
 import {
   failureMessage,
+  messageParts,
   frameIndex,
   normalizeSymbols,
   parseControls,
@@ -122,7 +123,15 @@ export function mountWolframNotebook(root) {
         if (!ok) throw new Error(failureMessage(code, data))
         renderResult(output, data)
       } catch (error) {
-        output.replaceChildren(h("p", { class: "wl-error", role: "alert", text: error.message }))
+        output.replaceChildren(
+          h(
+            "p",
+            { class: "wl-error", role: "alert" },
+            messageParts(error.message).map((part) =>
+              typeof part === "string" ? part : h("a", { href: part.href, text: part.text }),
+            ),
+          ),
+        )
       } finally {
         cell.running = false
         runButton.disabled = false

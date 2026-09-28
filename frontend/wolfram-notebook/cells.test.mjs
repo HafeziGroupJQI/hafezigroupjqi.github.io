@@ -3,6 +3,7 @@ import test from "node:test"
 import {
   failureMessage,
   frameIndex,
+  messageParts,
   matchSymbols,
   normalizeSymbols,
   parseControls,
@@ -82,4 +83,15 @@ test("symbols normalize from either shape and match by prefix", () => {
   )
   assert.deepEqual(matchSymbols(symbols, ""), [])
   assert.equal(matchSymbols(symbols, "T", 1).length, 1)
+})
+
+test("a missing-licence message links to Settings", () => {
+  const message =
+    "Wolfram code runs on your own Wolfram Engine licence. Add it in Settings (/settings): it's free."
+  assert.deepEqual(messageParts(message), [
+    "Wolfram code runs on your own Wolfram Engine licence. Add it in ",
+    { href: "/settings", text: "Settings" },
+    ": it's free.",
+  ])
+  assert.deepEqual(messageParts("Compute host offline."), ["Compute host offline."])
 })

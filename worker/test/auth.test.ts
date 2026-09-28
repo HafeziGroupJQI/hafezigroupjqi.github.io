@@ -142,6 +142,8 @@ describe("bearer sessions", () => {
       name: "Local member",
       role: "owner",
       is_admin: true,
+      display_name: "Local member",
+      avatar: null,
     })
   })
 

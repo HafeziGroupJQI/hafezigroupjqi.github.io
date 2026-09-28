@@ -13,6 +13,10 @@ export interface Env {
   GITHUB_TEAM: string
   GITHUB_DOCS_TOKEN?: string
   DOCS_REPO: string
+  /** The public vault ("owner/name"), whose People pages members edit from /settings. */
+  VAULT_REPO?: string
+  /** A token that may write VAULT_REPO's contents (fine-grained: that repo, Contents read/write). */
+  GITHUB_VAULT_TOKEN?: string
   /** The github.io site: the only browser origin (besides ALLOWED_ORIGINS), the OAuth callback
    *  host, and where non-API requests to the Worker are redirected. */
   PUBLIC_SITE_URL: string

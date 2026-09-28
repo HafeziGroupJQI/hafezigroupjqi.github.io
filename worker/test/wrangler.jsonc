@@ -37,6 +37,8 @@
     "GITHUB_TEAM": "lab-members",
     "GITHUB_DOCS_TOKEN": "test-docs-token",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
+    "VAULT_REPO": "HafeziGroupJQI/vault",
+    "GITHUB_VAULT_TOKEN": "test-vault-token",
     "PUBLIC_SITE_URL": "https://public.example",
     // compute-vectors.json: the assertion secret and sha256("hk_test_0123456789").
     "COMPUTE_ASSERTION_SECRET": "test-assertion-secret",

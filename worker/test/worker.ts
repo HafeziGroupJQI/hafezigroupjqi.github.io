@@ -1,10 +1,13 @@
 import { createHandler } from "../src/app"
 import manifest from "./fixtures/docs-manifest.json"
 import skills from "./fixtures/gpt-skills.json"
+import { vault } from "./vault-fake"
 
 // The Durable Object class must be exported from the test entry module too.
 export { DeviceHub } from "../src/devices/hub"
 export { ComputeRelay } from "../src/compute/relay"
+// The public vault's GitHub API (profile edits), in memory.
+export { vault }
 
 // The test Worker shares the isolate with the tests, so they can inspect the GitHub blob calls.
 export const upstreamCalls: string[] = []
@@ -146,6 +149,7 @@ export default createHandler(manifest, {
       return account.team ? Response.json(account.team) : new Response("", { status: 404 })
     return new Response("", { status: 404 })
   },
+  vault: vault.fetch,
   upstream: async (input) => {
     upstreamCalls.push(input)
     const sha = input.split("/").pop() ?? ""

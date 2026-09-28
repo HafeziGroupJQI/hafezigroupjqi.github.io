@@ -9,6 +9,8 @@ import { type Upstream, serveDocument } from "./docs"
 import type { DocsManifest, Env } from "./env"
 import type { AnthropicFetch } from "./gpt/chat"
 import { gptRoutes } from "./gpt/routes"
+import { navIdentity, profileRoutes } from "./profile/routes"
+import type { VaultFetch } from "./profile/vault"
 import type { SkillsManifest } from "./gpt/skills"
 import {
   HttpError,
@@ -40,6 +42,7 @@ export const MEMBER_PAGES = [
   "/gpt",
   "/admin",
   "/scratchpad",
+  "/settings",
 ]
 
 const SITE_PREFIX = "/api/site"
@@ -64,6 +67,8 @@ export interface HandlerOptions {
   anthropic?: AnthropicFetch
   /** Repo skills baked in at build time (tools/gpt-manifest.mjs → generated/gpt-skills.json). */
   skills?: SkillsManifest
+  /** Outbound fetch for the public vault's GitHub API (profile edits); tests substitute a fake. */
+  vault?: VaultFetch
 }
 
 export function createHandler(
@@ -73,6 +78,7 @@ export function createHandler(
   const documents = manifest.documents
   const upstream: Upstream = options.upstream ?? ((input, init) => fetch(input, init))
   const githubFetch: GitHubFetch = options.github ?? ((input, init) => fetch(input, init))
+  const vaultFetch: VaultFetch = options.vault ?? ((input, init) => fetch(input, init))
   const gptDeps = {
     manifest,
     skills: options.skills ?? { skills: [] },
@@ -158,6 +164,8 @@ export function createHandler(
             name: session.name,
             role: session.role,
             is_admin: await isAdmin(env, session),
+            // The name and photo the member chose in /settings, for the navbar.
+            ...(await navIdentity(env, session)),
           },
         }),
       )
@@ -214,6 +222,8 @@ export function createHandler(
     if (calendar) return calendar
     const devices = await deviceRoutes(request, url, env, session, record)
     if (devices) return devices
+    const profile = await profileRoutes(request, url, env, session, record, vaultFetch)
+    if (profile) return profile
     return problem(404, "not found")
   }
 

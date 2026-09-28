@@ -50,6 +50,8 @@
     "GITHUB_ORG": "HafeziGroupJQI",
     "GITHUB_TEAM": "lab-members",
     "DOCS_REPO": "HafeziGroupJQI/vault-private",
+    // The public vault, where members' settings edit their own People page by a commit.
+    "VAULT_REPO": "HafeziGroupJQI/vault",
     "PUBLIC_SITE_URL": "https://hafezigroupjqi.github.io",
     // Owners may open and stop members' Scratchpad servers (each open and stop is audited); the
     // compute host has its own switch, COMPUTE_OWNER_ACCESS in /etc/hafezi-compute/tunnel.env.
@@ -61,4 +63,6 @@
   // gateway secrets (C2_URL, C2_GATEWAY_SECRET, CF_ACCESS_*) are retired.
   // Scratchpad compute: COMPUTE_ASSERTION_SECRET (shared with the compute host; it never gets
   // SESSION_SECRET) and COMPUTE_HOST_KEY_HASH (lowercase hex sha256 of the host's bearer key).
+  // Settings: GITHUB_VAULT_TOKEN, a fine-grained token for VAULT_REPO alone with Contents: read and
+  // write; unset, members can't edit their People page.
 }

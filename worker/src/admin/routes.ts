@@ -81,7 +81,9 @@ export async function adminRoutes(
   const path = url.pathname.slice("/api/admin".length)
 
   if (path === "/audit" && request.method === "GET") {
-    const limit = Math.min(Number(url.searchParams.get("limit")) || PAGE, 500)
+    // A page is 1 to 500 rows: SQLite reads a negative LIMIT as no limit at all.
+    const asked = Math.trunc(Number(url.searchParams.get("limit"))) || PAGE
+    const limit = Math.min(Math.max(asked, 1), 500)
     const { sql, binds } = auditQuery(url.searchParams, limit)
     const { results } = await env.DB.prepare(sql)
       .bind(...binds)

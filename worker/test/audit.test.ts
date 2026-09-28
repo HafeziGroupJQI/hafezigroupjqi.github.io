@@ -136,6 +136,9 @@ describe("admin console", () => {
     )
     expect(next.body.rows.map((r: any) => r.target)).toEqual(["c0"])
     expect(next.body.next_before_id).toBeNull()
+    // A negative limit is still one page, not the whole log.
+    const negative = await owner.json("/api/admin/audit?login=erin&action=gpt&limit=-1")
+    expect(negative.body.rows.map((r: any) => r.target)).toEqual(["c2"])
     const csv = await owner.fetch("/api/admin/audit.csv?login=erin")
     expect(csv.headers.get("content-type")).toContain("text/csv")
     const lines = (await csv.text()).trim().split("\n")

@@ -264,7 +264,11 @@ export function mountScratchpad(root, { api, session }) {
           class: "danger",
           text: "Stop",
           onclick: async (event) => {
-            if (!confirm(`Stop ${row.login}'s server? Their unsaved notebook changes are lost.`))
+            if (
+              !confirm(
+                `Stop the server of ${row.login}? Unsaved changes in its open notebooks will be lost.`,
+              )
+            )
               return
             event.target.disabled = true
             try {

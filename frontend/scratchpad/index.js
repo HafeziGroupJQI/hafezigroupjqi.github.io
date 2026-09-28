@@ -6,7 +6,7 @@
 // member-tools.js lazy-loads mountScratchpad() with its api() (JSON + 401 → login) and the session.
 
 import { h, present, setText } from "../dashboard/dom.js"
-import { openGpt } from "../gpt/launcher.js"
+import { hideLauncher, openGpt } from "../gpt/launcher.js"
 import { gptContext, insertMessage } from "./gpt.js"
 import {
   LAUNCHERS,
@@ -402,6 +402,8 @@ export function mountScratchpad(root, { api, session }) {
     if (event.origin !== labOrigin() || event.source !== frame.contentWindow) return
     const data = event.data
     if (data?.type === "hafezi-theme:ready") toLab(theme())
+    // The lab has Hafezi GPT in its own panel (its Ctrl/⌘+J opens it): no site button over it.
+    if (data?.type === "hafezi-gpt:panel") hideLauncher()
     if (!data || data.type !== "hafezi-gpt:ask") return
     openGpt({ context: gptContext(data.context), codeActions }).catch(showError)
   })

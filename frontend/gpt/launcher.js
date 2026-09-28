@@ -5,6 +5,8 @@ import { h } from "../dashboard/dom.js"
 let deps = null
 let modal = null
 let loading = null
+let button = null
+let hidden = false
 
 async function open(options) {
   loading ??= import("./modal.js").then(({ createModal }) => (modal = createModal(deps)))
@@ -21,11 +23,21 @@ export async function openGpt(options = {}) {
   await open(options)
 }
 
+/**
+ * Hide the button and its Ctrl/⌘+J on this page, e.g. once the Scratchpad's lab has Hafezi GPT
+ * in its own panel. openGpt() still works: the lab asks through it when it has no panel.
+ */
+export function hideLauncher() {
+  hidden = true
+  if (button) button.hidden = true
+  if (modal?.isOpen()) modal.close()
+}
+
 export function installLauncher({ api, session }) {
   const path = location.pathname.replace(/\/+$/, "")
   if (path === "/gpt" || document.querySelector("[data-hafezi-gpt]")) return
   deps = { api, session }
-  const button = h(
+  button = h(
     "button",
     {
       type: "button",
@@ -40,6 +52,7 @@ export function installLauncher({ api, session }) {
   document.body.append(button)
   document.addEventListener("keydown", (event) => {
     if (
+      hidden ||
       !(event.ctrlKey || event.metaKey) ||
       event.altKey ||
       event.shiftKey ||

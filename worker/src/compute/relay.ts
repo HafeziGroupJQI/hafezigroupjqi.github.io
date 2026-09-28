@@ -56,6 +56,10 @@ export interface OpenMeta {
   login: string
   has_body?: boolean
   protocols?: string[]
+  /** Lab served from the Worker's origin: the ticket path every page URL carries (/lab/<ticket>). */
+  base_prefix?: string
+  /** …and the members site origin its extensions may talk to. */
+  site_origin?: string
 }
 
 export interface ControlRequest {
@@ -446,6 +450,9 @@ export class ComputeRelay extends DurableObject<Env> {
           window: INITIAL_WINDOW,
           ws_url: meta.ws_url,
           ticket: meta.ticket,
+          ...(meta.base_prefix
+            ? { base_prefix: meta.base_prefix, site_origin: meta.site_origin }
+            : {}),
         }),
       )
     } catch {

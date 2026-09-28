@@ -23,8 +23,14 @@ import {
 } from "../src/compute/frames"
 import { authorizeTarget } from "../src/compute/policy"
 import { RELAY_NAME } from "../src/compute/relay"
-import { FORCED_CSP, finish, stripToken } from "../src/compute/routes"
-import { issueAssertion, issueTicket, verifyAssertion, verifyTicket } from "../src/compute/tokens"
+import { FORCED_CSP, finish, labCsp, stripToken } from "../src/compute/routes"
+import {
+  issueAssertion,
+  issueLabTicket,
+  issueTicket,
+  verifyAssertion,
+  verifyTicket,
+} from "../src/compute/tokens"
 import type { Env } from "../src/env"
 import { sign } from "../src/session"
 import vectors from "./fixtures/compute-vectors.json"
@@ -289,8 +295,12 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     )
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ detail: "compute host offline" })
-    const status = await alice.fetch("/api/compute/status")
-    expect((await status.json()) as any).toMatchObject({ host: { online: false }, server: null })
+    const status = (await (await alice.fetch("/api/compute/status")).json()) as any
+    expect(status).toMatchObject({ host: { online: false }, server: null })
+    // The member's lab lives on the Worker's origin, keyed by a ticket for their own server.
+    expect(status.lab).toMatch(
+      /^https:\/\/members\.test\/lab\/[\w-]+\.[\w-]+\/jupyter\/user\/alice\/$/,
+    )
   })
 
   it("proxies a request with the assertion, forwarded headers and a forced CSP", async () => {
@@ -635,7 +645,9 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect((await alice.fetch("/api/compute/servers")).status).toBe(403)
     const list = answer("list", { servers: [{ login: "alice", server: "running" }] })
     const owner = await member()
-    expect((await owner.json("/api/compute/servers")).body.servers).toHaveLength(1)
+    const listed = (await owner.json("/api/compute/servers")).body.servers
+    expect(listed).toHaveLength(1)
+    expect(listed[0].lab_url).toBeUndefined() // owner access is off in the test config
     await list
 
     // An owner stops a member's server only with COMPUTE_OWNER_ACCESS on (the test config leaves it
@@ -653,6 +665,21 @@ describe("the compute relay", { timeout: 30_000 }, () => {
       await waitOnExecutionContext(ctx)
       return response
     }
+    // With owner access on, each listed server links to its lab on the lab origin.
+    const withAccess = answer("list", { servers: [{ login: "alice", server: "running" }] })
+    const ctx = createExecutionContext()
+    const on = await (worker as ExportedHandler).fetch!(
+      new Request(`${ORIGIN}/api/compute/servers`, { headers: owner.headers }) as any,
+      { ...env, COMPUTE_OWNER_ACCESS: "true" } as any,
+      ctx,
+    )
+    await waitOnExecutionContext(ctx)
+    await withAccess
+    const row = ((await on.json()) as any).servers[0]
+    expect(row.lab_url).toMatch(
+      /^https:\/\/members\.test\/lab\/[\w-]+\.[\w-]+\/jupyter\/user\/alice\/lab$/,
+    )
+
     expect((await alice.fetch("/api/compute/servers/bob", { method: "DELETE" })).status).toBe(403)
     const off = await owner.fetch("/api/compute/servers/bob", { method: "DELETE" })
     expect(off.status).toBe(403)
@@ -869,3 +896,124 @@ describe("JupyterLab WebSockets through the relay", { timeout: 30_000 }, () => {
     await old.closed
   })
 })
+
+describe(
+  "the lab origin: JupyterLab served by the Worker, keyed by a ticket in the path",
+  {
+    timeout: 30_000,
+  },
+  () => {
+    let host: FakeHost
+    let ticket: string
+    const exp = () => Math.floor(Date.now() / 1000) + 3600
+    const lab = (path: string, init: RequestInit & { headers?: Record<string, string> } = {}) =>
+      SELF.fetch(`${ORIGIN}${path}`, { redirect: "manual", ...init })
+
+    beforeAll(async () => {
+      host = await connectHost()
+      ticket = await issueLabTicket(
+        workerEnv,
+        { login: "alice", role: "member", exp: exp() },
+        "alice",
+      )
+    })
+    afterAll(() => host.ws.close())
+
+    it("relays the page with its prefix and site origin, framed only by the site", async () => {
+      const pending = lab(`/lab/${ticket}/jupyter/user/alice/lab?reset`, {
+        headers: { accept: "text/html" },
+      })
+      const open = await host.next(ofType(FrameType.OPEN_HTTP))
+      const meta = readJsonPayload<any>(open)
+      expect(meta).toMatchObject({
+        method: "GET",
+        target: "/jupyter/user/alice/lab?reset",
+        base_prefix: `/lab/${ticket}`,
+        site_origin: new URL(SITE).origin,
+        ws_url: `wss://members.test/lab/${ticket}`,
+        ticket: "",
+      })
+      expect(await verifyAssertion(meta.assertion, vectors.secret)).toMatchObject({
+        login: "alice",
+      })
+      await respond(host, open.streamId, 200, [["content-type", "text/html"]], "<html>lab</html>")
+      const response = await pending
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-security-policy")).toBe(labCsp(new URL(SITE).origin))
+      expect(response.headers.get("x-frame-options")).toBeNull()
+      expect(response.headers.get("referrer-policy")).toBe("same-origin")
+      expect(response.headers.get("access-control-allow-origin")).toBeNull()
+    })
+
+    it("keeps the prefix on redirects, and vouches for unprefixed paths by the page's Referer", async () => {
+      const pending = lab(`/lab/${ticket}/jupyter/user/alice/`)
+      const open = await host.next(ofType(FrameType.OPEN_HTTP))
+      await respond(host, open.streamId, 302, [["location", "/jupyter/user/alice/lab?x=1"]])
+      const response = await pending
+      expect(response.status).toBe(302)
+      expect(response.headers.get("location")).toBe(`/lab/${ticket}/jupyter/user/alice/lab?x=1`)
+
+      const logo = lab("/jupyter/user/alice/kernelspecs/python3/logo-64x64.png", {
+        headers: { referer: `${ORIGIN}/lab/${ticket}/jupyter/user/alice/lab` },
+      })
+      const second = await host.next(ofType(FrameType.OPEN_HTTP))
+      expect(readJsonPayload<any>(second).target).toBe(
+        "/jupyter/user/alice/kernelspecs/python3/logo-64x64.png",
+      )
+      await respond(host, second.streamId, 200, [["content-type", "image/png"]], "png")
+      expect((await logo).status).toBe(200)
+    })
+
+    it("refuses a missing, foreign or mismatched ticket and service workers", async () => {
+      const other = await issueLabTicket(
+        workerEnv,
+        { login: "alice", role: "member", exp: exp() },
+        "bob",
+      )
+      const session = await sign(
+        { typ: "session", login: "alice", name: "a", role: "member", exp: exp() },
+        workerEnv.SESSION_SECRET,
+      )
+      expect((await lab("/lab/garbage.x/jupyter/user/alice/lab")).status).toBe(401)
+      expect((await lab(`/lab/${session}/jupyter/user/alice/lab`)).status).toBe(401)
+      // A ticket opens its own server only (and a member may never open bob's).
+      expect((await lab(`/lab/${ticket}/jupyter/user/bob/lab`)).status).toBe(403)
+      expect((await lab(`/lab/${other}/jupyter/user/bob/lab`)).status).toBe(403)
+      // No Referer, or one from another origin, vouches for nothing.
+      expect((await lab("/jupyter/user/alice/api/contents")).status).toBe(401)
+      const foreign = `https://evil.example/lab/${ticket}/jupyter/user/alice/lab`
+      expect(
+        (await lab("/jupyter/user/alice/api/contents", { headers: { referer: foreign } })).status,
+      ).toBe(401)
+      const sw = lab(`/lab/${ticket}/jupyter/user/alice/files/sw.js`, {
+        headers: { "service-worker": "script" },
+      })
+      expect((await sw).status).toBe(403)
+      // A person following an old link goes back to the Scratchpad.
+      const stale = await lab("/lab/garbage.x/jupyter/user/alice/lab", {
+        headers: { "sec-fetch-mode": "navigate" },
+      })
+      expect(stale.status).toBe(302)
+      expect(stale.headers.get("location")).toBe(new URL("/scratchpad", SITE).toString())
+      expect(host.frames.filter(ofType(FrameType.OPEN_HTTP))).toHaveLength(0)
+    })
+
+    it("opens WebSockets from the lab origin only, with the ticket in the path", async () => {
+      const path = `/lab/${ticket}/jupyter/user/alice/api/kernels/k1/channels?session_id=s1`
+      const ws = (origin: string) =>
+        SELF.fetch(`${ORIGIN}${path}`, { headers: { upgrade: "websocket", origin } })
+      expect((await ws(SITE)).status).toBe(403)
+      const pending = ws(ORIGIN)
+      const frame = await host.next(ofType(FrameType.OPEN_WS))
+      const meta = readJsonPayload<any>(frame)
+      expect(meta.target).toBe("/jupyter/user/alice/api/kernels/k1/channels?session_id=s1")
+      expect(await verifyAssertion(meta.assertion, vectors.secret)).toMatchObject({
+        login: "alice",
+      })
+      host.send(
+        jsonFrame(FrameType.RESET, frame.streamId, { code: "refused", reason: "no kernel" }),
+      )
+      expect((await pending).status).toBe(502)
+    })
+  },
+)

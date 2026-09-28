@@ -2,7 +2,13 @@ import { adminRoutes } from "./admin/routes"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
 import { type GitHubFetch, allowedOrigins, exchange, requireMutation, startLogin } from "./auth"
 import { calendarRoutes } from "./calendar/routes"
-import { computeHostRoute, computeRoutes, computeSocketRoute } from "./compute/routes"
+import {
+  computeHostRoute,
+  computeRoutes,
+  computeSocketRoute,
+  isLabPath,
+  labRoute,
+} from "./compute/routes"
 import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
@@ -84,8 +90,12 @@ export function createHandler(
       const url = new URL(request.url)
       const origin = request.headers.get("origin")
       const allowed = allowedOrigins(env)
-      // Machine callers (lab PCs, the compute host) never get CORS; they are not browsers.
-      const isAgent = url.pathname.startsWith("/api/agent/") || url.pathname === "/api/compute/host"
+      // Machine callers (lab PCs, the compute host) never get CORS; they are not browsers. Nor does
+      // the lab origin (JupyterLab served from here), whose requests are all same-origin.
+      const isAgent =
+        url.pathname.startsWith("/api/agent/") ||
+        url.pathname === "/api/compute/host" ||
+        isLabPath(url.pathname)
       if (request.method === "OPTIONS" && !isAgent) return preflight(origin, allowed)
       let response: Response
       try {
@@ -112,6 +122,10 @@ export function createHandler(
   ): Promise<Response> {
     const path = url.pathname
     if (path === "/api/health") return json({ ok: true, version: VERSION })
+
+    // JupyterLab on its own origin: the ticket in the path is its only credential.
+    const lab = await labRoute(request, url, env, ctx)
+    if (lab) return lab
 
     // Anything that is not the API belongs to the github.io site (old links, bookmarks).
     // Always on that site's own origin: "//host/…" or "/\\host/…" would otherwise name another host.

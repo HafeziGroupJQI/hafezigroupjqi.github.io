@@ -7,7 +7,7 @@ export const SESSION_MAX_AGE = 8 * 60 * 60
 
 // "compute" is the Worker → compute-host assertion and "compute-ws" the browser's WebSocket ticket
 // (src/compute/tokens.ts).
-export type TokenType = "session" | "state" | "compute" | "compute-ws"
+export type TokenType = "session" | "state" | "compute" | "compute-ws" | "compute-lab"
 
 export interface Session {
   typ: "session"

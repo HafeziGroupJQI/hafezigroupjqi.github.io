@@ -1,4 +1,3 @@
-import type { Auditor } from "../audit"
 import { allowedOrigins, requireMutation } from "../auth"
 import { hashSecret } from "../devices/keys"
 import type { Env } from "../env"
@@ -6,13 +5,23 @@ import { HttpError, decodeSegment, json, readJson, withPrivateHeaders } from "..
 import { type Session, bearer, timingSafeEqual } from "../session"
 import { authorizeTarget } from "./policy"
 import { type ControlRequest, MAX_BODY, type OpenMeta, RELAY_NAME } from "./relay"
-import { issueAssertion, issueTicket, verifyTicket } from "./tokens"
+import { audit, type Auditor } from "../audit"
+import {
+  issueAssertion,
+  issueLabTicket,
+  issueTicket,
+  verifyLabTicket,
+  verifyTicket,
+} from "./tokens"
 
 // The Scratchpad's compute API. Three kinds of caller:
 //   the compute host   GET /api/compute/host (WebSocket, bearer host key; machine route, no CORS)
 //   JupyterLab         POST /api/compute/fetch (the service worker's envelope for every /jupyter/
 //                      request) and /api/compute/ws/* (WebSockets straight to the Worker, ?token=
 //                      ticket, since a browser WebSocket carries no bearer header)
+//   the lab origin     /lab/<ticket>/jupyter/user/<login>/… on the Worker's own origin (labRoute):
+//                      JupyterLab loaded straight from here, never from the site, so code running in
+//                      a lab can't reach the members token; the ticket in the path is its only key
 //   the /scratchpad page  status, start/stop, the owner's server list, Wolfram runs and forks.
 // Everything funnels into the single ComputeRelay DO (relay.ts).
 
@@ -39,8 +48,10 @@ const FORWARD_REQUEST_HEADERS = ["accept", "content-type", "range", "if-none-mat
 // Upstream response headers that never reach the member: cookies, CORS (ours, not Jupyter's), and
 // the framing policy, which the Worker forces.
 const DROP_RESPONSE_HEADERS =
-  /^(?:set-cookie|content-security-policy|x-frame-options|access-control-.*|location|strict-transport-security)$/
+  /^(?:set-cookie|content-security-policy|x-frame-options|access-control-.*|location|strict-transport-security|service-worker-allowed)$/
 export const FORCED_CSP = "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
+export const labCsp = (siteOrigin: string) =>
+  `frame-ancestors 'self' ${siteOrigin}; object-src 'none'; base-uri 'self'`
 const REDIRECTS = new Set([301, 302, 303, 307, 308])
 
 const relay = (env: Env) => env.COMPUTE_RELAY.get(env.COMPUTE_RELAY.idFromName(RELAY_NAME))
@@ -109,6 +120,114 @@ export async function computeSocketRoute(
   return relay(env).fetch("https://relay/ws", {
     headers: { upgrade: "websocket", "x-relay-meta": encodeURIComponent(JSON.stringify(meta)) },
   })
+}
+
+// ---- the lab origin: JupyterLab served by the Worker itself (ticket in the path) ----
+
+const LAB_PATH = /^\/lab\/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(\/jupyter\/user\/.*)$/
+
+/** Paths the lab origin answers (everything else on the Worker is the API or a redirect). */
+export const isLabPath = (path: string) =>
+  path.startsWith("/lab/") || path.startsWith("/jupyter/user/")
+
+/** The lab URL base for `target`'s server, as `viewer` may open it. */
+export async function labBase(
+  env: Env,
+  url: URL,
+  viewer: Pick<Session, "login" | "role"> & { exp?: number },
+  target: string,
+): Promise<string> {
+  const ticket = await issueLabTicket(env, viewer, target)
+  return `${url.origin}/lab/${ticket}/jupyter/user/${encodeURIComponent(target.toLowerCase())}/`
+}
+
+/** The ticket of the lab page a same-origin request came from (its Referer), if any. */
+function refererTicket(request: Request, url: URL): string | null {
+  try {
+    const referer = new URL(request.headers.get("referer") ?? "")
+    if (referer.origin !== url.origin) return null
+    return referer.pathname.match(LAB_PATH)?.[1] ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function labRoute(
+  request: Request,
+  url: URL,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const match = url.pathname.match(LAB_PATH)
+  const token = match ? match[1] : refererTicket(request, url)
+  const raw = (match ? match[2] : url.pathname) + url.search
+  if (!match && !url.pathname.startsWith("/jupyter/user/")) return null
+  // Member code on this origin could otherwise install a worker that watches other labs' requests.
+  if (request.headers.get("service-worker"))
+    throw new HttpError(403, "service workers are not allowed on the lab origin")
+  const ticket = await verifyLabTicket(env, token)
+  if (!ticket) {
+    // An old or foreign link: send a person back to the Scratchpad to open the lab again.
+    if (request.headers.get("sec-fetch-mode") === "navigate")
+      return Response.redirect(new URL("/scratchpad", env.PUBLIC_SITE_URL).toString(), 302)
+    throw new HttpError(401, "this lab link has expired; open the lab again from the Scratchpad")
+  }
+  const { target, login, crossUser } = authorizeTarget(raw, ticket, env)
+  if (login !== ticket.target) throw new HttpError(403, "this lab link is for another server")
+  const prefix = `/lab/${token}`
+  const siteOrigin = new URL(env.PUBLIC_SITE_URL).origin
+  const base = {
+    target,
+    assertion: await issueAssertion(env, ticket),
+    ws_url: `${url.protocol === "http:" ? "ws:" : "wss:"}//${url.host}${prefix}`,
+    // The page's own paths carry the ticket, so JupyterLab needs no ?token= of its own.
+    ticket: "",
+    login: ticket.login,
+    base_prefix: prefix,
+    site_origin: siteOrigin,
+  }
+
+  if (request.headers.get("upgrade") === "websocket") {
+    // A WebSocket is not subject to CORS, so the Origin check is the cross-site guard.
+    if (request.headers.get("origin") !== url.origin)
+      throw new HttpError(403, "request from an unknown origin")
+    const protocols = (request.headers.get("sec-websocket-protocol") ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+    const meta: OpenMeta = { ...base, method: "GET", headers: [], protocols }
+    return relay(env).fetch("https://relay/ws", {
+      headers: { upgrade: "websocket", "x-relay-meta": encodeURIComponent(JSON.stringify(meta)) },
+    })
+  }
+
+  const method = request.method.toUpperCase()
+  if (!METHODS.has(method)) throw new HttpError(405, "method not allowed")
+  // An owner opening another member's lab: one row per page load, not per request.
+  if (crossUser && /^\/jupyter\/user\/[^/]+\/lab\/?(?:\?|$)/.test(target))
+    audit(env, ctx, request, {
+      login: ticket.login,
+      role: ticket.role,
+      action: "compute.access_other",
+      target: login,
+      detail: null,
+    })
+  const length = Number(request.headers.get("content-length") ?? "0")
+  if (length > MAX_BODY) throw new HttpError(413, "request body over 95 MiB")
+  const headers: [string, string][] = []
+  for (const name of FORWARD_REQUEST_HEADERS) {
+    const value = request.headers.get(name)
+    if (value) headers.push([name, value])
+  }
+  const hasBody = method !== "GET" && method !== "HEAD" && request.body != null
+  const meta: OpenMeta = { ...base, method, headers, has_body: hasBody }
+  const upstream = await relay(env).fetch("https://relay/http", {
+    method: "POST",
+    redirect: "manual",
+    headers: { "x-relay-meta": encodeURIComponent(JSON.stringify(meta)) },
+    body: hasBody ? request.body : null,
+  })
+  return finish(upstream, target, { prefix, siteOrigin })
 }
 
 // ---- member routes ----
@@ -180,6 +299,8 @@ export async function computeRoutes(
         profiles: PROFILES,
         // Whether owners may open members' labs through the Worker (the host has its own switch).
         owner_access: session.role === "owner" && env.COMPUTE_OWNER_ACCESS === "true",
+        // Where this member's lab lives: the Worker's origin, keyed by a ticket for their server.
+        lab: await labBase(env, url, session, session.login),
       }),
     )
   }
@@ -219,7 +340,14 @@ export async function computeRoutes(
   if (route === "/servers") {
     if (method !== "GET") throw new HttpError(405, "method not allowed")
     requireOwner(session)
-    return control(env, session, "list", {}, { timeout_ms: 15_000 })
+    const answer = await control(env, session, "list", {}, { timeout_ms: 15_000 })
+    if (!answer.ok || env.COMPUTE_OWNER_ACCESS !== "true") return answer
+    // Each row's lab, on the lab origin with a ticket for that one server.
+    const listing = (await answer.json()) as { servers?: { login?: unknown }[] }
+    for (const row of listing.servers ?? [])
+      if (typeof row.login === "string" && /^[a-z0-9-]{1,39}$/.test(row.login))
+        Object.assign(row, { lab_url: `${await labBase(env, url, session, row.login)}lab` })
+    return withPrivateHeaders(json(listing))
   }
 
   // An owner stopping a member's server: both switches must be on, this one and the host's.
@@ -334,8 +462,16 @@ async function envelope(
   return finish(upstream, target)
 }
 
-/** Make an upstream answer safe to hand back through the service worker. */
-export function finish(upstream: Response, target: string): Response {
+/** How a lab-origin answer differs: framed by the site, links keep the ticket prefix. */
+export interface LabFinish {
+  /** /lab/<ticket>, which a redirect to this member's server keeps. */
+  prefix: string
+  /** The members site, the only page allowed to frame the lab. */
+  siteOrigin: string
+}
+
+/** Make an upstream answer safe to hand back through the service worker, or from the lab origin. */
+export function finish(upstream: Response, target: string, lab?: LabFinish): Response {
   const headers = new Headers()
   for (const [name, value] of upstream.headers)
     if (!DROP_RESPONSE_HEADERS.test(name)) headers.append(name, value)
@@ -347,9 +483,15 @@ export function finish(upstream: Response, target: string): Response {
     headers.set("x-compute-upstream-status", String(status))
     status = 403
   }
+  const location = upstream.headers.get("location")
+  if (lab && REDIRECTS.has(status) && location) {
+    // Served from the Worker itself, a redirect is a redirect: keep the lab's ticket prefix.
+    const next = new URL(location, new URL(target, "https://compute.invalid"))
+    const path = next.pathname + next.search + next.hash
+    headers.set("location", next.pathname.startsWith("/jupyter/user/") ? lab.prefix + path : path)
+  }
   // Redirects cannot cross origins through the service worker: report the github.io path instead.
-  if (REDIRECTS.has(status)) {
-    const location = upstream.headers.get("location")
+  else if (REDIRECTS.has(status)) {
     if (location) {
       const next = new URL(location, new URL(target, "https://compute.invalid"))
       headers.set("x-compute-location", next.pathname + next.search + next.hash)
@@ -365,12 +507,16 @@ export function finish(upstream: Response, target: string): Response {
     .split(";")
     .map((directive) => directive.trim())
     .find((directive) => /^sandbox\b/i.test(directive))
-  headers.set("content-security-policy", sandbox ? `${FORCED_CSP}; ${sandbox}` : FORCED_CSP)
-  headers.set("x-frame-options", "SAMEORIGIN")
+  const csp = lab ? labCsp(lab.siteOrigin) : FORCED_CSP
+  headers.set("content-security-policy", sandbox ? `${csp}; ${sandbox}` : csp)
+  // X-Frame-Options can't name another origin, so the lab relies on frame-ancestors alone.
+  if (!lab) headers.set("x-frame-options", "SAMEORIGIN")
   headers.set("vary", "Origin, Authorization")
   headers.set("x-content-type-options", "nosniff")
   headers.set("x-robots-tag", "noindex, nofollow, noarchive")
-  headers.set("referrer-policy", "no-referrer")
+  // The lab's same-origin requests carry the page URL, whose ticket prefix vouches for the few paths
+  // JupyterLab builds without it; nothing is ever sent to another origin.
+  headers.set("referrer-policy", lab ? "same-origin" : "no-referrer")
   // Jupyter's own caching (hashed static files, etags) survives, but only in the member's browser.
   const cache = headers.get("cache-control")
   headers.set(

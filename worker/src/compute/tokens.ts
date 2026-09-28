@@ -2,11 +2,14 @@ import type { Env } from "../env"
 import { HttpError } from "../http"
 import { SESSION_MAX_AGE, type Session, sign, verify } from "../session"
 
-// Two short-lived tokens, both in the site's HMAC format (session.ts sign/verify):
+// Short-lived tokens, all in the site's HMAC format (session.ts sign/verify):
 //   assertion  Worker → compute host, inside every OPEN_HTTP / OPEN_WS / CONTROL frame. Signed with
 //              COMPUTE_ASSERTION_SECRET, the only secret the host shares; it never sees SESSION_SECRET.
 //   ws ticket  Worker → browser → Worker. JupyterLab cannot put a bearer header on a WebSocket, so the
 //              host writes this ticket into jupyter-config-data and the lab sends it as ?token=.
+//   lab ticket Worker → browser → Worker. The lab runs on the Worker's own origin, never on the site's
+//              (where the members token lives), at /lab/<ticket>/jupyter/user/<target>/…: the ticket
+//              names who is looking and at which server, so a lab page reaches that one server only.
 
 export const ASSERTION_AUDIENCE = "hafezi-compute"
 export const ASSERTION_TTL = 60
@@ -73,5 +76,43 @@ export async function issueTicket(env: Env, session: Principal): Promise<string>
 export async function verifyTicket(env: Env, token: string | null): Promise<WsTicket | null> {
   const ticket = await verify<WsTicket>(token ?? undefined, env.SESSION_SECRET, "compute-ws")
   if (!ticket || typeof ticket.login !== "string" || typeof ticket.exp !== "number") return null
+  return ticket
+}
+
+export interface LabTicket {
+  typ: "compute-lab"
+  login: string
+  role: "member" | "owner"
+  /** The server this ticket opens: the viewer's own, or (owners) a member's. */
+  target: string
+  exp: number
+}
+
+/** A lab ticket for one server, as long-lived as the session (and never over 8 h). */
+export async function issueLabTicket(
+  env: Env,
+  session: Principal,
+  target: string,
+): Promise<string> {
+  const cap = now() + SESSION_MAX_AGE
+  const ticket: LabTicket = {
+    typ: "compute-lab",
+    login: session.login.toLowerCase(),
+    role: session.role,
+    target: target.toLowerCase(),
+    exp: Math.min(session.exp ?? cap, cap),
+  }
+  return sign(ticket, env.SESSION_SECRET)
+}
+
+export async function verifyLabTicket(env: Env, token: string | null): Promise<LabTicket | null> {
+  const ticket = await verify<LabTicket>(token ?? undefined, env.SESSION_SECRET, "compute-lab")
+  if (
+    !ticket ||
+    typeof ticket.login !== "string" ||
+    typeof ticket.target !== "string" ||
+    typeof ticket.exp !== "number"
+  )
+    return null
   return ticket
 }

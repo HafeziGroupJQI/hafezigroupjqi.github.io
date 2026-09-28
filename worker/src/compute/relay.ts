@@ -34,7 +34,7 @@ import {
 export const RELAY_NAME = "hafezi-compute"
 
 export const HTTP_PER_LOGIN = 32
-export const WS_PER_LOGIN = 16
+export const WS_PER_LOGIN = 32
 export const MAX_BODY = 95 * 1024 * 1024
 const DEFAULT_MAX_STREAMS = 64
 const HEAD_TIMEOUT_MS = 120_000

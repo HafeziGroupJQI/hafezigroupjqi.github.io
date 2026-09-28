@@ -2,13 +2,7 @@ import { adminRoutes } from "./admin/routes"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
 import { type GitHubFetch, allowedOrigins, exchange, requireMutation, startLogin } from "./auth"
 import { calendarRoutes } from "./calendar/routes"
-import {
-  computeHostRoute,
-  computeRoutes,
-  computeSocketRoute,
-  isLabPath,
-  labRoute,
-} from "./compute/routes"
+import { computeHostRoute, computeRoutes, isLabPath, labRoute } from "./compute/routes"
 import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
@@ -108,7 +102,7 @@ export function createHandler(
           response = withPrivateHeaders(problem(500, "internal error"))
         }
       }
-      // WebSocket upgrades (agents, compute host, JupyterLab) go back untouched.
+      // WebSocket upgrades (agents, compute host, the lab) go back untouched.
       if (response.webSocket) return response
       return isAgent ? response : withCors(response, origin, allowed)
     },
@@ -141,12 +135,9 @@ export function createHandler(
     // Agent ingest is device-key authenticated, before the member bearer is ever parsed.
     const agent = await agentRoutes(request, url, env)
     if (agent) return withPrivateHeaders(agent)
-    // Likewise the compute host (host key) and JupyterLab's WebSockets (short ticket in ?token=,
-    // because a browser WebSocket cannot carry the bearer header).
+    // Likewise the compute host (host key).
     const computeHost = await computeHostRoute(request, url, env)
     if (computeHost) return computeHost
-    const computeSocket = await computeSocketRoute(request, url, env)
-    if (computeSocket) return computeSocket
 
     if (path === "/api/auth/start" && request.method === "POST")
       return withPrivateHeaders(await startLogin(request, env))

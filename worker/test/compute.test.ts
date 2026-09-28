@@ -23,13 +23,12 @@ import {
 } from "../src/compute/frames"
 import { authorizeTarget } from "../src/compute/policy"
 import { RELAY_NAME } from "../src/compute/relay"
-import { FORCED_CSP, finish, labCsp, stripToken } from "../src/compute/routes"
+import { finish, labCsp } from "../src/compute/routes"
 import {
   issueAssertion,
   issueLabTicket,
-  issueTicket,
   verifyAssertion,
-  verifyTicket,
+  verifyLabTicket,
 } from "../src/compute/tokens"
 import type { Env } from "../src/env"
 import { sign } from "../src/session"
@@ -96,13 +95,18 @@ describe("compute frames and tokens (shared vectors)", () => {
     expect(assertion).toMatchObject({ typ: "compute", aud: "hafezi-compute", login: "alice" })
     expect(assertion!.exp - assertion!.iat).toBe(60)
     const exp = Math.floor(Date.now() / 1000) + 120
-    const ticket = await verifyTicket(
+    const ticket = await verifyLabTicket(
       workerEnv,
-      await issueTicket(workerEnv, { login: "alice", role: "member", exp }),
+      await issueLabTicket(workerEnv, { login: "Alice", role: "member", exp }, "Bob"),
     )
-    expect(ticket).toMatchObject({ typ: "compute-ws", login: "alice", exp })
+    expect(ticket).toMatchObject({ typ: "compute-lab", login: "alice", target: "bob", exp })
     // A ticket is not a session, and a session is not a ticket.
-    expect(await verifyTicket(workerEnv, "garbage")).toBeNull()
+    expect(await verifyLabTicket(workerEnv, "garbage")).toBeNull()
+    const session = await sign(
+      { typ: "session", login: "alice", name: "a", role: "member", exp },
+      workerEnv.SESSION_SECRET,
+    )
+    expect(await verifyLabTicket(workerEnv, session)).toBeNull()
   })
 })
 
@@ -150,25 +154,20 @@ describe("compute path policy", () => {
     expect(deny("/jupyter/user/bob/lab", alice, { COMPUTE_OWNER_ACCESS: "true" })).toBe(403)
   })
 
-  it("strips the ticket from a WebSocket query without re-encoding", () => {
-    expect(stripToken("?session_id=a%20b&token=t.x&x=1")).toBe("?session_id=a%20b&x=1")
-    expect(stripToken("?token=abc")).toBe("")
-    expect(stripToken("")).toBe("")
-  })
-
   it("keeps the sandbox Jupyter puts on raw files, but not the rest of its policy", () => {
     const raw = new Response("<script>", {
       headers: { "content-security-policy": "frame-ancestors *; sandbox allow-scripts" },
     })
+    const lab = { prefix: "/lab/t.k", siteOrigin: "https://site.example" }
     expect(
-      finish(raw, "/jupyter/user/alice/files/x.html").headers.get("content-security-policy"),
-    ).toBe(`${FORCED_CSP}; sandbox allow-scripts`)
-    const lab = new Response("<html>", {
+      finish(raw, "/jupyter/user/alice/files/x.html", lab).headers.get("content-security-policy"),
+    ).toBe(`${labCsp(lab.siteOrigin)}; sandbox allow-scripts`)
+    const page = new Response("<html>", {
       headers: { "content-security-policy": "frame-ancestors *" },
     })
-    expect(finish(lab, "/jupyter/user/alice/lab").headers.get("content-security-policy")).toBe(
-      FORCED_CSP,
-    )
+    expect(
+      finish(page, "/jupyter/user/alice/lab", lab).headers.get("content-security-policy"),
+    ).toBe(labCsp(lab.siteOrigin))
   })
 })
 
@@ -250,10 +249,15 @@ async function memberAs(login: string) {
   }
 }
 
-const envelope = (method: string, target: string, extra: Record<string, string> = {}) => ({
-  method: "POST",
-  headers: { "x-compute-method": method, "x-compute-target": target, ...extra },
-})
+/** A lab-origin request for `target` with `ticket` in the path, the way the lab page makes it. */
+const viaLab = (
+  ticket: string,
+  method: string,
+  target: string,
+  headers: Record<string, string> = {},
+  init: RequestInit = {},
+) =>
+  SELF.fetch(`${ORIGIN}/lab/${ticket}${target}`, { redirect: "manual", method, headers, ...init })
 
 async function respond(
   host: FakeHost,
@@ -269,9 +273,21 @@ async function respond(
 describe("the compute relay", { timeout: 30_000 }, () => {
   let host: FakeHost
   let alice: Awaited<ReturnType<typeof memberAs>>
+  let aliceLab: string
+  const lab = (
+    method: string,
+    target: string,
+    headers?: Record<string, string>,
+    init?: RequestInit,
+  ) => viaLab(aliceLab, method, target, headers, init)
 
   beforeAll(async () => {
     alice = await memberAs("alice")
+    aliceLab = await issueLabTicket(
+      workerEnv,
+      { login: "alice", role: "member", exp: Math.floor(Date.now() / 1000) + 3600 },
+      "alice",
+    )
   })
   afterAll(() => host?.ws.close())
 
@@ -289,10 +305,7 @@ describe("the compute relay", { timeout: 30_000 }, () => {
   })
 
   it("answers 503 while no host is connected", async () => {
-    const response = await alice.fetch(
-      "/api/compute/fetch",
-      envelope("GET", "/jupyter/user/alice/lab"),
-    )
+    const response = await lab("GET", "/jupyter/user/alice/lab")
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ detail: "compute host offline" })
     const status = (await (await alice.fetch("/api/compute/status")).json()) as any
@@ -305,13 +318,10 @@ describe("the compute relay", { timeout: 30_000 }, () => {
 
   it("proxies a request with the assertion, forwarded headers and a forced CSP", async () => {
     host = await connectHost()
-    const pending = alice.fetch(
-      "/api/compute/fetch",
-      envelope("GET", "/jupyter/user/alice/lab?reset", {
-        accept: "text/html",
-        cookie: "stolen=1",
-      }),
-    )
+    const pending = lab("GET", "/jupyter/user/alice/lab?reset", {
+      accept: "text/html",
+      cookie: "stolen=1",
+    })
     const open = await host.next(ofType(FrameType.OPEN_HTTP))
     expect(open.streamId % 2).toBe(1)
     const meta = readJsonPayload<any>(open)
@@ -320,12 +330,12 @@ describe("the compute relay", { timeout: 30_000 }, () => {
       target: "/jupyter/user/alice/lab?reset",
       has_body: false,
       window: INITIAL_WINDOW,
-      ws_url: "wss://members.test/api/compute/ws",
+      ws_url: `wss://members.test/lab/${aliceLab}`,
+      ticket: "",
     })
     expect(meta.headers).toContainEqual(["accept", "text/html"])
     expect(meta.headers.map(([name]: [string]) => name)).not.toContain("cookie")
     expect(await verifyAssertion(meta.assertion, vectors.secret)).toMatchObject({ login: "alice" })
-    expect(await verifyTicket(workerEnv, meta.ticket)).toMatchObject({ login: "alice" })
 
     await respond(
       host,
@@ -342,11 +352,10 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     const response = await pending
     expect(response.status).toBe(200)
     expect(await response.text()).toBe("<html>lab</html>")
-    expect(response.headers.get("content-security-policy")).toBe(FORCED_CSP)
-    expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN")
+    expect(response.headers.get("content-security-policy")).toBe(labCsp(new URL(SITE).origin))
+    expect(response.headers.get("x-frame-options")).toBeNull()
     expect(response.headers.get("set-cookie")).toBeNull()
     expect(response.headers.get("etag")).toBe('"abc"')
-    expect(response.headers.get("access-control-expose-headers")).toContain("x-compute-location")
   })
 
   it("refuses other members' servers, the hub and encoded separators before the host sees them", async () => {
@@ -354,56 +363,51 @@ describe("the compute relay", { timeout: 30_000 }, () => {
       ["/jupyter/user/bob/lab", 403],
       ["/jupyter/hub/api/users", 403],
       ["/jupyter/user/alice/api/contents/a%2fb", 400],
-      ["/jupyter/user/alice/../bob/lab", 400],
+      // The URL is normalised before the Worker sees it, so this is bob's path.
+      ["/jupyter/user/alice/../bob/lab", 403],
     ] as const) {
-      const response = await alice.fetch("/api/compute/fetch", envelope("GET", target))
+      const response = await lab("GET", target)
       expect(response.status, target).toBe(status)
     }
-    // The owner too, without COMPUTE_OWNER_ACCESS.
-    const owner = await member()
-    const response = await owner.fetch(
-      "/api/compute/fetch",
-      envelope("GET", "/jupyter/user/alice/lab"),
+    // The owner too, without COMPUTE_OWNER_ACCESS, even holding a ticket for alice's server.
+    const owner = await issueLabTicket(
+      workerEnv,
+      { login: "boss", role: "owner", exp: Math.floor(Date.now() / 1000) + 3600 },
+      "alice",
     )
-    expect(response.status).toBe(403)
+    expect((await viaLab(owner, "GET", "/jupyter/user/alice/lab")).status).toBe(403)
     expect(host.frames.filter(ofType(FrameType.OPEN_HTTP))).toHaveLength(0)
   })
 
-  it("remaps an upstream 401 to 403 so the service worker keeps the member signed in", async () => {
-    const pending = alice.fetch("/api/compute/fetch", envelope("GET", "/jupyter/user/alice/api/me"))
+  it("passes Jupyter's own status through", async () => {
+    const pending = lab("GET", "/jupyter/user/alice/api/me")
     const open = await host.next(ofType(FrameType.OPEN_HTTP))
     await respond(host, open.streamId, 401, [["content-type", "application/json"]], "{}")
     const response = await pending
-    expect(response.status).toBe(403)
-    expect(response.headers.get("x-compute-upstream-status")).toBe("401")
+    expect(response.status).toBe(401)
   })
 
-  it("turns a redirect into 204 + x-compute-location", async () => {
-    const pending = alice.fetch("/api/compute/fetch", envelope("GET", "/jupyter/user/alice/"))
+  it("keeps the ticket prefix on redirects, and never redirects off the lab origin", async () => {
+    const pending = lab("GET", "/jupyter/user/alice/")
     const open = await host.next(ofType(FrameType.OPEN_HTTP))
     await respond(host, open.streamId, 302, [
       ["location", "http://127.0.0.1:8000/jupyter/user/alice/lab?x=1"],
     ])
     const response = await pending
-    expect(response.status).toBe(204)
-    expect(response.headers.get("x-compute-location")).toBe("/jupyter/user/alice/lab?x=1")
-    expect(response.headers.get("location")).toBeNull()
+    expect(response.status).toBe(302)
+    expect(response.headers.get("location")).toBe(`/lab/${aliceLab}/jupyter/user/alice/lab?x=1`)
 
-    const relative = alice.fetch(
-      "/api/compute/fetch",
-      envelope("GET", "/jupyter/user/alice/tree/a"),
-    )
+    const relative = lab("GET", "/jupyter/user/alice/tree/a")
     const second = await host.next(ofType(FrameType.OPEN_HTTP))
     await respond(host, second.streamId, 301, [["location", "b"]])
-    expect((await relative).headers.get("x-compute-location")).toBe("/jupyter/user/alice/tree/b")
+    expect((await relative).headers.get("location")).toBe(
+      `/lab/${aliceLab}/jupyter/user/alice/tree/b`,
+    )
   })
 
   it("streams a 5 MiB download within the credit window", async () => {
     const size = 5 * 1024 * 1024
-    const pending = alice.fetch(
-      "/api/compute/fetch",
-      envelope("GET", "/jupyter/user/alice/files/big.bin"),
-    )
+    const pending = lab("GET", "/jupyter/user/alice/files/big.bin")
     const open = await host.next(ofType(FrameType.OPEN_HTTP))
     const sid = open.streamId
     host.send(
@@ -461,12 +465,12 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     const size = 20 * 1024 * 1024
     const upload = new Uint8Array(size)
     for (let i = 0; i < size; i += 4096) upload[i] = (i / 4096) % 256
-    const pending = alice.fetch("/api/compute/fetch", {
-      ...envelope("PUT", "/jupyter/user/alice/api/contents/big.bin", {
-        "content-type": "application/octet-stream",
-      }),
-      body: upload,
-    })
+    const pending = lab(
+      "PUT",
+      "/jupyter/user/alice/api/contents/big.bin",
+      { "content-type": "application/octet-stream" },
+      { body: upload },
+    )
     const open = await host.next(ofType(FrameType.OPEN_HTTP))
     const sid = open.streamId
     expect(readJsonPayload<any>(open)).toMatchObject({ method: "PUT", has_body: true })
@@ -497,17 +501,18 @@ describe("the compute relay", { timeout: 30_000 }, () => {
   })
 
   it("refuses bodies over 95 MiB with 413", async () => {
-    const declared = await alice.fetch("/api/compute/fetch", {
-      ...envelope("PUT", "/jupyter/user/alice/api/contents/huge.bin"),
-      headers: {
-        "x-compute-method": "PUT",
-        "x-compute-target": "/jupyter/user/alice/api/contents/huge.bin",
-        "content-length": String(96 * 1024 * 1024),
-      },
-      // Declared, not sent: the Worker refuses on the header before reading a byte.
-      body: new ReadableStream({ pull: (controller) => controller.enqueue(new Uint8Array(65536)) }),
-      duplex: "half",
-    } as RequestInit & { headers: Record<string, string> })
+    const declared = await lab(
+      "PUT",
+      "/jupyter/user/alice/api/contents/huge.bin",
+      { "content-length": String(96 * 1024 * 1024) },
+      {
+        // Declared, not sent: the Worker refuses on the header before reading a byte.
+        body: new ReadableStream({
+          pull: (controller) => controller.enqueue(new Uint8Array(65536)),
+        }),
+        duplex: "half",
+      } as RequestInit,
+    )
     expect(declared.status).toBe(413)
 
     // Undeclared (streamed) bodies are counted by the relay, which resets the host's stream.
@@ -519,11 +524,10 @@ describe("the compute relay", { timeout: 30_000 }, () => {
         else controller.enqueue(chunk)
       },
     })
-    const pending = alice.fetch("/api/compute/fetch", {
-      ...envelope("PUT", "/jupyter/user/alice/api/contents/huge.bin"),
+    const pending = lab("PUT", "/jupyter/user/alice/api/contents/huge.bin", {}, {
       body,
       duplex: "half",
-    } as RequestInit & { headers: Record<string, string> })
+    } as RequestInit)
     const open = await host.next(ofType(FrameType.OPEN_HTTP))
     const sid = open.streamId
     let reset: Frame | null = null
@@ -540,25 +544,17 @@ describe("the compute relay", { timeout: 30_000 }, () => {
   })
 
   it("caps a member at 32 concurrent requests", async () => {
-    const pending = Array.from({ length: 32 }, () =>
-      alice.fetch("/api/compute/fetch", envelope("GET", "/jupyter/user/alice/api/slow")),
-    )
+    const pending = Array.from({ length: 32 }, () => lab("GET", "/jupyter/user/alice/api/slow"))
     const opens: Frame[] = []
     for (let i = 0; i < 32; i++) opens.push(await host.next(ofType(FrameType.OPEN_HTTP)))
-    const over = await alice.fetch(
-      "/api/compute/fetch",
-      envelope("GET", "/jupyter/user/alice/api/slow"),
-    )
+    const over = await lab("GET", "/jupyter/user/alice/api/slow")
     expect(over.status).toBe(429)
     for (const open of opens) await respond(host, open.streamId, 200, [], "ok")
     for (const response of await Promise.all(pending)) expect(await response.text()).toBe("ok")
   })
 
   it("resets in-flight streams and sends GOAWAY when a new host replaces the old one", async () => {
-    const pending = alice.fetch(
-      "/api/compute/fetch",
-      envelope("GET", "/jupyter/user/alice/api/hang"),
-    )
+    const pending = lab("GET", "/jupyter/user/alice/api/hang")
     const open = await host.next(ofType(FrameType.OPEN_HTTP))
     const old = host
     host = await connectHost()
@@ -571,7 +567,7 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     await old.closed
 
     // The new host serves the next request.
-    const next = alice.fetch("/api/compute/fetch", envelope("GET", "/jupyter/user/alice/lab"))
+    const next = lab("GET", "/jupyter/user/alice/lab")
     const fresh = await host.next(ofType(FrameType.OPEN_HTTP))
     await respond(host, fresh.streamId, 200, [], "again")
     expect(await (await next).text()).toBe("again")
@@ -635,7 +631,6 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect((await ensure).args).toEqual({ profile: "gds" })
     expect(lines[0]).toEqual({ progress: { message: "spawning", percent: 50 } })
     expect(lines.at(-1)).toMatchObject({ done: true, ok: true, result: { server: "running" } })
-    expect(await verifyTicket(workerEnv, lines.at(-1).ticket)).toMatchObject({ login: "alice" })
 
     const stop = answer("stop_server", { server: "stopped" })
     const stopped = await alice.fetch("/api/compute/server", { method: "DELETE" })
@@ -760,24 +755,26 @@ describe("JupyterLab WebSockets through the relay", { timeout: 30_000 }, () => {
   let host: FakeHost
   let ticket: string
   const PROTOCOL = "v1.kernel.websocket.jupyter.org"
-  const path = "/api/compute/ws/jupyter/user/alice/api/kernels/k1/channels?session_id=s1"
-  const open = (token: string, origin = SITE, url = path) =>
-    SELF.fetch(`${ORIGIN}${url}&token=${encodeURIComponent(token)}`, {
+  const path = "/jupyter/user/alice/api/kernels/k1/channels?session_id=s1"
+  // Opened by the lab page, so from the lab origin, with the ticket in the path.
+  const open = (token: string, origin = ORIGIN, url = path) =>
+    SELF.fetch(`${ORIGIN}/lab/${token}${url}`, {
       headers: { upgrade: "websocket", origin, "sec-websocket-protocol": PROTOCOL },
     })
 
   beforeAll(async () => {
     host = await connectHost()
-    ticket = await issueTicket(workerEnv, {
-      login: "alice",
-      role: "member",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-    })
+    ticket = await issueLabTicket(
+      workerEnv,
+      { login: "alice", role: "member", exp: Math.floor(Date.now() / 1000) + 3600 },
+      "alice",
+    )
   })
   afterAll(() => host.ws.close())
 
   it("rejects a bad ticket, a foreign origin and another member's path", async () => {
-    expect((await open("garbage")).status).toBe(401)
+    expect((await open("garbage.x")).status).toBe(401)
+    expect((await open("garbage")).status).toBe(403) // not even ticket-shaped
     const session = await sign(
       { typ: "session", login: "alice", name: "a", role: "member", exp: Date.now() / 1000 + 60 },
       workerEnv.SESSION_SECRET,
@@ -785,8 +782,7 @@ describe("JupyterLab WebSockets through the relay", { timeout: 30_000 }, () => {
     expect((await open(session)).status).toBe(401) // a session token is not a ticket
     expect((await open(ticket, "https://evil.example")).status).toBe(403)
     expect(
-      (await open(ticket, SITE, "/api/compute/ws/jupyter/user/bob/api/kernels/k1/channels?x=1"))
-        .status,
+      (await open(ticket, ORIGIN, "/jupyter/user/bob/api/kernels/k1/channels?x=1")).status,
     ).toBe(403)
     expect(host.frames.filter(ofType(FrameType.OPEN_WS))).toHaveLength(0)
   })

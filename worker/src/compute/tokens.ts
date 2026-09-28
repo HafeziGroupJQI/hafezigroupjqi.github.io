@@ -5,8 +5,6 @@ import { SESSION_MAX_AGE, type Session, sign, verify } from "../session"
 // Short-lived tokens, all in the site's HMAC format (session.ts sign/verify):
 //   assertion  Worker → compute host, inside every OPEN_HTTP / OPEN_WS / CONTROL frame. Signed with
 //              COMPUTE_ASSERTION_SECRET, the only secret the host shares; it never sees SESSION_SECRET.
-//   ws ticket  Worker → browser → Worker. JupyterLab cannot put a bearer header on a WebSocket, so the
-//              host writes this ticket into jupyter-config-data and the lab sends it as ?token=.
 //   lab ticket Worker → browser → Worker. The lab runs on the Worker's own origin, never on the site's
 //              (where the members token lives), at /lab/<ticket>/jupyter/user/<target>/…: the ticket
 //              names who is looking and at which server, so a lab page reaches that one server only.
@@ -20,15 +18,6 @@ export interface Assertion {
   login: string
   role: "member" | "owner"
   iat: number
-  exp: number
-}
-
-// The host's verifier reads {typ, login, exp}; `role` rides along so a WebSocket's assertion
-// matches the session's. Only the Worker ever verifies a ticket.
-export interface WsTicket {
-  typ: "compute-ws"
-  login: string
-  role: "member" | "owner"
   exp: number
 }
 
@@ -59,24 +48,6 @@ export async function verifyAssertion(token: string, secret: string): Promise<As
   const claims = await verify<Assertion>(token, secret, "compute")
   if (!claims || claims.aud !== ASSERTION_AUDIENCE || typeof claims.exp !== "number") return null
   return claims
-}
-
-/** A WebSocket ticket that never outlives the session (and never exceeds 8 h). */
-export async function issueTicket(env: Env, session: Principal): Promise<string> {
-  const cap = now() + SESSION_MAX_AGE
-  const ticket: WsTicket = {
-    typ: "compute-ws",
-    login: session.login.toLowerCase(),
-    role: session.role,
-    exp: Math.min(session.exp ?? cap, cap),
-  }
-  return sign(ticket, env.SESSION_SECRET)
-}
-
-export async function verifyTicket(env: Env, token: string | null): Promise<WsTicket | null> {
-  const ticket = await verify<WsTicket>(token ?? undefined, env.SESSION_SECRET, "compute-ws")
-  if (!ticket || typeof ticket.login !== "string" || typeof ticket.exp !== "number") return null
-  return ticket
 }
 
 export interface LabTicket {

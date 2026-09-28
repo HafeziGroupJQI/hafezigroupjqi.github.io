@@ -72,7 +72,7 @@ export interface ControlRequest {
   timeout_ms?: number
   /** Apply the Wolfram run limits (1 concurrent + 30 per 10 min per login). */
   limit?: "wolfram"
-  /** Merged into a successful streamed final line (the ws ticket for POST /api/compute/server). */
+  /** Merged into a successful streamed final line. */
   extra?: Record<string, unknown>
 }
 

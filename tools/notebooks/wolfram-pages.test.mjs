@@ -101,6 +101,25 @@ test("AssetStore converts PNG to WebP when smaller, minifies SVG, and reuses con
   assert.equal(meta.width, 80)
 })
 
+test("AssetStore converts again after an interrupted run, and leaves no partial files", async () => {
+  const dir = temp()
+  const assets = await exporterCache(dir)
+  const out = path.join(dir, "out")
+  const store = new AssetStore({ outDir: out, cacheDir: dir, sourceDir: path.join(dir, "assets") })
+  await store.convert(assets.svg)
+  const index = fs.readdirSync(store.cacheDir).filter((name) => name.endsWith(".json"))
+  assert.equal(index.length, 1)
+  assert.deepEqual(
+    fs.readdirSync(store.cacheDir, { recursive: true }).filter((name) => name.endsWith(".tmp")),
+    [],
+  )
+  // A run killed while writing left half an index entry: the next run converts again.
+  fs.writeFileSync(path.join(store.cacheDir, index[0]), '{"na')
+  const again = new AssetStore({ outDir: out, cacheDir: dir, sourceDir: path.join(dir, "assets") })
+  assert.match(await again.convert(assets.svg), /\.svg$/)
+  assert.deepEqual(again.stats, { converted: 1, reused: 0, webp: 0, svgo: again.stats.svgo })
+})
+
 test("pageBody renders the cell contract the client mounts on", async () => {
   const dir = temp()
   const assets = await exporterCache(dir)

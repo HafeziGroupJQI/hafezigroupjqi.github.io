@@ -109,6 +109,14 @@ export const CONVERTER = crypto
   .digest("hex")
   .slice(0, 16)
 
+// Write a cache file whole or not at all: a job killed mid-write must not leave a truncated file
+// that a later deploy would take for a finished one.
+function writeAtomic(file, data) {
+  const temp = `${file}.${process.pid}.tmp`
+  fs.writeFileSync(temp, data)
+  fs.renameSync(temp, file)
+}
+
 export class AssetStore {
   constructor({ outDir, cacheDir, sourceDir }) {
     this.outDir = outDir
@@ -139,7 +147,12 @@ export class AssetStore {
   cached(key) {
     const file = path.join(this.cacheDir, `${key}.json`)
     if (!fs.existsSync(file)) return null
-    const entry = JSON.parse(fs.readFileSync(file, "utf8"))
+    let entry
+    try {
+      entry = JSON.parse(fs.readFileSync(file, "utf8"))
+    } catch {
+      return null // written by an older, interrupted run: convert again
+    }
     const out = path.join(this.outDir, assetPath(entry.name))
     const stash = path.join(this.cacheDir, "files", entry.name)
     const source = fs.existsSync(out) ? out : fs.existsSync(stash) ? stash : null
@@ -153,9 +166,9 @@ export class AssetStore {
     const stash = path.join(this.cacheDir, "files", name)
     if (!fs.existsSync(stash)) {
       fs.mkdirSync(path.dirname(stash), { recursive: true })
-      fs.writeFileSync(stash, bytes)
+      writeAtomic(stash, bytes)
     }
-    fs.writeFileSync(path.join(this.cacheDir, `${key}.json`), JSON.stringify({ name }))
+    writeAtomic(path.join(this.cacheDir, `${key}.json`), JSON.stringify({ name }))
     this.keys.add(key)
     this.stats.converted++
     return this.record(name, bytes)

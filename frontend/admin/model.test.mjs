@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { auditParams, budgetUsed, describe, formatTokens, parseBudget } from "./model.js"
+import { nextTab, auditParams, budgetUsed, describe, formatTokens, parseBudget } from "./model.js"
 
 test("audit filters become query parameters", () => {
   const p = auditParams(
@@ -50,4 +50,12 @@ test("token and budget formatting", () => {
   assert.throws(() => parseBudget("lots"))
   assert.equal(budgetUsed({ monthly_tokens: null, input: 1, output: 1 }), null)
   assert.equal(budgetUsed({ monthly_tokens: 100, input: 30, output: 20 }), 0.5)
+})
+
+test("arrow keys wrap around the tabs; Home and End go to the ends", () => {
+  assert.equal(nextTab(3, "ArrowRight", 4), 0)
+  assert.equal(nextTab(0, "ArrowLeft", 4), 3)
+  assert.equal(nextTab(2, "Home", 4), 0)
+  assert.equal(nextTab(1, "End", 4), 3)
+  assert.equal(nextTab(1, "Enter", 4), null)
 })

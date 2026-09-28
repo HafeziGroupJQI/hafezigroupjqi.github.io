@@ -109,3 +109,12 @@ export function parseBudget(text) {
   if (!m) throw new Error("Enter a number of tokens, like 2M or 500k, or leave empty for no limit.")
   return Math.round(Number(m[1]) * (m[2] === "m" ? 1e6 : m[2] === "k" ? 1e3 : 1))
 }
+
+/** The tab a key moves to in a tab list (Left/Right wrap, Home/End), or null for other keys. */
+export function nextTab(index, key, count) {
+  if (key === "ArrowRight") return (index + 1) % count
+  if (key === "ArrowLeft") return (index - 1 + count) % count
+  if (key === "Home") return 0
+  if (key === "End") return count - 1
+  return null
+}

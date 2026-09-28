@@ -10,6 +10,7 @@ import {
   formatTokens,
   formatUsd,
   formatWhen,
+  nextTab,
   parseBudget,
 } from "./model.js"
 
@@ -66,6 +67,15 @@ export function mountAdmin(root, { api, session }) {
         onclick: () => show(id),
       }),
     )
+  // Arrow keys, Home and End move between tabs; Tab moves into the panel.
+  tabs.addEventListener("keydown", (event) => {
+    const buttons = [...tabs.children]
+    const next = nextTab(buttons.indexOf(document.activeElement), event.key, buttons.length)
+    if (next === null) return
+    event.preventDefault()
+    buttons[next].focus()
+    show(buttons[next].dataset.tab)
+  })
 
   const fail = (error) => {
     banner.hidden = false
@@ -75,8 +85,10 @@ export function mountAdmin(root, { api, session }) {
   function show(id) {
     tab = id
     banner.hidden = true
-    for (const button of tabs.children)
+    for (const button of tabs.children) {
       button.setAttribute("aria-selected", String(button.dataset.tab === id))
+      button.tabIndex = button.dataset.tab === id ? 0 : -1
+    }
     const url = new URL(location.href)
     url.searchParams.set("tab", id)
     history.replaceState(history.state, "", url)

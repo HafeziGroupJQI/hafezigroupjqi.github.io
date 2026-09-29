@@ -40,7 +40,9 @@ export function target(kind, apiOrigin, path, search = "") {
   return kind === "api" ? `${apiOrigin}${path}${search}` : `${apiOrigin}/api/site${path}${search}`
 }
 
-// Headers a proxied response keeps when it is re-issued as a github.io response.
+// Headers a proxied response keeps when it is re-issued as a github.io response. The Worker's
+// sandbox policy and nosniff go along: a member's upload must not run as the site, where the
+// members token is (the Worker exposes both to this cross-origin fetch).
 export const KEEP_HEADERS = [
   "content-type",
   "content-length",
@@ -50,7 +52,24 @@ export const KEEP_HEADERS = [
   "cache-control",
   "last-modified",
   "etag",
+  "content-security-policy",
+  "x-content-type-options",
 ]
+
+/** Re-issue a Worker response as a plain same-origin response (the document keeps its github.io URL). */
+export function reissue(response, keep = KEEP_HEADERS) {
+  const headers = new Headers()
+  for (const name of keep) {
+    const value = response.headers.get(name)
+    if (value) headers.set(name, value)
+  }
+  const empty = response.status === 204 || response.status === 304
+  return new Response(empty ? null : response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
 
 /** A 401 from the Worker means the session is gone. */
 export const isSessionExpired = (response) => response.status === 401

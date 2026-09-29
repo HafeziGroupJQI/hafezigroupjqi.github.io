@@ -4,11 +4,11 @@
 
 import { API_ORIGIN, clearAuth, readAuth } from "./auth.js"
 import {
-  KEEP_HEADERS,
   alwaysPass,
   isImmutable,
   isSessionExpired,
   notebookPage,
+  reissue,
   route,
   target,
 } from "./sw-route.js"
@@ -55,21 +55,6 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin || alwaysPass(url.pathname)) return
   event.respondWith(handle(event.request, url))
 })
-
-// Re-issue a Worker response as a plain same-origin response (the document keeps its github.io URL).
-function reissue(response, keep = KEEP_HEADERS) {
-  const headers = new Headers()
-  for (const name of keep) {
-    const value = response.headers.get(name)
-    if (value) headers.set(name, value)
-  }
-  const empty = response.status === 204 || response.status === 304
-  return new Response(empty ? null : response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  })
-}
 
 async function handle(request, url) {
   const auth = await session()

@@ -7,6 +7,7 @@ import {
   isImmutable,
   isSessionExpired,
   notebookPage,
+  reissue,
   route,
   target,
 } from "./sw-route.js"
@@ -62,6 +63,26 @@ test("sign-in pages, the worker script and non-GET page requests are left alone"
     route({ method: "POST", path: "/resources/notes", mode: "navigate" }, true),
     "network",
   )
+})
+
+test("a re-issued response keeps the Worker's sandbox policy and nosniff, not its other headers", async () => {
+  const worker = new Response("<svg onload=alert(1)>", {
+    status: 200,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "content-security-policy": "sandbox; default-src 'none'",
+      "x-content-type-options": "nosniff",
+      "access-control-allow-origin": "https://hafezigroupjqi.github.io",
+      "set-cookie": "a=b",
+    },
+  })
+  const out = reissue(worker)
+  assert.equal(out.headers.get("content-type"), "text/plain; charset=utf-8")
+  assert.equal(out.headers.get("content-security-policy"), "sandbox; default-src 'none'")
+  assert.equal(out.headers.get("x-content-type-options"), "nosniff")
+  assert.equal(out.headers.get("access-control-allow-origin"), null)
+  assert.equal(await out.text(), "<svg onload=alert(1)>")
+  assert.equal(reissue(new Response(null, { status: 204 })).status, 204)
 })
 
 test("targets and cacheability", () => {

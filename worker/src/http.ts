@@ -54,8 +54,9 @@ export async function readJson(request: Request): Promise<unknown> {
 // The members site's own cross-origin calls. JupyterLab needs none of this: it runs on the Worker's
 // origin (src/compute/routes.ts, labRoute), so its requests are same-origin.
 const CORS_ALLOW_HEADERS = "authorization, content-type, range, accept, if-none-match"
+// The service worker keeps a served file's sandbox policy and nosniff (frontend/members/sw-route.js).
 const CORS_EXPOSE_HEADERS =
-  "content-disposition, content-range, accept-ranges, x-canonical-path, etag"
+  "content-disposition, content-range, accept-ranges, x-canonical-path, etag, content-security-policy, x-content-type-options"
 const CORS_METHODS = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
 
 /** Add CORS headers when the request comes from an allowed browser origin (no credentials). */

@@ -39,6 +39,16 @@ describe("the member edition behind /api/site", () => {
     expect(vault.headers.get("x-canonical-path")).toBe("/resources/")
   })
 
+  it("lets the service worker keep a response's sandbox policy and nosniff", async () => {
+    const client = await member()
+    const exposed = (await client.fetch("/api/site/resources/notes")).headers
+      .get("access-control-expose-headers")!
+      .split(/,\s*/)
+    expect(exposed).toEqual(
+      expect.arrayContaining(["content-security-policy", "x-content-type-options"]),
+    )
+  })
+
   it("is read-only", async () => {
     const client = await member()
     expect((await client.fetch("/api/site/resources/notes", { method: "POST" })).status).toBe(405)

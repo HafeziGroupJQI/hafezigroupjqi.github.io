@@ -4098,6 +4098,83 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   color: var(--jqi-muted);
   font-size: 0.85rem;
 }
+
+// A page's tools under its title (JqiFrame's .page-tools): the Export menu (frontend/page-export/),
+// as a notebook page's actions look. Empty until its script fills it.
+.page-tools {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: -6px 0 20px;
+  font-size: 0.95rem;
+  &:empty {
+    display: none;
+  }
+}
+.page-export {
+  position: relative;
+  & > summary {
+    list-style: none;
+    padding: 4px 10px;
+    background: #454545;
+    color: #fff;
+    border: 1px solid #454545;
+    border-radius: 3px;
+    cursor: pointer;
+    &::-webkit-details-marker {
+      display: none;
+    }
+    &::after {
+      content: " ▾";
+    }
+  }
+  &[open] > summary::after {
+    content: " ▴";
+  }
+}
+.page-export__panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 250px;
+  padding: 6px 0;
+  background: #fff;
+  color: #222;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 12px #0002;
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  button {
+    display: block;
+    width: 100%;
+    padding: 7px 14px;
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    &:is(:hover, :focus-visible) {
+      background: var(--jqi-rule);
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+}
+.page-export__heading {
+  margin: 8px 14px 2px;
+  color: var(--jqi-muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 @media (hover: hover) and (min-width: 800px) {
   .wl-notebook figure.wl-cell .wl-toolbar {
     opacity: 0.8;

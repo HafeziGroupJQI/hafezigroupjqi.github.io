@@ -5,6 +5,7 @@
 // A Jupyter notebook also downloads as Quarto or Markdown, converted here from the raw file.
 
 import { h } from "../dashboard/dom.js"
+import { save } from "../page-export/save.js"
 import { forkUrl } from "../scratchpad/launch.js"
 import { convertNotebook, downloadFormats } from "./exporting.js"
 
@@ -13,16 +14,6 @@ import { convertNotebook, downloadFormats } from "./exporting.js"
 export function openInScratchpad(source, status) {
   status.textContent = "Opening the Scratchpad…"
   location.assign(forkUrl(source))
-}
-
-// Hand the browser a file made here to save.
-function save({ name, type, text }) {
-  const url = URL.createObjectURL(new Blob([text], { type }))
-  const anchor = h("a", { href: url, download: name, hidden: true })
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 // "Download as": the raw file is the page's own link; the others are converted from it.

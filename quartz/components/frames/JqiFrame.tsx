@@ -76,6 +76,11 @@ export const JqiFrame: PageFrame = {
       internal && slug.startsWith("resources/") && typeof frontmatter?.vault_source === "string"
         ? frontmatter.vault_source
         : undefined
+    // A page made from a Markdown file has its source beside it (quartz/plugins/local/page-source/)
+    // and an Export menu under its title (frontend/page-export/); folder and tag pages have neither,
+    // and the dashboards have no title to put it under.
+    const source =
+      !dashboard && componentData.fileData.filePath?.endsWith(".md") ? `/${slug}.md` : undefined
     return (
       <div
         class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}${tagPage ? " site-tag" : ""}${dashboard ? " site-dashboard" : ""}`}
@@ -131,6 +136,7 @@ export const JqiFrame: PageFrame = {
                         ))}
                       </ul>
                     )}
+                    {source && <div class="page-tools" data-page-tools data-source={source} />}
                   </>
                 </div>
                 <div class="page-content__body">
@@ -155,6 +161,7 @@ export const JqiFrame: PageFrame = {
           <FooterComponent {...componentData} />
         ))}
         {internal && <script type="module" src="/static/member-tools.js" data-spa-preserve />}
+        {source && <script type="module" src="/static/page-export.js" data-spa-preserve />}
         <script dangerouslySetInnerHTML={{ __html: navScript }} />
       </div>
     )

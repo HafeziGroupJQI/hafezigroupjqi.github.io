@@ -1,6 +1,7 @@
 import { SELF, env } from "cloudflare:test"
 import { beforeAll, describe, expect, it } from "vitest"
 import { issueLabTicket } from "../src/compute/tokens"
+import { MAX_TEXT, MAX_TURNS, labTranscript } from "../src/gpt/lab-chats"
 import { ORIGIN, as, auditRows } from "./helpers"
 
 // Hafezi GPT in the lab's own panel: the lab origin (this Worker's origin, ORIGIN here) calls
@@ -247,6 +248,49 @@ describe("the lab's AI chats, kept as Hafezi GPT conversations", () => {
     // Without the header, a save still replaces the chat (autosave).
     expect((await put("Notes", "Revised")).status).toBe(200)
     expect(((await (await call("/lab-chats/Notes")).json()) as any).metadata.title).toBe("Revised")
+  })
+
+  it("keeps a save's d1 batch small: the latest turns, each of bounded length", async () => {
+    const users = {
+      user: { username: "user" },
+      bot: { username: "bot", bot: true },
+    }
+    const msg = (sender: string, body: string) => ({ type: "msg", sender, body })
+    const long = labTranscript(
+      {
+        messages: Array.from({ length: 1000 }, (_, i) => msg(i % 2 ? "bot" : "user", `m${i}`)),
+        users,
+      },
+      "m",
+    )
+    expect(long.length).toBeLessThanOrEqual(MAX_TURNS)
+    expect(long[0].role).toBe("user")
+    expect((long.at(-1)!.content[0] as any).text).toBe("m999")
+    // Hundreds of tool-call replies in a row merge into one message, which stays bounded.
+    const chatty = labTranscript(
+      {
+        messages: [
+          msg("user", "go"),
+          ...Array.from({ length: 300 }, () => msg("bot", "x".repeat(2000))),
+        ],
+        users,
+      },
+      "m",
+    )
+    expect(chatty).toHaveLength(2)
+    expect((chatty[1].content[0] as any).text.length).toBe(MAX_TEXT)
+    // Saved as a whole, the chat still lands.
+    const call = lab(
+      await issueLabTicket(env as any, { login: "wes", role: "member", exp: exp() }, "wes"),
+    )
+    const saved = await call("/lab-chats/big", {
+      method: "PUT",
+      body: JSON.stringify({
+        messages: Array.from({ length: 1000 }, (_, i) => msg(i % 2 ? "bot" : "user", `m${i}`)),
+        users,
+      }),
+    })
+    expect(saved.status).toBe(200)
   })
 
   it("keeps each member's lab chats apart and refuses bad names and bodies", async () => {

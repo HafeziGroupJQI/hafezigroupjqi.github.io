@@ -11,8 +11,11 @@ import type { GptStore } from "./store"
 // chat's author: each save replaces the text, and /gpt shows it read-only (fork to continue).
 
 export const MAX_LAB_CHAT_BYTES = 5 * 1024 * 1024
-const MAX_TURNS = 400
-const MAX_TEXT = 100_000
+// Each save rewrites the chat's text in one D1 batch, a statement per message: /gpt shows the
+// latest MAX_TURNS, and a message (merged replies too) keeps MAX_TEXT characters, far under D1's
+// 2 MB a row. The R2 copy keeps the whole chat for the lab.
+export const MAX_TURNS = 200
+export const MAX_TEXT = 100_000
 
 export const labChatKey = (conversationId: string) => `gpt/lab-chats/${conversationId}.json`
 
@@ -83,7 +86,7 @@ export function labTranscript(chat: LabChat, model: string): TranscriptRow[] {
     const last = rows[rows.length - 1]
     if (last?.role === role) {
       const block = last.content[0] as { text: string }
-      block.text += "\n\n" + text
+      block.text = (block.text + "\n\n" + text).slice(0, MAX_TEXT)
       if (role === "user") last.meta.text = block.text
       continue
     }

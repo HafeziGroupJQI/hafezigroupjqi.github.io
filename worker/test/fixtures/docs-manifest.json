@@ -11,6 +11,16 @@
       "sha": "fedcba9876543210fedcba9876543210fedcba98",
       "size": 4,
       "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    },
+    "resources/files/figures/beam.svg": {
+      "sha": "aaaabbbbccccddddeeeeffff0000111122223333",
+      "size": 11,
+      "contentType": "image/svg+xml"
+    },
+    "resources/files/figures/beam.txt": {
+      "sha": "aaaabbbbccccddddeeeeffff0000111122223333",
+      "size": 11,
+      "contentType": "text/plain; charset=utf-8"
     }
   }
 }

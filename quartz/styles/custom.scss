@@ -3829,6 +3829,11 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   margin: 12px 0 20px;
   font-size: 0.95rem;
 }
+.wl-page-actions label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
 .wl-notebook-nav {
   justify-content: space-between;
   border-top: 1px solid var(--jqi-rule);

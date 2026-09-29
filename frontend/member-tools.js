@@ -294,7 +294,7 @@ if (session.user) {
     link.setAttribute("download", "")
   }
   // The page's own tools above that line (frontend/notebook-page/): Open in Scratchpad for a file
-  // of the private vault.
+  // of the private vault, and Download as for a Jupyter notebook.
   const sourceBar = document.querySelector("p.wl-source")
   if (sourceBar)
     import("./notebook-page/index.js")

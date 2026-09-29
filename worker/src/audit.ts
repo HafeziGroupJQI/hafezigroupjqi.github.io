@@ -59,6 +59,21 @@ export function audit(env: Env, ctx: ExecutionContext, request: Request, entry: 
   ctx.waitUntil(write)
 }
 
+/** Record an audit row for something a scheduled job did on a member's behalf (no request). */
+export async function auditJob(
+  env: Env,
+  login: string,
+  action: string,
+  target: string | null,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO audit_log (at, login, action, target, detail_json) VALUES (?, ?, ?, ?, ?)",
+  )
+    .bind(Date.now(), login, action, target, JSON.stringify(detail))
+    .run()
+}
+
 export async function pruneAudit(env: Env, now = Date.now()): Promise<void> {
   await env.DB.prepare("DELETE FROM audit_log WHERE at < ?")
     .bind(now - AUDIT_RETENTION_DAYS * 86_400_000)

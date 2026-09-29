@@ -46,7 +46,8 @@
   ],
   "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
   // Daily audit-log retention sweep (src/audit.ts pruneAudit), and the hourly publish of members'
-  // People page edits (src/profile/publish.ts). src/index.ts tells them apart by the daily one.
+  // People page edits (src/profile/publish.ts) and merge of their uploads (src/uploads/merge.ts).
+  // src/index.ts tells them apart by the daily one.
   "triggers": { "crons": ["17 4 * * *", "0 * * * *"] },
   "vars": {
     "AUTH_MODE": "github",

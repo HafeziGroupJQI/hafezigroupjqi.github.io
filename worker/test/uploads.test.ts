@@ -4,6 +4,7 @@ import { HttpError } from "../src/http"
 import { dueAt } from "../src/profile/routes"
 import { mergeTitle, plainName, summary, uploadTitle } from "../src/uploads/drafts"
 import { PrivateVault } from "../src/uploads/github"
+import { mergeDue } from "../src/uploads/merge"
 import {
   FILE_MAX,
   activeHtml,
@@ -554,5 +555,167 @@ describe("uploads: drafts", () => {
     const title = uploadTitle(many, "A".repeat(80))
     expect(title.length).toBeLessThanOrEqual(110)
     expect(mergeTitle(title).length).toBeLessThan(150)
+  })
+})
+
+describe("uploads: the hourly merge", () => {
+  /** The hourly run, as the cron makes it, at a given time. */
+  const merge = (at: number) => mergeDue(env as any, repo.fetch, at)
+
+  /** A member's draft, sent: its id, due time and the commit it sent. */
+  async function sent(client: Client, files: Record<string, BodyInit>) {
+    const id = (await create(client)).body.id
+    for (const [path, body] of Object.entries(files)) await stage(client, id, path, body)
+    const draft = (await send(client, id)).body
+    return { id, due: draft.due_at as number, head: repo.refs.get(`uploads/ada/${id}`)! }
+  }
+
+  it("merges a draft at the end of the hour after it was sent, once its check is green", async () => {
+    const ada = await as("ada")
+    const main = repo.head
+    const { id, due, head } = await sent(ada, { "notes/scan.pdf": PDF })
+    // Not due: nothing happens, not even a look at GitHub.
+    const calls = repo.calls.length
+    expect(await merge(due - 3 * 600_000)).toMatchObject({ merged: [], waiting: [] })
+    expect(repo.calls.length).toBe(calls)
+
+    // Due, but the check hasn't reported (or is running): it waits for the next hour.
+    expect((await merge(due)).waiting).toEqual([id])
+    repo.report(head, "pending")
+    expect((await merge(due)).waiting).toEqual([id])
+    const waiting = (await ada.json(`/api/uploads/drafts/${id}`)).body
+    expect(waiting).toMatchObject({
+      status: "open",
+      detail: { message: "waiting for the validate check" },
+      check: { state: "pending", url: `https://github.com/runs/${head}` },
+    })
+    expect(repo.head).toBe(main)
+
+    repo.report(head, "success")
+    expect(await merge(due)).toMatchObject({ merged: [id] })
+    const pull = repo.pulls.get(1)!
+    expect(pull).toMatchObject({ draft: false, merged: true, merge_message: "" })
+    expect(pull.merge_title).toBe("add notes/scan.pdf by ada from the members site uploads")
+    expect(repo.commit(repo.head)).toMatchObject({ parents: [main], message: pull.merge_title })
+    expect(repo.bytes("notes/scan.pdf")).toEqual(PDF)
+    expect(repo.refs.has(`uploads/ada/${id}`)).toBe(false)
+    expect((await env.ARTIFACTS.list({ prefix: `uploads/${id}/` })).objects).toEqual([])
+    const merged = (await ada.json(`/api/uploads/drafts/${id}`)).body
+    expect(merged).toMatchObject({
+      status: "merged",
+      merge: { url: `https://github.com/HafeziGroupJQI/vault-private/commit/${repo.head}` },
+    })
+    expect(await auditRows("action = 'uploads.merge'")).toEqual([
+      expect.objectContaining({ login: "ada", target: id }),
+    ])
+    // Settled: the next hour leaves it alone.
+    expect(await merge(due + 3_600_000)).toMatchObject({ merged: [], waiting: [] })
+  })
+
+  it("leaves a draft whose check failed open for its author to fix", async () => {
+    const ada = await as("ada")
+    const main = repo.head
+    const { id, due, head } = await sent(ada, { "notes/scan.pdf": PDF })
+    repo.report(head, "failure")
+    expect(await merge(due)).toMatchObject({ failed: [id], merged: [] })
+    expect(repo.head).toBe(main)
+    expect(repo.pulls.get(1)).toMatchObject({ state: "open", merged: false })
+    expect((await ada.json(`/api/uploads/drafts/${id}`)).body).toMatchObject({
+      status: "failed",
+      detail: {
+        message: "the validate check failed: failure",
+        url: `https://github.com/runs/${head}`,
+      },
+    })
+    expect(await auditRows("action = 'uploads.failed'")).toHaveLength(1)
+
+    // A revision is checked again, and merges in its own hour.
+    await stage(ada, id, "notes/minutes.md", NOTE)
+    const revised = (await send(ada, id)).body
+    expect(revised).toMatchObject({ status: "open", detail: null })
+    repo.report(repo.refs.get(`uploads/ada/${id}`)!, "success")
+    expect(await merge(revised.due_at)).toMatchObject({ merged: [id] })
+    expect(repo.text("notes/minutes.md")).toBe(NOTE)
+  })
+
+  it("shows a conflict, and waits while its author changes a sent draft", async () => {
+    const ada = await as("ada")
+    const { id, due, head } = await sent(ada, { "notes/scan.pdf": PDF })
+    repo.report(head, "success")
+    await stage(ada, id, "notes/minutes.md", NOTE)
+    expect(await merge(due)).toMatchObject({ waiting: [id], merged: [] })
+    await ada.json(`/api/uploads/drafts/${id}/changes?path=notes/minutes.md`, { method: "DELETE" })
+    const again = (await send(ada, id)).body
+    repo.report(repo.refs.get(`uploads/ada/${id}`)!, "success")
+    repo.pulls.get(1)!.mergeable = false
+    expect(await merge(again.due_at)).toMatchObject({ conflicts: [id], merged: [] })
+    expect((await ada.json(`/api/uploads/drafts/${id}`)).body).toMatchObject({
+      status: "conflict",
+      detail: { url: "https://github.com/HafeziGroupJQI/vault-private/pull/1" },
+    })
+  })
+
+  it("never merges what runs: an admin does, on GitHub, and the draft follows", async () => {
+    const ada = await as("ada")
+    const code = "---\ntitle: Fit\ntype: note\ntags: [internal]\n---\n\n```{python}\n1 + 1\n```\n"
+    const { id, due, head } = await sent(ada, { "code/fit.qmd": code })
+    expect(repo.pulls.get(1)!.body).toContain("an admin merges this by hand")
+    repo.report(head, "success")
+    expect(await merge(due)).toMatchObject({ review: [id], merged: [] })
+    expect(repo.pulls.get(1)).toMatchObject({ draft: false, merged: false, state: "open" })
+    expect(repo.text("code/fit.qmd")).toBeUndefined()
+    expect((await ada.json(`/api/uploads/drafts/${id}`)).body.status).toBe("review")
+    expect(await merge(due + 3_600_000)).toMatchObject({ review: [id] })
+
+    Object.assign(repo.pulls.get(1)!, {
+      merged: true,
+      state: "closed",
+      merge_commit_sha: "c-admin",
+    })
+    expect(await merge(due + 7_200_000)).toMatchObject({ merged: [id] })
+    expect((await ada.json(`/api/uploads/drafts/${id}`)).body).toMatchObject({
+      status: "merged",
+      merge: { sha: "c-admin" },
+    })
+  })
+
+  it("leaves a branch someone changed on GitHub to an admin", async () => {
+    const ada = await as("ada")
+    const { id, due, head } = await sent(ada, { "notes/scan.pdf": PDF })
+    const branch = `uploads/ada/${id}`
+    // Someone else's commit on the branch, checked green.
+    const other = await repo.fetch(
+      "https://api.github.com/repos/HafeziGroupJQI/vault-private/git/commits",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer test-vault-private-token" },
+        body: JSON.stringify({
+          message: "tweak",
+          tree: repo.commit(head).tree,
+          parents: [head],
+          author: {},
+        }),
+      },
+    )
+    repo.refs.set(branch, ((await other.json()) as { sha: string }).sha)
+    repo.report(repo.refs.get(branch)!, "success")
+    expect(await merge(due)).toMatchObject({ review: [id], merged: [] })
+    expect(repo.pulls.get(1)).toMatchObject({ merged: false })
+    expect((await ada.json(`/api/uploads/drafts/${id}`)).body).toMatchObject({
+      status: "review",
+      detail: { message: "its branch was changed on GitHub, so an admin merges it" },
+    })
+  })
+
+  it("drops a draft whose pull request was closed on GitHub", async () => {
+    const ada = await as("ada")
+    const { id, due } = await sent(ada, { "notes/scan.pdf": PDF })
+    repo.pulls.get(1)!.state = "closed"
+    expect(await merge(due)).toMatchObject({ closed: [id] })
+    expect(repo.refs.has(`uploads/ada/${id}`)).toBe(false)
+    expect((await ada.json(`/api/uploads/drafts/${id}`)).body).toMatchObject({
+      status: "discarded",
+      detail: { message: "closed on GitHub" },
+    })
   })
 })

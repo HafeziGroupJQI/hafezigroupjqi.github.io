@@ -2,6 +2,7 @@ import { createHandler } from "./app"
 import { pruneAudit } from "./audit"
 import type { Env } from "./env"
 import { publishDue } from "./profile/publish"
+import { mergeDue } from "./uploads/merge"
 // Written by `npm run build:members` in the website root (tools/docs-manifest.mjs and
 // tools/gpt-manifest.mjs).
 import manifest from "../generated/docs-manifest.json"
@@ -16,14 +17,16 @@ const DAILY = "17 4 * * *"
 export default {
   ...createHandler(manifest, { skills }),
   // triggers.crons in wrangler.jsonc. Hourly: publish members' People page edits that are due
-  // (one vault commit). Daily: drop audit rows past the retention window.
+  // (one vault commit), then merge members' uploads to vault-private that are due and checked.
+  // Daily: drop audit rows past the retention window.
   async scheduled(controller, env, ctx) {
     if (controller.cron === DAILY) ctx.waitUntil(pruneAudit(env))
     else
       ctx.waitUntil(
-        publishDue(env, (input, init) => fetch(input, init)).catch((error) =>
-          console.error("publishing profile edits failed", error),
-        ),
+        publishDue(env, (input, init) => fetch(input, init))
+          .catch((error) => console.error("publishing profile edits failed", error))
+          .then(() => mergeDue(env, (input, init) => fetch(input, init)))
+          .catch((error) => console.error("merging uploads failed", error)),
       )
   },
 } satisfies ExportedHandler<Env>

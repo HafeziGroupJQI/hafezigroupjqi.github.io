@@ -137,6 +137,11 @@ export async function postMessage(
   const { conversation, access } = await store.conversation(conversationId, session.login)
   if (access !== "owner")
     throw new HttpError(403, "this chat was shared with you; continue it in your own chat")
+  if (conversation.lab_name)
+    throw new HttpError(
+      409,
+      "this chat belongs to your lab's AI chat: continue it there, or fork it to continue here",
+    )
   const budget = await store.usage(session.login)
   if (budget.budget !== null && budget.used >= budget.budget)
     throw new HttpError(

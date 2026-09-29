@@ -30,6 +30,8 @@ export interface Conversation {
   model: string
   origin_slug: string | null
   forked_from: string | null
+  // Set when the chat is one of the lab's AI chats (lab-chats.ts): its name there.
+  lab_name?: string | null
   created_at: number
   updated_at: number
 }
@@ -345,6 +347,67 @@ export class GptStore {
       this.db.prepare("DELETE FROM gpt_conversations WHERE id = ?").bind(id),
     ])
     return results.map((r) => r.r2_key)
+  }
+
+  // ---- the lab's AI chats (lab-chats.ts) ----
+
+  async labChats(
+    login: string,
+  ): Promise<Array<{ name: string; conversation_id: string; title: string; updated_at: number }>> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT lab_name AS name, id AS conversation_id, title, updated_at FROM gpt_conversations
+         WHERE owner = ? AND lab_name IS NOT NULL ORDER BY updated_at DESC LIMIT 500`,
+      )
+      .bind(login)
+      .all<{ name: string; conversation_id: string; title: string; updated_at: number }>()
+    return results
+  }
+
+  async labChat(login: string, name: string): Promise<Conversation | null> {
+    return await this.db
+      .prepare("SELECT * FROM gpt_conversations WHERE owner = ? AND lab_name = ?")
+      .bind(login, name)
+      .first<Conversation>()
+  }
+
+  /** Create or update the lab chat's conversation, replacing its messages with the lab's text. */
+  async saveLabChat(
+    login: string,
+    name: string,
+    title: string,
+    model: string,
+    rows: Array<{ role: "user" | "assistant"; content: unknown[]; meta: Record<string, unknown> }>,
+  ): Promise<Conversation> {
+    const now = Date.now()
+    // Two saves of a new chat can race: the unique (owner, lab_name) index keeps one row.
+    await this.db
+      .prepare(
+        `INSERT INTO gpt_conversations (id, project_id, owner, title, model, origin_slug, forked_from,
+           lab_name, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?)
+         ON CONFLICT (owner, lab_name) WHERE lab_name IS NOT NULL
+         DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at`,
+      )
+      .bind(newId("c"), login, title, model, name, now, now)
+      .run()
+    const conversation = (await this.labChat(login, name))!
+    await this.db.batch([
+      this.db.prepare("DELETE FROM gpt_messages WHERE conversation_id = ?").bind(conversation.id),
+      ...rows.map((row) =>
+        this.db
+          .prepare(
+            "INSERT INTO gpt_messages (conversation_id, role, content_json, meta_json, created_at) VALUES (?, ?, ?, ?, ?)",
+          )
+          .bind(
+            conversation.id,
+            row.role,
+            JSON.stringify(row.content),
+            JSON.stringify(row.meta),
+            now,
+          ),
+      ),
+    ])
+    return conversation
   }
 
   // ---- messages ----

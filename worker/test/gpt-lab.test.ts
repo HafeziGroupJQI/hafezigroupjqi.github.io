@@ -120,3 +120,91 @@ describe("Hafezi GPT on the lab origin", () => {
     expect((await SELF.fetch(`${ORIGIN}/lab/${own}/hafezi-gpt/api/admin/audit`)).status).toBe(403)
   })
 })
+
+describe("the lab's AI chats, kept as Hafezi GPT conversations", () => {
+  const chat = (title?: string) => ({
+    messages: [
+      { type: "msg", id: "0", body: "", sender: "Hafezi GPT", time: 1 },
+      { type: "msg", id: "1", body: "Plot the ring resonance", sender: "user", time: 2 },
+      { type: "msg", id: "2", body: "Adding a cell.", sender: "Hafezi GPT", time: 3 },
+      { type: "msg", id: "3", body: "", sender: "Hafezi GPT", time: 4, mime_model: { data: {} } },
+      { type: "msg", id: "4", body: "Done: it's cell 2.", sender: "Hafezi GPT", time: 5 },
+      { type: "msg", id: "5", body: "Thanks", sender: "user", time: 6, attachments: ["0"] },
+    ],
+    users: {
+      user: { username: "user", display_name: "User" },
+      "Hafezi GPT": { username: "Hafezi GPT", display_name: "Hafezi GPT", bot: true },
+    },
+    attachments: { "0": { type: "notebook", value: "rings.ipynb" } },
+    metadata: { provider: "hafezi", autosave: true, ...(title ? { title } : {}) },
+  })
+
+  it("saves a lab chat by name, restores it exactly, and shows its text in /gpt read-only", async () => {
+    const ticket = await issueLabTicket(
+      env as any,
+      { login: "rhea", role: "member", exp: exp() },
+      "rhea",
+    )
+    const call = lab(ticket)
+    const name = encodeURIComponent("Hafezi GPT")
+    expect((await call(`/lab-chats/${name}`)).status).toBe(404)
+    const body = JSON.stringify(chat())
+    const saved = await call(`/lab-chats/${name}`, { method: "PUT", body })
+    expect(saved.status).toBe(200)
+    const { conversation_id } = (await saved.json()) as any
+    expect(await (await call(`/lab-chats/${name}`)).text()).toBe(body)
+
+    // Saving again replaces the text rather than adding to it, and takes the lab's title.
+    await call(`/lab-chats/${name}`, { method: "PUT", body: JSON.stringify(chat("Ring plots")) })
+    expect(
+      ((await (await call("/lab-chats")).json()) as any[]).map((c) => [c.name, c.title]),
+    ).toEqual([["Hafezi GPT", "Ring plots"]])
+
+    const site = await as("rhea")
+    const listed = await site.json("/api/gpt/conversations")
+    expect(listed.body.find((c: any) => c.id === conversation_id)).toMatchObject({
+      lab_name: "Hafezi GPT",
+      title: "Ring plots",
+    })
+    const opened = await site.json(`/api/gpt/conversations/${conversation_id}`)
+    expect(opened.body.turns.map((t: any) => [t.role, t.text ?? t.blocks[0].text])).toEqual([
+      ["user", "Plot the ring resonance"],
+      ["assistant", "Adding a cell.\n\nDone: it's cell 2."],
+      ["user", "Thanks"],
+    ])
+    const post = await site.fetch(`/api/gpt/conversations/${conversation_id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text: "more" }),
+    })
+    expect(post.status).toBe(409)
+    // A fork is an ordinary chat that continues on the site.
+    const fork = await site.json(`/api/gpt/conversations/${conversation_id}/fork`, {
+      method: "POST",
+    })
+    expect(fork.body.lab_name ?? null).toBeNull()
+
+    const gone = await call(`/lab-chats/${name}`, { method: "DELETE" })
+    expect(gone.status).toBe(200)
+    expect((await call(`/lab-chats/${name}`)).status).toBe(404)
+    expect((await site.fetch(`/api/gpt/conversations/${conversation_id}`)).status).toBe(404)
+  })
+
+  it("keeps each member's lab chats apart and refuses bad names and bodies", async () => {
+    const mine = lab(
+      await issueLabTicket(env as any, { login: "sam", role: "member", exp: exp() }, "sam"),
+    )
+    const theirs = lab(
+      await issueLabTicket(env as any, { login: "tess", role: "member", exp: exp() }, "tess"),
+    )
+    await mine("/lab-chats/shared-name", { method: "PUT", body: JSON.stringify(chat()) })
+    expect((await theirs("/lab-chats/shared-name")).status).toBe(404)
+    expect(await (await theirs("/lab-chats")).json()).toEqual([])
+    expect((await mine("/lab-chats/.hidden", { method: "PUT", body: "{}" })).status).toBe(422)
+    expect((await mine("/lab-chats/x", { method: "PUT", body: "not json" })).status).toBe(422)
+    expect((await mine("/lab-chats/x", { method: "PUT", body: '{"messages": 1}' })).status).toBe(
+      422,
+    )
+    const big = JSON.stringify({ ...chat(), pad: "x".repeat(5 * 1024 * 1024) })
+    expect((await mine("/lab-chats/x", { method: "PUT", body: big })).status).toBe(413)
+  })
+})

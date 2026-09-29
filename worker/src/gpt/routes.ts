@@ -6,6 +6,7 @@ import type { Session } from "../session"
 import { type GptDeps, displayTurns, postMessage, readTurn } from "./chat"
 import { estimateTokens, projectKnowledge, uploadKind } from "./context"
 import { loadKnowledge } from "./knowledge"
+import { labChatKey, labChatRoutes } from "./lab-chats"
 import { vaultTool, vaultToolSpecs } from "./lab-tools"
 import { DEFAULT_MODEL, MODELS } from "./models"
 import { allSkills, validateSkill } from "./skills"
@@ -195,6 +196,12 @@ export async function gptRoutes(
     return json(await vaultTool(toolMatch[1], await readJson(request), env, store, deps))
   }
 
+  // ---- the lab's AI chats ----
+  if (path === "/lab-chats" || path.startsWith("/lab-chats/")) {
+    const response = await labChatRoutes(request, path, env, ctx, store, login, write, record)
+    if (response) return response
+  }
+
   // ---- skills ----
   if (path === "/skills") {
     const skills = await allSkills(deps.skills, store, login)
@@ -381,6 +388,7 @@ export async function gptRoutes(
     }
     if (method === "DELETE") {
       const keys = await store.deleteConversation(conversation.id)
+      if (conversation.lab_name) keys.push(labChatKey(conversation.id))
       if (keys.length) ctx.waitUntil(env.ARTIFACTS.delete(keys))
       record("gpt.conversation.delete", conversation.id)
       return json({ deleted: conversation.id })

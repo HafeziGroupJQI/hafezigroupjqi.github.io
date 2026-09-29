@@ -211,6 +211,7 @@ export async function mountGpt(root, { api, session }) {
                   class: "muted gpt-chat-sub",
                   text: [
                     scope === "shared" ? `from ${c.shared_by}` : null,
+                    c.lab_name ? "lab" : null,
                     c.origin_slug && group.key === "pages" ? c.origin_slug.split("/").pop() : null,
                     c.share_count ? "shared" : null,
                     relativeDay(c.updated_at),

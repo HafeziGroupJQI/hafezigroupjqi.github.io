@@ -668,18 +668,24 @@ export function createChat({
   })
 
   function applyAccess() {
-    composer.hidden = access !== "owner"
-    if (access === "owner") {
+    // A lab chat is written by the lab's AI chat (each save replaces it): read-only here too.
+    const lab = !!conversation?.lab_name
+    composer.hidden = access !== "owner" || lab
+    if (access === "owner" && !lab) {
       if (!boot.offline) banner.hidden = true
       return
     }
     showBanner(
       [
-        h("span", { text: `Shared by ${owner} · read-only` }),
+        h("span", {
+          text: lab
+            ? "From your lab's AI chat · continue it in the Scratchpad, or here in a copy"
+            : `Shared by ${owner} · read-only`,
+        }),
         h("button", {
           type: "button",
           class: "primary",
-          text: "Continue in my own chat",
+          text: lab ? "Continue in a copy" : "Continue in my own chat",
           onclick: async () => {
             try {
               const copy = await gpt.fork(conversation.id)

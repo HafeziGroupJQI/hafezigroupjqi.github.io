@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers"
 import type { Env } from "../env"
+import { sessionStart } from "../session"
 import {
   Flag,
   type Frame,
@@ -36,6 +37,8 @@ export const RELAY_NAME = "hafezi-compute"
 /** Marks the relay's own "no free stream" answers (429 per member, 503 per host), which a
  *  caller may wait out, apart from anything Jupyter itself answers. */
 export const RELAY_BUSY = "x-relay-busy"
+/** Marks the relay's 401 for a lab ticket whose session the member has since signed out of. */
+export const RELAY_SIGNED_OUT = "x-relay-signed-out"
 export const HTTP_PER_LOGIN = 32
 export const WS_PER_LOGIN = 32
 export const MAX_BODY = 95 * 1024 * 1024
@@ -59,6 +62,8 @@ export interface OpenMeta {
   ws_url: string
   ticket: string
   login: string
+  /** The lab ticket's exp: its session's end, which tells when that session began. */
+  ticket_exp?: number
   has_body?: boolean
   protocols?: string[]
   /** Lab served from the Worker's origin: the ticket path every page URL carries (/lab/<ticket>). */
@@ -176,6 +181,8 @@ export class ComputeRelay extends DurableObject<Env> {
   >()
   private nextRpc = 1
   private readonly wolframActive = new Set<string>()
+  /** Each member's last sign-out (seconds), from storage: tickets of older sessions are refused. */
+  private readonly signedOut = new Map<string, number>()
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -197,6 +204,8 @@ export class ComputeRelay extends DurableObject<Env> {
         return this.openWs(request)
       case "/control":
         return this.control((await request.json()) as ControlRequest)
+      case "/signout":
+        return this.signOut((await request.json()) as { login: string; not_before: number })
       default:
         return new Response("not found", { status: 404 })
     }
@@ -426,11 +435,56 @@ export class ComputeRelay extends DurableObject<Env> {
     }
   }
 
+  // ---- sign-outs ----
+
+  private signedOutAt(login: string): number {
+    let at = this.signedOut.get(login)
+    if (at === undefined) {
+      at = this.ctx.storage.kv.get<number>(`signed_out:${login}`) ?? 0
+      this.signedOut.set(login, at)
+    }
+    return at
+  }
+
+  /** A lab ticket from a session the member has since signed out of (checked on every open). */
+  private refuseSignedOut(meta: OpenMeta): Response | null {
+    const at = this.signedOutAt(meta.login)
+    if (!at || (typeof meta.ticket_exp === "number" && sessionStart(meta.ticket_exp) >= at))
+      return null
+    return problem(401, "you signed out; open the lab again from the Scratchpad", {
+      [RELAY_SIGNED_OUT]: "1",
+    })
+  }
+
+  /** Remember a member's sign-out and end what their lab has open: its sockets and requests. */
+  private signOut({ login, not_before }: { login: string; not_before: number }): Response {
+    const at = Math.max(this.signedOutAt(login), not_before)
+    this.ctx.storage.kv.put(`signed_out:${login}`, at)
+    this.signedOut.set(login, at)
+    const sids = new Set<number>()
+    for (const stream of this.streams.values()) if (stream.login === login) sids.add(stream.sid)
+    for (const ws of this.ctx.getWebSockets("b")) {
+      const attachment = ws.deserializeAttachment() as BrowserAttachment | null
+      if (attachment?.login === login) sids.add(attachment.sid)
+    }
+    for (const sid of sids) {
+      const stream = this.streams.get(sid) ?? this.wsStream(sid)
+      if (!stream) continue
+      this.trySend(
+        stream.kind === "ws"
+          ? encodeFrame(FrameType.WS_CLOSE, sid, closePayload(1008, "signed out"))
+          : jsonFrame(FrameType.RESET, sid, { code: "cancel", reason: "signed out" }),
+      )
+      this.failStream(stream, "signed out", 1008)
+    }
+    return Response.json({ closed: sids.size })
+  }
+
   // ---- HTTP streams ----
 
   private async openHttp(request: Request): Promise<Response> {
     const meta = readMeta(request)
-    const refused = this.admit(meta.login, "http")
+    const refused = this.refuseSignedOut(meta) ?? this.admit(meta.login, "http")
     if (refused) return refused
     const sid = this.allocateSid()
     const hasBody = !!meta.has_body && request.body != null
@@ -615,7 +669,7 @@ export class ComputeRelay extends DurableObject<Env> {
     if (request.headers.get("upgrade") !== "websocket")
       return new Response("expected websocket", { status: 426 })
     const meta = readMeta(request)
-    const refused = this.admit(meta.login, "ws")
+    const refused = this.refuseSignedOut(meta) ?? this.admit(meta.login, "ws")
     if (refused) return refused
     const sid = this.allocateSid()
     const stream = this.newWsStream(sid, meta.login)

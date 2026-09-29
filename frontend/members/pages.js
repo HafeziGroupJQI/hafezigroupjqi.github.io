@@ -75,7 +75,8 @@ export async function callback() {
 }
 
 export async function logout() {
-  // Best effort: record the sign-out in the audit log before the token is forgotten.
+  // Best effort, before the token is forgotten: the Worker ends the session on every device (its
+  // bearers and lab tickets stop working, open labs close) and records the sign-out.
   const auth = await readAuth().catch(() => null)
   if (auth)
     await fetch(API_ORIGIN + "/api/auth/logout", {

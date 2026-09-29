@@ -4,7 +4,14 @@ import type { Env } from "../env"
 import { HttpError, decodeSegment, json, readJson, withPrivateHeaders } from "../http"
 import { type Session, bearer, timingSafeEqual } from "../session"
 import { authorizeTarget } from "./policy"
-import { type ControlRequest, MAX_BODY, type OpenMeta, RELAY_BUSY, RELAY_NAME } from "./relay"
+import {
+  type ControlRequest,
+  MAX_BODY,
+  type OpenMeta,
+  RELAY_BUSY,
+  RELAY_NAME,
+  RELAY_SIGNED_OUT,
+} from "./relay"
 import { audit, type Auditor } from "../audit"
 import { issueAssertion, issueLabTicket, verifyLabTicket } from "./tokens"
 
@@ -131,6 +138,8 @@ export async function labRoute(
   const siteOrigin = new URL(env.PUBLIC_SITE_URL).origin
   const base = {
     target,
+    // The relay refuses tickets of sessions the member has since signed out of.
+    ticket_exp: ticket.exp,
     assertion: await issueAssertion(env, ticket),
     ws_url: `${url.protocol === "http:" ? "ws:" : "wss:"}//${url.host}${prefix}`,
     // The page's own paths carry the ticket, so JupyterLab needs no ?token= of its own.
@@ -199,7 +208,28 @@ export async function labRoute(
     waited += BUSY_POLL_MS
     upstream = await open()
   }
+  // Signed out since the ticket was issued: a person reloading the lab goes back to the Scratchpad.
+  if (
+    upstream.headers.get(RELAY_SIGNED_OUT) &&
+    request.headers.get("sec-fetch-mode") === "navigate"
+  )
+    return Response.redirect(new URL("/scratchpad", env.PUBLIC_SITE_URL).toString(), 302)
   return finish(upstream, target, { prefix, siteOrigin })
+}
+
+/**
+ * A member signed out: the relay refuses their lab tickets from sessions begun before
+ * `notBefore` and closes their open lab sockets. Its failure never fails the sign-out.
+ */
+export async function signOutOfLabs(env: Env, login: string, notBefore: number): Promise<void> {
+  try {
+    await relay(env).fetch("https://relay/signout", {
+      method: "POST",
+      body: JSON.stringify({ login, not_before: notBefore }),
+    })
+  } catch (error) {
+    console.error("telling the compute relay about a sign-out failed", error)
+  }
 }
 
 // ---- member routes ----

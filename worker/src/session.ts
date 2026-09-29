@@ -87,7 +87,37 @@ export async function readSession(request: Request, env: Env): Promise<Session |
   const session = await verify<Session>(bearer(request) ?? undefined, env.SESSION_SECRET, "session")
   if (!session || typeof session.login !== "string" || !session.login) return null
   // Logins are lowercase everywhere; a bearer from before that rule may still carry GitHub's casing.
-  return { ...session, login: session.login.toLowerCase() }
+  const login = session.login.toLowerCase()
+  if (await signedOutSince(env, login, session.exp)) return null
+  return { ...session, login }
+}
+
+// Signing out (POST /api/auth/logout) ends every session the member began before it, on every
+// device: its bearers, and the lab tickets issued from them, which expire with their session. A
+// session always ends SESSION_MAX_AGE after it began, so a token's exp tells when its session
+// began, and a ticket's string stays the same for the whole session (the lab's cache keys on it).
+
+/** When the session a bearer or lab ticket belongs to began (seconds). */
+export const sessionStart = (exp: number) => exp - SESSION_MAX_AGE
+
+/** Record a sign-out: sessions that began before now are over. Returns the cutoff (seconds). */
+export async function endSessions(env: Env, login: string): Promise<number> {
+  const at = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(
+    `INSERT INTO logouts (login, not_before) VALUES (?, ?)
+     ON CONFLICT (login) DO UPDATE SET not_before = MAX(not_before, excluded.not_before)`,
+  )
+    .bind(login, at)
+    .run()
+  return at
+}
+
+/** Whether the member signed out after the session a token (ending at `exp`) began. */
+export async function signedOutSince(env: Env, login: string, exp: number): Promise<boolean> {
+  const row = await env.DB.prepare("SELECT not_before FROM logouts WHERE login = ?")
+    .bind(login)
+    .first<{ not_before: number }>()
+  return row !== null && sessionStart(exp) < row.not_before
 }
 
 export async function issueSession(

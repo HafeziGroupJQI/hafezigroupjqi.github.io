@@ -31,7 +31,7 @@ import {
   verifyLabTicket,
 } from "../src/compute/tokens"
 import type { Env } from "../src/env"
-import { sign } from "../src/session"
+import { SESSION_MAX_AGE, sign } from "../src/session"
 import vectors from "./fixtures/compute-vectors.json"
 import { ORIGIN, SITE, auditRows, member } from "./helpers"
 import worker from "./worker"
@@ -1032,6 +1032,79 @@ describe("JupyterLab WebSockets through the relay", { timeout: 30_000 }, () => {
     const second = await host.next(ofType(FrameType.OPEN_WS))
     host.send(jsonFrame(FrameType.RESET, second.streamId, { code: "refused", reason: "no kernel" }))
     expect((await refused).status).toBe(502)
+  })
+
+  it("ends a member's lab when they sign out: open sockets close, older tickets and bearers stop", async () => {
+    const now = Math.floor(Date.now() / 1000)
+    const session = async (exp: number) => {
+      const token = await sign(
+        { typ: "session", login: "lou", name: "Lou", role: "member", exp },
+        workerEnv.SESSION_SECRET,
+      )
+      const ticket = await issueLabTicket(workerEnv, { login: "lou", role: "member", exp }, "lou")
+      return { token, ticket }
+    }
+    // A session begun a minute ago, and its lab with a kernel open.
+    const before = await session(now - 60 + SESSION_MAX_AGE)
+    const kernel = "/jupyter/user/lou/api/kernels/k1/channels?session_id=s1"
+    const pending = open(before.ticket, ORIGIN, kernel)
+    const frame = await host.next(ofType(FrameType.OPEN_WS))
+    host.send(jsonFrame(FrameType.WS_ACCEPT, frame.streamId, { protocol: null }))
+    const ws = (await pending).webSocket!
+    ws.accept()
+    const closed = new Promise<CloseEvent>((resolve) => ws.addEventListener("close", resolve))
+
+    const signOut = await SELF.fetch(`${ORIGIN}/api/auth/logout`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${before.token}`, origin: SITE },
+    })
+    expect(signOut.status).toBe(200)
+    expect((await closed).code).toBe(1008)
+    expect(readClose(await host.next(ofType(FrameType.WS_CLOSE, frame.streamId))).code).toBe(1008)
+
+    // The old session is over everywhere: its bearer, its lab, the lab's Hafezi GPT.
+    const asMember = (token: string, path: string) =>
+      SELF.fetch(`${ORIGIN}${path}`, {
+        headers: { authorization: `Bearer ${token}`, origin: SITE },
+      })
+    expect(await (await asMember(before.token, "/api/session")).json()).toEqual({ user: null })
+    expect((await asMember(before.token, "/api/compute/status")).status).toBe(401)
+    expect((await open(before.ticket, ORIGIN, kernel)).status).toBe(401)
+    const page = `/lab/${before.ticket}/jupyter/user/lou/lab`
+    expect((await SELF.fetch(ORIGIN + page, { redirect: "manual" })).status).toBe(401)
+    const reload = await SELF.fetch(ORIGIN + page, {
+      redirect: "manual",
+      headers: { "sec-fetch-mode": "navigate" },
+    })
+    expect(reload.status).toBe(302)
+    expect(reload.headers.get("location")).toBe(new URL("/scratchpad", SITE).toString())
+    const gpt = `/lab/${before.ticket}/hafezi-gpt/api/gpt/bootstrap`
+    expect((await SELF.fetch(ORIGIN + gpt)).status).toBe(401)
+    // …even after the relay forgets what it had in memory.
+    const relay = workerEnv.COMPUTE_RELAY
+    const inRelay = runInDurableObject as unknown as (
+      stub: unknown,
+      fn: (instance: any) => void,
+    ) => Promise<void>
+    await inRelay(relay.get(relay.idFromName(RELAY_NAME)), (instance) => instance.signedOut.clear())
+    expect((await open(before.ticket, ORIGIN, kernel)).status).toBe(401)
+    expect(host.frames.filter(ofType(FrameType.OPEN_WS))).toHaveLength(0)
+
+    // Signing in again starts a session the sign-out doesn't touch. It begins after the sign-out,
+    // which may already be a second later than `now`.
+    const after = await session(Math.floor(Date.now() / 1000) + SESSION_MAX_AGE)
+    expect((await (await asMember(after.token, "/api/session")).json()) as any).toMatchObject({
+      user: { login: "lou" },
+    })
+    expect(
+      (await SELF.fetch(`${ORIGIN}/lab/${after.ticket}/hafezi-gpt/api/gpt/bootstrap`)).status,
+    ).toBe(200)
+    const reopened = open(after.ticket, ORIGIN, kernel)
+    const again = await host.next(ofType(FrameType.OPEN_WS))
+    host.send(jsonFrame(FrameType.WS_ACCEPT, again.streamId, { protocol: null }))
+    const socket = (await reopened).webSocket!
+    socket.accept()
+    socket.close(1000, "done")
   })
 
   it("closes member sockets when the host is replaced", async () => {

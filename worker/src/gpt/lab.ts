@@ -2,7 +2,7 @@ import { verifyLabTicket } from "../compute/tokens"
 import type { Env } from "../env"
 import { HttpError } from "../http"
 import { navIdentity } from "../profile/routes"
-import type { Session } from "../session"
+import { type Session, signedOutSince } from "../session"
 
 // Hafezi GPT inside JupyterLab (the lab extension's panel), on the lab origin: the Worker's own
 // origin, where the site's bearer never is. The panel calls /lab/<ticket>/hafezi-gpt/api/gpt/...,
@@ -32,7 +32,7 @@ export async function labSession(
   if (request.headers.get("service-worker"))
     throw new HttpError(403, "service workers are not allowed on the lab origin")
   const ticket = await verifyLabTicket(env, token)
-  if (!ticket)
+  if (!ticket || (await signedOutSince(env, ticket.login, ticket.exp)))
     throw new HttpError(401, "this lab link has expired; open the lab again from the Scratchpad")
   if (ticket.login !== ticket.target)
     throw new HttpError(403, "Hafezi GPT is available in your own lab only")

@@ -2,7 +2,13 @@ import { adminRoutes } from "./admin/routes"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
 import { type GitHubFetch, allowedOrigins, exchange, requireMutation, startLogin } from "./auth"
 import { calendarRoutes } from "./calendar/routes"
-import { computeHostRoute, computeRoutes, isLabPath, labRoute } from "./compute/routes"
+import {
+  computeHostRoute,
+  computeRoutes,
+  isLabPath,
+  labRoute,
+  signOutOfLabs,
+} from "./compute/routes"
 import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
@@ -24,7 +30,7 @@ import {
   withCors,
   withPrivateHeaders,
 } from "./http"
-import { type Session, readSession } from "./session"
+import { type Session, endSessions, readSession } from "./session"
 
 // The Worker is an API. Browsers only ever show https://hafezigroupjqi.github.io: its service
 // worker fetches the member edition of every page from GET /api/site/<path> with a bearer token,
@@ -188,6 +194,9 @@ export function createHandler(
       )
     if (path === "/api/auth/logout" && request.method === "POST") {
       requireMutation(request, env)
+      // Every session the member began before now ends, on every device: the site's bearers
+      // (readSession) and the lab's tickets, whose open sockets the relay closes.
+      await signOutOfLabs(env, session.login, await endSessions(env, session.login))
       record("auth.logout")
       return withPrivateHeaders(json({ ok: true }))
     }

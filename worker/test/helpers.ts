@@ -1,6 +1,6 @@
 import { SELF, env } from "cloudflare:test"
 import { expect, vi } from "vitest"
-import { sign } from "../src/session"
+import { SESSION_MAX_AGE, sign } from "../src/session"
 
 export const ORIGIN = "https://members.test"
 
@@ -30,14 +30,14 @@ export async function member() {
   return client(await signIn())
 }
 
-/** A client signed in as `login` (a bearer minted with the test SESSION_SECRET, no GitHub). */
+/** A client signed in as `login` just now (a bearer minted with the test SESSION_SECRET, no GitHub). */
 export async function as(login: string, role: "member" | "owner" = "member") {
   const session = {
     typ: "session",
     login,
     name: login,
     role,
-    exp: Math.floor(Date.now() / 1000) + 3600,
+    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE,
   }
   return client(await sign(session, (env as any).SESSION_SECRET))
 }

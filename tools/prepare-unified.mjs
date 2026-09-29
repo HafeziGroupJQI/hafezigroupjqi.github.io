@@ -24,7 +24,9 @@ const walk = (dir) =>
     )
 
 // Private sources have their own namespace. Resolve their links before combining the vaults.
-export function privateLink(raw, filename, privateRoot) {
+// With `page`, a link to a notebook (.ipynb, .nb) goes to its rendered page, which every staged
+// notebook gets (tools/notebooks/), not to the raw file.
+export function privateLink(raw, filename, privateRoot, { page = false } = {}) {
   if (/^(?:[a-z]+:|\/\/|#)/i.test(raw)) return raw
   const [target, ...suffix] = raw.split(/(?=[#?])/)
   // Root-absolute links address the public website (private notes cite public equipment records).
@@ -41,7 +43,7 @@ export function privateLink(raw, filename, privateRoot) {
       .relative(privateRoot, resolved)
       .split(path.sep)
       .join("/")
-      .replace(/\.qmd$/, ".md") +
+      .replace(page ? /\.(qmd|ipynb|nb)$/ : /\.qmd$/, ".md") +
     suffix.join("")
   )
 }
@@ -110,16 +112,21 @@ export function prepareUnified(publicSource, privateSource, yaml) {
         .replace(
           /\[\[([^\]|]+)(\|[^\]]*)?\]\]/g,
           (_, target, label = "") =>
-            `[[${privateLink(target, sourceFile, root).replace(/^\//, "")}${label}]]`,
+            `[[${privateLink(target, sourceFile, root, { page: true }).replace(/^\//, "")}${label}]]`,
         )
         .replace(
           /\]\(([^\s)]+)([^)]*)\)/g,
-          (_, target, title) => `](${privateLink(target, sourceFile, root)}${title})`,
+          (_, target, title) =>
+            `](${privateLink(target, sourceFile, root, { page: true })}${title})`,
         )
         .replace(
           /((?:href|src)=")[^"\n]+"/g,
           (value, prefix) =>
-            prefix + privateLink(value.slice(prefix.length, -1), sourceFile, root) + '"',
+            prefix +
+            privateLink(value.slice(prefix.length, -1), sourceFile, root, {
+              page: prefix.startsWith("href"),
+            }) +
+            '"',
         )
       // Root-relative Markdown/HTML media resolve to the staged content root in the asset audit.
       fs.writeFileSync(filename, text)

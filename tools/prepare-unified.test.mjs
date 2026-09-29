@@ -104,9 +104,19 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
       "Notebook[{}]",
     )
     fs.writeFileSync(path.join(privateRoot, "code", "analysis.ipynb"), '{"cells": []}')
-    fs.writeFileSync(path.join(privateRoot, "code", "note.md"), "---\ntitle: Note\n---\nText")
+    fs.writeFileSync(
+      path.join(privateRoot, "code", "note.md"),
+      "---\ntitle: Note\n---\nText [the analysis](analysis.ipynb), [[wolfram-guide/01-starting-out.nb|guide]]," +
+        ' <a href="analysis.ipynb">here</a>, <img src="analysis.ipynb">',
+    )
     built = prepareUnified(publicRoot, privateRoot, yaml)
     const read = (file) => fs.readFileSync(path.join(built.output, file), "utf8")
+    // Links to a notebook go to its rendered page, not the raw file (a src stays the file).
+    const note = read("resources/code/note.md")
+    assert.match(note, /\[the analysis\]\(\/resources\/code\/analysis\.md\)/)
+    assert.match(note, /\[\[resources\/code\/wolfram-guide\/01-starting-out\.md\|guide\]\]/)
+    assert.match(note, /<a href="\/resources\/code\/analysis\.md">here<\/a>/)
+    assert.match(note, /<img src="\/resources\/code\/analysis\.ipynb">/)
     // The notebooks themselves are staged; their pages are made later in the build.
     assert.ok(
       fs.existsSync(path.join(built.output, "resources/code/wolfram-guide/01-starting-out.nb")),

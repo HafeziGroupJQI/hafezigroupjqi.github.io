@@ -48,6 +48,21 @@ export function ownProfiles(listing) {
 }
 
 /**
+ * The profile to keep selected once the member's own profiles are read again (`own`, from
+ * ownProfiles): a built-in or a still-listed own profile stays. One deleted from ~/profiles since
+ * would ask for a kernel that no longer exists, so General takes its place, with a note saying so.
+ */
+export function keepProfile(chosen, own, label = chosen) {
+  if (PROFILES.some(([id]) => id === chosen) || own.some(([id]) => id === chosen))
+    return { profile: chosen, note: "" }
+  const gone = USER_PROFILE.test(chosen)
+  return {
+    profile: "base",
+    note: gone ? `Your profile “${label}” no longer exists, so General is selected.` : "",
+  }
+}
+
+/**
  * The lab URL for a launcher. `root` is the member's lab base from /api/compute/status (on the lab
  * origin, ending in /jupyter/user/<login>/). JupyterLab has no URL command for "new console", so the
  * request rides in the query (hafezi-launch, hafezi-view, kernel) for the hafezi lab extension to act

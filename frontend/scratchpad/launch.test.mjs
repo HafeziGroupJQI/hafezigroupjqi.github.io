@@ -5,6 +5,7 @@ import {
   createNdjsonParser,
   describeStatus,
   formatMemory,
+  keepProfile,
   kernelFor,
   launchUrl,
   ownProfiles,
@@ -132,4 +133,15 @@ test("a member's own profile launches its own kernel, and only well-formed ones 
     ],
   )
   assert.deepEqual(ownProfiles(null), [])
+})
+
+test("a deleted own profile falls back to General, with a note; listed ones stay selected", () => {
+  const own = [["user-zeta", "Zeta fits"]]
+  assert.deepEqual(keepProfile("user-zeta", own, "Zeta fits"), { profile: "user-zeta", note: "" })
+  assert.deepEqual(keepProfile("gds", own), { profile: "gds", note: "" })
+  const gone = keepProfile("user-qatest", own, "qatest")
+  assert.equal(gone.profile, "base")
+  assert.match(gone.note, /“qatest” no longer exists, so General is selected/)
+  // Nothing to explain for a value that was never a profile.
+  assert.deepEqual(keepProfile("", own), { profile: "base", note: "" })
 })

@@ -11,9 +11,11 @@ import { gptContext, insertMessage } from "./gpt.js"
 import {
   LAUNCHERS,
   PROFILES,
+  USER_PROFILE,
   createNdjsonParser,
   describeStatus,
   formatMemory,
+  keepProfile,
   launchUrl,
   ownProfiles,
   requestedFork,
@@ -75,26 +77,41 @@ export function mountScratchpad(root, { api, session }) {
     ),
     ownGroup,
   )
-  // Asked of the host when it comes online and whenever the list is opened, so a profile just
-  // saved in the lab shows up without reloading the page.
+  const profileNote = h("span", { class: "muted", role: "status", hidden: true })
+  const noteProfile = (text) => {
+    setText(profileNote, text)
+    profileNote.hidden = !text
+  }
+  // Asked of the host when it comes online, whenever the list is opened and before a launch on an
+  // own profile, so a profile just saved in the lab shows up and one deleted there is let go.
   let profilesLoading = null
   function loadProfiles() {
     if (profilesLoading || !status?.host?.online) return profilesLoading
     profilesLoading = api("/api/compute/profiles")
       .then((listing) => {
         const chosen = profile.value
+        const chosenLabel = profile.selectedOptions[0]?.text ?? chosen
         const own = ownProfiles(listing)
         ownGroup.replaceChildren(
           ...own.map(([id, label]) => h("option", { value: id, text: label })),
         )
         ownGroup.hidden = !own.length
-        profile.value = [...profile.options].some((o) => o.value === chosen) ? chosen : "base"
+        const kept = keepProfile(chosen, own, chosenLabel)
+        profile.value = kept.profile
+        if (kept.note) noteProfile(kept.note)
       })
       .catch(() => {}) // an older host without the op: the built-ins stay
       .finally(() => (profilesLoading = null))
     return profilesLoading
   }
   profile.addEventListener("focus", () => void loadProfiles())
+  profile.addEventListener("change", () => noteProfile(""))
+  // The profile to start on: an own one is looked up again first, since starting on one deleted in
+  // the lab would ask for a kernel that no longer exists.
+  async function chosenProfile() {
+    if (USER_PROFILE.test(profile.value)) await loadProfiles()
+    return profile.value
+  }
   const launchers = h(
     "div",
     { class: "scratch-launchers" },
@@ -112,6 +129,7 @@ export function mountScratchpad(root, { api, session }) {
     { class: "scratch-launcher", "aria-label": "Launch" },
     h("label", { class: "dash-field" }, "Profile", profile),
     launchers,
+    profileNote,
   )
 
   const bar = h("progress", { max: "100" })
@@ -215,9 +233,11 @@ export function mountScratchpad(root, { api, session }) {
   async function launch(id) {
     setBusy(true)
     banner.hidden = true
+    noteProfile("")
     try {
-      await ensureServer(profile.value)
-      open(launchUrl(status.lab, id, profile.value, pending ?? ""))
+      const chosen = await chosenProfile()
+      await ensureServer(chosen)
+      open(launchUrl(status.lab, id, chosen, pending ?? ""))
       pending = null
       await refresh()
       refreshServers()
@@ -258,9 +278,10 @@ export function mountScratchpad(root, { api, session }) {
   async function restartServer() {
     setBusy(true)
     try {
-      const current = frame.getAttribute("src") || launchUrl(status.lab, "notebook", profile.value)
+      const chosen = await chosenProfile()
+      const current = frame.getAttribute("src") || launchUrl(status.lab, "notebook", chosen)
       await api("/api/compute/server", { method: "DELETE" })
-      await ensureServer(profile.value)
+      await ensureServer(chosen)
       open(current)
       await refresh()
       refreshServers()
@@ -397,7 +418,7 @@ export function mountScratchpad(root, { api, session }) {
     banner.hidden = true
     try {
       if (!status?.host?.online) throw new Error("The compute host is offline; try again later.")
-      if (status?.server?.server !== "running") await ensureServer(profile.value)
+      if (status?.server?.server !== "running") await ensureServer(await chosenProfile())
       progress.hidden = false
       setText(progressText, `Copying ${source.split("/").pop()} into your Scratchpad…`)
       const data = await api("/api/compute/fork", {

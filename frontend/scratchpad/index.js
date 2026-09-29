@@ -18,6 +18,7 @@ import {
   keepProfile,
   launchUrl,
   ownProfiles,
+  pendingStatus,
   requestedFork,
   requestedPath,
 } from "./launch.js"
@@ -158,6 +159,9 @@ export function mountScratchpad(root, { api, session }) {
     setText(pill, label)
     pill.className = `status status-${tone}`
   }
+  // The server is starting ("spawn") or stopping ("stop") at this page's request: the pill says so
+  // until the status is read again, which the last one can't know.
+  const showPending = (action) => showStatus(describeStatus(pendingStatus(status, action)))
   const setBusy = (value) => {
     busy = value
     const online = !!status?.host?.online
@@ -192,6 +196,7 @@ export function mountScratchpad(root, { api, session }) {
   // POST /api/compute/server answers NDJSON: {progress:{message, percent}} lines, then the final
   // {done, ok, result|error}. Read it directly so the bar moves while the server spawns.
   async function ensureServer(profileId) {
+    showPending("spawn")
     progress.hidden = false
     bar.removeAttribute("value")
     setText(progressText, "Starting your server…")
@@ -243,6 +248,8 @@ export function mountScratchpad(root, { api, session }) {
       refreshServers()
     } catch (error) {
       progress.hidden = true
+      // Where the server stands after a failed start: the pill said starting.
+      await refresh()
       showError(error)
     } finally {
       setBusy(false)
@@ -259,7 +266,7 @@ export function mountScratchpad(root, { api, session }) {
     if (!confirm("Stop your server? Unsaved notebook changes are lost.")) return
     setBusy(true)
     // The host takes a few seconds to stop the lab: the pill says so until the next status.
-    showStatus(describeStatus({ ...status, server: { server: "pending", pending: "stop" } }))
+    showPending("stop")
     try {
       await api("/api/compute/server", { method: "DELETE" })
       frame.hidden = true
@@ -280,6 +287,7 @@ export function mountScratchpad(root, { api, session }) {
     try {
       const chosen = await chosenProfile()
       const current = frame.getAttribute("src") || launchUrl(status.lab, "notebook", chosen)
+      showPending("stop")
       await api("/api/compute/server", { method: "DELETE" })
       await ensureServer(chosen)
       open(current)
@@ -287,6 +295,7 @@ export function mountScratchpad(root, { api, session }) {
       refreshServers()
     } catch (error) {
       progress.hidden = true
+      await refresh()
       showError(error)
     } finally {
       setBusy(false)
@@ -436,6 +445,7 @@ export function mountScratchpad(root, { api, session }) {
       refreshServers()
     } catch (error) {
       progress.hidden = true
+      await refresh()
       showError(error)
     } finally {
       setBusy(false)

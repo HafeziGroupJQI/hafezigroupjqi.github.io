@@ -117,6 +117,16 @@ export function describeStatus(status) {
   return { label: "host online", tone: "stale" }
 }
 
+/**
+ * The status while this page starts ("spawn") or stops ("stop") the member's server: the last
+ * answer still says stopped or running, so the pill shows describeStatus() of this from the click
+ * until the status is read again.
+ */
+export const pendingStatus = (status, pending) => ({
+  ...status,
+  server: { ...status?.server, server: "pending", pending },
+})
+
 // ?open=<path in the member's storage> (a notebook just copied from a site page, say) opens that
 // file in the lab once the server runs. Absolute and parent paths are ignored.
 export function requestedPath(search) {

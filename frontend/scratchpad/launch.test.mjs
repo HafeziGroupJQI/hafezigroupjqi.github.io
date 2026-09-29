@@ -9,6 +9,7 @@ import {
   kernelFor,
   launchUrl,
   ownProfiles,
+  pendingStatus,
   forkUrl,
   requestedFork,
   requestedPath,
@@ -72,6 +73,22 @@ test("status pill wording", () => {
   assert.deepEqual(pending({ pending: "stop" }), { label: "server stopping", tone: "pending" })
   assert.deepEqual(pending({ pending: "spawn" }), { label: "server starting", tone: "pending" })
   assert.deepEqual(pending({}), { label: "server starting", tone: "pending" })
+})
+
+test("the pill says starting or stopping from the click, before the host's status does", () => {
+  const stopped = { host: { online: true }, server: { server: "stopped" }, lab: ROOT }
+  assert.deepEqual(describeStatus(pendingStatus(stopped, "spawn")), {
+    label: "server starting",
+    tone: "pending",
+  })
+  const running = { host: { online: true }, server: { server: "running" } }
+  assert.deepEqual(describeStatus(pendingStatus(running, "stop")), {
+    label: "server stopping",
+    tone: "pending",
+  })
+  assert.equal(pendingStatus(stopped, "spawn").lab, ROOT)
+  // Without a status, or with the host offline, the pill still says offline.
+  assert.equal(describeStatus(pendingStatus(null, "spawn")).tone, "offline")
 })
 
 test("?open= names a file in the member's storage; absolute or parent paths are ignored", () => {

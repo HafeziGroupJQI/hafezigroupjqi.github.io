@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -8,6 +8,48 @@ import { assetRefs, problems, renderDirsIn, renderIpynb, stage1 } from "./render
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), "render-notebooks-"))
 const hex = (c) => c.repeat(64)
+
+// Runs `fn` with these environment variables set (undefined: unset), then restores them.
+async function withEnv(vars, fn) {
+  const saved = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]))
+  const apply = (values) => {
+    for (const [key, value] of Object.entries(values))
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+  }
+  apply(vars)
+  try {
+    return await fn()
+  } finally {
+    apply(saved)
+  }
+}
+
+// A stand-in for wolframscript in `dir`: the first `refusals` runs are refused a license (exit 255
+// before render-nb.wls runs); later ones start the kernel (the marker), render nothing and exit
+// with `status`. Every run is counted in <dir>/runs. The env stage1 runs it with: the caller holds
+// the Wolfram lock (so a real one is never waited on) and retries come quickly.
+function fakeWolframscript(dir, { refusals = 0, status = 0 } = {}) {
+  const fake = path.join(dir, "wolframscript")
+  fs.writeFileSync(
+    fake,
+    `#!/bin/sh
+runs=$(( $(cat "${dir}/runs" 2>/dev/null || echo 0) + 1 )); echo $runs > "${dir}/runs"
+if [ $runs -le ${refusals} ]; then
+  echo "Your Wolfram Engine installation is not activated or is experiencing a license-related problem."
+  exit 255
+fi
+while [ "$1" != --out ]; do shift; done
+touch "$2/.kernel-started" && mkdir -p "$2/notebooks" && echo '{"failed":[]}' > "$2/render.json"
+exit ${status}
+`,
+    { mode: 0o755 },
+  )
+  return { WOLFRAMSCRIPT: fake, WOLFRAM_LOCK_HELD: "1", NOTEBOOK_LICENSE_BACKOFF: "0.01" }
+}
+const runs = (dir) => Number(fs.readFileSync(path.join(dir, "runs"), "utf8"))
+const render = (dir, holders) =>
+  stage1({ root: dir, out: path.join(dir, "out"), cache: path.join(dir, "cache"), holders })
 
 test("assetRefs finds every asset a render cites, in objects and in HTML tokens", () => {
   const refs = assetRefs({
@@ -35,7 +77,7 @@ test("renderDirsIn accepts one stage-1 dir or a directory of them", () => {
   assert.deepEqual(renderDirsIn(path.join(dir, "0")), [path.join(dir, "0")])
 })
 
-test("stage1 drops the renders an earlier run left in its output dir", () => {
+test("stage1 drops the renders an earlier run left in its output dir", async () => {
   const dir = temp()
   const out = path.join(dir, "out")
   // Last run rendered the notebook at its old path; this run's stand-in renders only the new one.
@@ -54,17 +96,83 @@ echo '{"failed":[]}' > "$2/render.json"
 `,
     { mode: 0o755 },
   )
-  const saved = process.env.WOLFRAMSCRIPT
-  process.env.WOLFRAMSCRIPT = fake
-  try {
-    stage1({ root: dir, out, cache: path.join(dir, "cache") })
-  } finally {
-    if (saved === undefined) delete process.env.WOLFRAMSCRIPT
-    else process.env.WOLFRAMSCRIPT = saved
-  }
+  await withEnv({ WOLFRAMSCRIPT: fake, WOLFRAM_LOCK_HELD: "1" }, () =>
+    stage1({ root: dir, out, cache: path.join(dir, "cache") }),
+  )
   assert.ok(!fs.existsSync(path.join(out, "notebooks", "old")), "the stale render is gone")
   assert.ok(fs.existsSync(path.join(out, "notebooks", "new", "a.nb.json")))
 })
+
+test("stage1 waits out a refused Wolfram license while another kernel holds one", async () => {
+  const dir = temp()
+  const summary = await withEnv(fakeWolframscript(dir, { refusals: 2 }), () =>
+    render(dir, () => [4242]),
+  )
+  assert.deepEqual(summary, { failed: [] })
+  assert.equal(runs(dir), 3)
+})
+
+test("stage1 gives up on a refused license after NOTEBOOK_LICENSE_WAIT", async () => {
+  const dir = temp()
+  const env = { ...fakeWolframscript(dir, { refusals: 5 }), NOTEBOOK_LICENSE_WAIT: "0" }
+  await withEnv(env, () =>
+    assert.throws(
+      () => render(dir, () => [4242, 4243]),
+      /in use for 0 s .*pid 4242, 4243.*gave up/,
+    ),
+  )
+  assert.equal(runs(dir), 1)
+})
+
+test("stage1 calls the activation broken when a license is refused and no other kernel holds one", async () => {
+  const dir = temp()
+  await withEnv(fakeWolframscript(dir, { refusals: 1 }), () =>
+    assert.throws(() => render(dir, () => []), /activation itself is broken/),
+  )
+  assert.equal(runs(dir), 1)
+})
+
+test("stage1 never retries a render that failed once its kernel had started", async () => {
+  const dir = temp()
+  await withEnv(fakeWolframscript(dir, { status: 255 }), () =>
+    assert.throws(() => render(dir, () => [4242]), /render-nb.wls exited with 255/),
+  )
+  assert.equal(runs(dir), 1)
+})
+
+const flock = spawnSync("sh", ["-c", "command -v flock"], { encoding: "utf8" }).stdout.trim()
+
+test(
+  "stage1 takes turns with other renders on the Wolfram lock when the machine has one",
+  { skip: !flock && "flock not installed" },
+  async () => {
+    const dir = temp()
+    const lock = path.join(dir, "wolfram.lock")
+    fs.writeFileSync(lock, "")
+    const env = {
+      ...fakeWolframscript(dir),
+      WOLFRAM_LOCK: lock,
+      WOLFRAM_LOCK_HELD: undefined,
+      NOTEBOOK_LICENSE_WAIT: "0",
+    }
+    // Another render holds the lock (until its stdin closes).
+    const other = spawn("flock", ["-o", lock, "cat"], { stdio: ["pipe", "ignore", "ignore"] })
+    const exited = new Promise((resolve) => other.on("exit", resolve))
+    try {
+      while (spawnSync("flock", ["-n", lock, "true"]).status === 0)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      await withEnv(env, () =>
+        assert.throws(() => render(dir, () => []), /another Wolfram render held .*gave up/),
+      )
+      assert.ok(!fs.existsSync(path.join(dir, "runs")), "wolframscript never ran")
+    } finally {
+      other.stdin.end()
+      await exited
+    }
+    assert.deepEqual(await withEnv(env, () => render(dir, () => [])), { failed: [] })
+    assert.equal(runs(dir), 1)
+  },
+)
 
 test("problems fails the build on a missing render, a conflict, failed cells or a Quarto error", () => {
   const report = {

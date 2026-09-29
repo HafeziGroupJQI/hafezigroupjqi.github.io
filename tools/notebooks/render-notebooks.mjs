@@ -22,6 +22,9 @@
 // Stage 1 on its own (CI's render job, on a machine with the Engine):
 //   node tools/notebooks/render-notebooks.mjs stage1 --root <content> [--root <content>...] --out <dir>
 //     [--cache <dir>] [--force]
+//     NOTEBOOK_LICENSE_WAIT    seconds to wait for a Wolfram license (default 1800), see runRenderer
+//     WOLFRAM_LOCK             the lock Wolfram renders take turns on (/run/lock/hafezi-wolfram.lock),
+//                              taken when it exists; WOLFRAM_LOCK_HELD=1: the caller holds it
 import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -64,11 +67,90 @@ export function assetRefs(value, refs = new Set()) {
   return refs
 }
 
+// render-nb.wls writes this first: a run that fails without it never started a kernel.
+const KERNEL_STARTED = ".kernel-started"
+
+/** Main Wolfram kernels running on this machine (pids): each holds a license. */
+export function licenseHolders() {
+  if (!fs.existsSync("/proc")) return []
+  return fs
+    .readdirSync("/proc")
+    .filter((pid) => {
+      if (!/^\d+$/.test(pid)) return false
+      let argv
+      try {
+        argv = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0")
+      } catch {
+        return false // exited meanwhile
+      }
+      // Subkernels and the front end's player kernel (-pwfile …/playerpass) take no main license.
+      return (
+        path.basename(argv[0]) === "WolframKernel" &&
+        !argv.includes("-subkernel") &&
+        !argv.some((arg) => arg.endsWith("/playerpass"))
+      )
+    })
+    .map(Number)
+}
+
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+// Run render-nb.wls once it gets a license. When every license is in use (the Scratchpad's pool
+// holds one on the compute host), wolframscript prints "…not activated or is experiencing a
+// license-related problem" and exits 255 before the script runs a line, the same as when the
+// Engine is not activated at all. So a 255 without the marker is retried while another kernel
+// holds a license, backing off from NOTEBOOK_LICENSE_BACKOFF (15 s) to 2 minutes, for up to
+// NOTEBOOK_LICENSE_WAIT seconds. Renders on this machine also take turns on WOLFRAM_LOCK, when the
+// host has one, within the same wait.
+function runRenderer(wolframscript, args, out, holders) {
+  const lock = process.env.WOLFRAM_LOCK || "/run/lock/hafezi-wolfram.lock"
+  const wait = Number(process.env.NOTEBOOK_LICENSE_WAIT ?? 1800)
+  const deadline = Date.now() + wait * 1000
+  const locked = !process.env.WOLFRAM_LOCK_HELD && fs.existsSync(lock) && which("flock")
+  let delay = Number(process.env.NOTEBOOK_LICENSE_BACKOFF ?? 15) * 1000
+  for (;;) {
+    const left = String(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)))
+    const run = locked
+      ? spawnSync("flock", ["-w", left, "-E", "75", lock, wolframscript, ...args], {
+          stdio: "inherit",
+        })
+      : spawnSync(wolframscript, args, { stdio: "inherit" })
+    if (run.status === 0 || run.status === 1) return
+    if (locked && run.status === 75)
+      throw new Error(
+        `render-notebooks: another Wolfram render held ${lock} for ${wait} s ` +
+          "(NOTEBOOK_LICENSE_WAIT); gave up. Try again once it is done.",
+      )
+    if (run.status !== 255 || fs.existsSync(path.join(out, KERNEL_STARTED)))
+      throw new Error(`render-notebooks: render-nb.wls exited with ${run.status ?? run.signal}`)
+    const holding = holders()
+    if (!holding.length)
+      throw new Error(
+        "render-notebooks: wolframscript was refused a Wolfram license while no other kernel " +
+          "holds one: the activation itself is broken. Check the Engine's activation for this " +
+          "user on this machine.",
+      )
+    if (Date.now() + delay > deadline)
+      throw new Error(
+        `render-notebooks: every Wolfram license stayed in use for ${wait} s ` +
+          `(NOTEBOOK_LICENSE_WAIT; kernel pid ${holding.join(", ")}); gave up. Try again once ` +
+          "one is free.",
+      )
+    console.error(
+      `render-notebooks: every Wolfram license is in use (kernel pid ${holding.join(", ")}); ` +
+        `trying again in ${delay / 1000} s`,
+    )
+    sleep(delay)
+    delay = Math.min(delay * 2, 120_000)
+  }
+}
+
 /**
  * Render every .nb under `root` into `out` (notebooks/<path>.json, assets/, symbols.json,
  * render.json). The output is self-contained, so another job can make pages from it.
+ * `holders` lists the kernels holding a license (tests pass their own).
  */
-export function stage1({ root, out, cache, force = false, jobs = 2 }) {
+export function stage1({ root, out, cache, force = false, jobs = 2, holders = licenseHolders }) {
   const wolframscript = process.env.WOLFRAMSCRIPT || which("wolframscript")
   if (!wolframscript)
     throw new Error(
@@ -78,15 +160,13 @@ export function stage1({ root, out, cache, force = false, jobs = 2 }) {
     )
   // Start from an empty stage-1 dir: a render left by an earlier run (a moved or deleted notebook)
   // would be read with this run's and could stand in for it, since renders are matched by sha.
-  for (const name of ["notebooks", "assets", "render.json", "symbols.json"])
+  for (const name of ["notebooks", "assets", "render.json", "symbols.json", KERNEL_STARTED])
     fs.rmSync(path.join(out, name), { recursive: true, force: true })
   fs.mkdirSync(out, { recursive: true })
   const args = ["-file", path.join(here, "render-nb.wls"), "--root", root, "--out", out]
   args.push("--cache", cache, "--jobs", String(jobs))
   if (force) args.push("--force")
-  const run = spawnSync(wolframscript, args, { stdio: "inherit" })
-  if (run.status !== 0 && run.status !== 1)
-    throw new Error(`render-notebooks: render-nb.wls exited with ${run.status ?? run.signal}`)
+  runRenderer(wolframscript, args, out, holders)
   const refs = new Set()
   for (const file of walk(path.join(out, "notebooks")).filter((f) => f.endsWith(".json")))
     assetRefs(JSON.parse(fs.readFileSync(file, "utf8")), refs)

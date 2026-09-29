@@ -50,6 +50,16 @@ log() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 declare -A TIMES
 now() { date +%s; }
 
+# Wolfram renders on this machine take turns on the license through this lock, when the host has
+# it: a deploy's render job waits while the proof holds it (render-notebooks.mjs skips taking it
+# again when WOLFRAM_LOCK_HELD is set).
+if [[ -e /run/lock/hafezi-wolfram.lock ]]; then
+  exec 9</run/lock/hafezi-wolfram.lock
+  log "wait for the Wolfram lock (a deploy's render may hold it)"
+  flock -w 3600 9 || { echo "the Wolfram lock stayed held for an hour" >&2; exit 1; }
+  export WOLFRAM_LOCK_HELD=1
+fi
+
 # ---------- 1. snapshots ----------
 snapshots="{}"
 snapshot() { # name source

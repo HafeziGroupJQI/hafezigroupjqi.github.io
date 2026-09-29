@@ -11,6 +11,7 @@
      <out>/notebooks/<path>.json   one per notebook, mirroring its path under the root
      <out>/symbols.json            System` names + usage (the editor's autocomplete)
      <out>/render.json             run summary: versions, per-notebook source sha, cache, stats
+     <out>/.kernel-started         written first: the kernel started, so it had a license
    Exit status 1 if any notebook or cell failed to render.
 
    Licensing: one kernel plus at most --jobs subkernels (default 2, max 3). The headless front end
@@ -38,6 +39,9 @@ bigBytes = 15*10^6;
 WolframNotebook`$CacheDir = cache;
 WolframNotebook`$Salt = salt = opt["salt", ""];
 Quiet[CreateDirectory[FileNameJoin[{out, "notebooks"}], CreateIntermediateDirectories -> True]];
+(* A refused license exits wolframscript before this file runs: render-notebooks.mjs retries a run
+   that fails without this marker. *)
+Close[OpenWrite[FileNameJoin[{out, ".kernel-started"}]]];
 
 (* Every .nb under the root, except in hidden directories (.git, .quarto, ...). *)
 files = Select[FileNames["*.nb", root, Infinity],

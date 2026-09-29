@@ -782,6 +782,74 @@ describe("Claude turns (scripted API)", () => {
     expect(anthropicScript).toHaveLength(0)
   })
 
+  it("reads each request's cache back where the previous one's tail was, however long the reply", async () => {
+    const alice = await as("alice-cache")
+    const chat = await newChat(alice)
+    const marked = (body: any) =>
+      body.messages.flatMap((m: any, i: number) =>
+        m.content.flatMap((b: any, j: number) =>
+          b.cache_control ? [[i, j, b.cache_control]] : [],
+        ),
+      )
+    // A cited answer comes back as many text blocks: more than the automatic breakpoint's lookback.
+    const cited = Array.from({ length: 30 }, (_, i) => ({ type: "text", text: `Part ${i}. ` }))
+    anthropicScript.push(
+      (body: any) => {
+        expect(marked(body)).toEqual([]) // nothing cached yet but what the automatic one writes
+        return {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_1",
+              name: "read_page",
+              input: { page: "resources/files/equipment/laser/manual.pdf" },
+            },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 10, output_tokens: 5 },
+        }
+      },
+      (body: any) => {
+        expect(marked(body)).toEqual([[0, 0, { type: "ephemeral" }]]) // the prompt
+        return {
+          content: cited,
+          stop_reason: "end_turn",
+          usage: { input_tokens: 9, output_tokens: 9 },
+        }
+      },
+    )
+    await keyed(alice, `/api/gpt/conversations/${chat.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text: "What does the manual say?" }),
+    })
+    anthropicScript.push((body: any) => {
+      // The next turn: the manual's tool result, where the last request's automatic breakpoint was.
+      expect(body.cache_control).toEqual({ type: "ephemeral" })
+      expect(marked(body)).toEqual([[2, 0, { type: "ephemeral" }]])
+      expect(body.messages[2].content[0].content[0]).toMatchObject({ type: "document" })
+      expect(body.messages[3].content).toHaveLength(30)
+      return {
+        content: [{ type: "text", text: "You're welcome." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 5, output_tokens: 3 },
+      }
+    })
+    const { events } = await keyed(alice, `/api/gpt/conversations/${chat.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text: "Thanks" }),
+    })
+    expect(events.at(-1)!.name).toBe("done")
+    expect(anthropicScript).toHaveLength(0)
+    // History is stored without the marker.
+    const rows = await env.DB.prepare(
+      "SELECT content_json FROM gpt_messages WHERE conversation_id = ?",
+    )
+      .bind(chat.id)
+      .all<{ content_json: string }>()
+    expect(rows.results).toHaveLength(6)
+    for (const row of rows.results) expect(row.content_json).not.toContain("cache_control")
+  })
+
   it("talks to the claude-bridge with the site's tools, pages, images and thinking, but no betas", async () => {
     const alice = await as("alice-bridge")
     const chat = await newChat(alice, {

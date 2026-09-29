@@ -8,6 +8,7 @@ import {
   type ResolvedRef,
   fileContent,
   hydrate,
+  markPreviousTail,
   projectKnowledge,
   refContent,
   systemBlocks,
@@ -384,7 +385,8 @@ async function converse(t: TurnContext): Promise<TurnResult> {
           model: m.id,
           max_tokens: MAX_OUTPUT_TOKENS,
           system,
-          messages,
+          // Read back where the previous request's tail was cached, however long the reply since.
+          messages: markPreviousTail(messages),
           tools: TOOLS,
           // Automatic caching on the conversation tail; the system prompt carries its own 1 h breakpoint.
           cache_control: { type: "ephemeral" },

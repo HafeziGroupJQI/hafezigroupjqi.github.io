@@ -8,12 +8,14 @@ import type { FileRow, Project } from "./store"
 
 // Builds what Claude sees, in cache-friendly order:
 //   tools (fixed) → system[0] persona + skill index → system[1] project knowledge  ← 1 h breakpoint
-//   → system[2] who/when (small) → the conversation (automatic caching on its tail).
+//   → system[2] who/when (small) → the conversation (automatic caching on its tail, read back
+//   where the previous request's tail was: markPreviousTail).
 // History is append-only and replayed byte-for-byte: page text is stored inline in the message,
 // binaries (PDFs, images) are snapshotted to R2 once and stored as a `hafezi_blob` reference that
 // is swapped for base64 at send time — so a later deploy never rewrites an earlier turn.
 
 type Block = Anthropic.Beta.BetaContentBlockParam
+type MessageParam = Anthropic.Beta.BetaMessageParam
 type SystemBlock = Anthropic.Beta.BetaTextBlockParam
 
 /** Roughly 4 characters per token; good enough for budgets and the context meter. */
@@ -399,4 +401,23 @@ export async function hydrate<T>(
   if (Array.isArray(block.content))
     return { ...block, content: await hydrate(block.content, env, cache) } as T
   return content
+}
+
+/**
+ * The conversation with a breakpoint where the previous request's automatic one was written: the
+ * last block of the user message before the latest reply. The automatic breakpoint looks back
+ * only 20 blocks for an earlier entry, and a cited answer comes back as dozens of text blocks, so
+ * without it a follow-up would miss and write the whole conversation, PDFs and all, again. Set
+ * on a copy: history is stored and replayed without it.
+ */
+export function markPreviousTail(messages: MessageParam[]): MessageParam[] {
+  let at = messages.length - 1
+  while (at >= 0 && messages[at].role !== "assistant") at--
+  while (at >= 0 && messages[at].role !== "user") at--
+  const content = at >= 0 ? messages[at].content : ""
+  if (typeof content === "string" || !content.length) return messages
+  const last = { ...content[content.length - 1], cache_control: { type: "ephemeral" } } as Block
+  const out = [...messages]
+  out[at] = { ...messages[at], content: [...content.slice(0, -1), last] }
+  return out
 }

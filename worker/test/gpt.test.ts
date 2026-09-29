@@ -866,7 +866,11 @@ describe("Claude turns (scripted API)", () => {
     )
     const file = (await upload.json()) as any
     anthropicScript.push({
-      content: [{ type: "text", text: "It is a tunable laser." }],
+      content: [
+        // The bridge's sign that the model is thinking: no thinking of the model's, no signature.
+        { type: "thinking", thinking: "Thinking…", signature: "" },
+        { type: "text", text: "It is a tunable laser." },
+      ],
       stop_reason: "end_turn",
       usage: { input_tokens: 5, output_tokens: 6 },
     })
@@ -877,6 +881,16 @@ describe("Claude turns (scripted API)", () => {
       { ANTHROPIC_BASE_URL: "https://bridge-example.trycloudflare.com" },
     )
     expect(events.at(-1)!.name).toBe("done")
+    // It shows while the model thinks, and is neither kept nor part of the answer.
+    expect(events.find((e) => e.name === "thinking")!.data).toEqual({ text: "Thinking…" })
+    const turn = events.find((e) => e.name === "turn")!.data
+    expect(turn.blocks).toEqual([{ type: "text", text: "It is a tunable laser.", citations: [] }])
+    const reply = await env.DB.prepare(
+      "SELECT content_json FROM gpt_messages WHERE conversation_id = ? AND role = 'assistant'",
+    )
+      .bind(chat.id)
+      .first<{ content_json: string }>()
+    expect(JSON.parse(reply!.content_json).map((b: any) => b.type)).toEqual(["text"])
     const request = anthropicCalls.find((c) => c.body.stream)!
     expect(request.url).toContain("bridge-example.trycloudflare.com")
     // The bridge emulates tool calls, so the site's tools go along (search_site, read_page, ...).

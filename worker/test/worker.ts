@@ -75,11 +75,13 @@ function sse(message: any): string {
         index,
         delta: { type: "thinking_delta", thinking: block.thinking },
       })
-      events.push({
-        type: "content_block_delta",
-        index,
-        delta: { type: "signature_delta", signature: "sig" },
-      })
+      // The claude-bridge's thinking placeholder comes without a signature (signature: "").
+      if (block.signature !== "")
+        events.push({
+          type: "content_block_delta",
+          index,
+          delta: { type: "signature_delta", signature: block.signature ?? "sig" },
+        })
     } else if (block.type === "tool_use") {
       events.push({
         type: "content_block_start",

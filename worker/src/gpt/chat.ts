@@ -428,14 +428,17 @@ async function converse(t: TurnContext): Promise<TurnResult> {
     }
     const message = await stream.finalMessage()
     addUsage(result.usage, m, message.usage)
+    // The claude-bridge shows that the model is thinking with a block that holds none of its
+    // thinking and no signature (the API signs every one): it isn't kept or sent back.
+    const content = message.content.filter((b) => b.type !== "thinking" || b.signature)
     // Compaction summarized what was read so far: it is no longer above as it was.
-    if (message.content.some((b) => b.type === "compaction")) read.clear()
-    const toolUses = message.content.filter(
+    if (content.some((b) => b.type === "compaction")) read.clear()
+    const toolUses = content.filter(
       (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
     )
     result.rows.push({
       role: "assistant",
-      content: message.content,
+      content,
       meta: {
         kind: "reply",
         model: m.id,
@@ -447,7 +450,7 @@ async function converse(t: TurnContext): Promise<TurnResult> {
         })),
       },
     })
-    messages.push({ role: "assistant", content: message.content as Block[] })
+    messages.push({ role: "assistant", content: content as Block[] })
     if (message.stop_reason === "refusal") {
       t.send("delta", { text: "\n\n*Claude declined to answer this request.*" })
       break

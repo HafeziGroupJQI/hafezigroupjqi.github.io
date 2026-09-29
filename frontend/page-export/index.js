@@ -1,11 +1,13 @@
 // The Export menu under a page's title, on every content page of both editions (JqiFrame's
 // [data-page-tools], whose data-source is the page's Markdown source; static/page-export.js): the
-// page as Markdown or Quarto, and the file a notebook or Quarto page was rendered from. Which items
-// a page gets: menu.js; the Quarto conversion: quarto.js. A disclosure menu: Enter or Space opens
-// it, the arrow keys move through it, Escape closes it.
+// page as Markdown or Quarto, the file a notebook or Quarto page was rendered from, and a PDF from
+// the print dialog. Which items a page gets: menu.js; the Quarto conversion: quarto.js; printing:
+// print.js. A disclosure menu: Enter or Space opens it, the arrow keys move through it, Escape
+// closes it.
 
 import { h } from "../dashboard/dom.js"
 import { exportItems, pageStem } from "./menu.js"
+import { preparePrint } from "./print.js"
 import { markdownToQmd } from "./quarto.js"
 import { save } from "./save.js"
 
@@ -128,6 +130,8 @@ export function mountPageExport(tools) {
         name: rendered.name,
         text: await (await fetchOk(rendered.url, rendered.name)).blob(),
       }),
+    // The browser's print dialog, whose destination "Save as PDF" makes the file.
+    pdf: async () => print(),
   }
   const status = h("span", { class: "wl-status", role: "status" })
   let busy = false
@@ -145,6 +149,7 @@ export function mountPageExport(tools) {
     }
   }
   tools.append(menu(groups, run), status)
+  if (article) preparePrint(article)
 }
 
 const tools = document.querySelector("[data-page-tools]")

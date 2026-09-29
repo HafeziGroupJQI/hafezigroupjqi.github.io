@@ -4360,3 +4360,115 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
     padding-left: 1.25rem;
   }
 }
+
+// Printing, and Save as PDF in a page's Export menu (frontend/page-export/): the article alone, in
+// black on white. Adapted from HTML5 Boilerplate's print styles (MIT,
+// https://github.com/h5bp/html5-boilerplate): each link prints its full address after it
+// (data-print-href, which the Export menu's script sets before printing), and page breaks stay out
+// of code, quotes, figures, table rows and equations, and never fall right after a heading.
+@media print {
+  @page {
+    margin: 16mm 14mm;
+  }
+  *,
+  *::before,
+  *::after {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    transition: none !important;
+  }
+  html,
+  body {
+    font-size: 11pt;
+  }
+  // Everything around the article: the header and footer, the section nav, the right column
+  // (graph, backlinks, contents), the breadcrumbs and topics, and the page's own tools.
+  .site-header,
+  .site-footer,
+  .skip-nav-link,
+  .page-content__sidebar,
+  .page-content__aside,
+  .page-content__after,
+  .public-breadcrumbs,
+  .page-content__header .tags,
+  .page-tools,
+  .wl-page-actions,
+  .wl-toolbar,
+  .wl-notebook-nav,
+  .gpt-fab,
+  .popover,
+  .search,
+  button,
+  dialog {
+    display: none !important;
+  }
+  .page-content,
+  .page-content__main,
+  .page-content__body {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  a,
+  a:visited {
+    text-decoration: underline !important;
+    text-decoration-color: currentColor !important;
+  }
+  a[data-print-href]::after {
+    content: " (" attr(data-print-href) ")";
+    font-size: 0.85em;
+    overflow-wrap: anywhere;
+  }
+  pre {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+    border: 1px solid #999;
+  }
+  pre,
+  .table-container,
+  .katex-display {
+    overflow: visible !important;
+  }
+  pre,
+  blockquote,
+  figure,
+  tr,
+  img,
+  svg,
+  .katex-display {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+  p,
+  h2,
+  h3 {
+    orphans: 3;
+    widows: 3;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    break-after: avoid;
+  }
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100% !important;
+  }
+  // Folded callouts print open, as folded <details> do (the script opens them).
+  .callout.is-collapsed .callout-content > * {
+    height: auto !important;
+    overflow-y: visible !important;
+    margin-top: 0 !important;
+  }
+}

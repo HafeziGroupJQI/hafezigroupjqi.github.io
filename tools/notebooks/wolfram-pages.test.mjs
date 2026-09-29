@@ -189,16 +189,18 @@ test("pageBody renders the cell contract the client mounts on", async () => {
   for (const block of body.split("\n\n")) assert.doesNotMatch(block, /\n[ \t]*\n/)
 })
 
-// A stage-1 render dir (render-nb.wls output) for the given notebooks, keyed by their bytes.
+// A stage-1 render dir (render-nb.wls output) for the given notebooks, keyed by their bytes, with
+// the path each was rendered from (relative to its stage-1 root) when given.
 async function stage1Dir(dir, notebooks) {
   const assets = await exporterCache(dir)
   const out = path.join(dir, "render")
   fs.mkdirSync(path.join(out, "notebooks"), { recursive: true })
   fs.cpSync(path.join(dir, "assets"), path.join(out, "assets"), { recursive: true })
-  for (const [name, bytes, title, blocks] of notebooks)
+  for (const [name, bytes, title, blocks, source] of notebooks)
     fs.writeFileSync(
       path.join(out, "notebooks", `${name}.json`),
       JSON.stringify({
+        source,
         source_sha: sha(Buffer.from(bytes)),
         title,
         exporter_version: "3",
@@ -289,6 +291,34 @@ test("writeWolframPages puts a page next to every notebook, matched by the noteb
   }
   const img = page.match(/src="\/notebook-assets\/([0-9a-f]{2}\/[0-9a-f]{32}\.(webp|png))"/)
   assert.ok(img && fs.existsSync(path.join(assetsDir, img[1])))
+})
+
+test("byte-identical notebooks at different paths each get the render of their own path", async () => {
+  const dir = temp()
+  const content = path.join(dir, "content")
+  fs.mkdirSync(path.join(content, "resources", "guide"), { recursive: true })
+  fs.mkdirSync(path.join(content, "resources", "copies"), { recursive: true })
+  fs.mkdirSync(path.join(content, "code"), { recursive: true })
+  for (const rel of ["resources/guide/intro.nb", "resources/copies/intro-copy.nb", "code/demo.nb"])
+    fs.writeFileSync(path.join(content, rel), "Notebook[{6}]")
+  // Without a title cell, each render is titled by its file name. The private vault is rendered
+  // from its own root, so its sources lack the staged resources/ prefix.
+  const render = await stage1Dir(dir, [
+    ["a", "Notebook[{6}]", "intro", () => [{ t: "p", html: "x" }], "guide/intro.nb"],
+    ["b", "Notebook[{6}]", "intro-copy", () => [{ t: "p", html: "x" }], "copies/intro-copy.nb"],
+    ["c", "Notebook[{6}]", "demo", () => [{ t: "p", html: "x" }], "code/demo.nb"],
+  ])
+  const result = await writeWolframPages({
+    contentDir: content,
+    renderDirs: [render],
+    assetsDir: path.join(dir, "notebook-assets"),
+    cacheDir: dir,
+  })
+  assert.deepEqual(result.pages.map((p) => [p.page, p.title]).sort(), [
+    ["code/demo.md", "demo"],
+    ["resources/copies/intro-copy.md", "intro-copy"],
+    ["resources/guide/intro.md", "intro"],
+  ])
 })
 
 test("uniqueTitles only disambiguates titles shared within one folder", () => {

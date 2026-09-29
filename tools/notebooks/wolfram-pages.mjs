@@ -543,7 +543,8 @@ const walk = (directory) =>
 export const fileSha = (file) => sha256(fs.readFileSync(file))
 const posix = (value) => value.split(path.sep).join("/")
 
-// Stage-1 renders, indexed by the sha256 of the notebook each was made from.
+// Stage-1 renders, indexed by the sha256 of the notebook each was made from (a list: byte-identical
+// notebooks at different paths each have a render, and their titles can differ).
 export function readRenders(dirs) {
   const bySha = new Map()
   const summaries = []
@@ -552,8 +553,9 @@ export function readRenders(dirs) {
     if (fs.existsSync(summaryFile)) summaries.push(JSON.parse(fs.readFileSync(summaryFile, "utf8")))
     for (const file of walk(path.join(dir, "notebooks")).filter((f) => f.endsWith(".json"))) {
       const data = JSON.parse(fs.readFileSync(file, "utf8"))
-      if (data.source_sha)
-        bySha.set(data.source_sha, { ...data, assetsDir: path.join(dir, "assets") })
+      if (!data.source_sha) continue
+      if (!bySha.has(data.source_sha)) bySha.set(data.source_sha, [])
+      bySha.get(data.source_sha).push({ ...data, assetsDir: path.join(dir, "assets") })
     }
   }
   const symbolsFile = dirs
@@ -562,6 +564,14 @@ export function readRenders(dirs) {
   const symbols = symbolsFile ? JSON.parse(fs.readFileSync(symbolsFile, "utf8")) : []
   return { bySha, summaries, symbols }
 }
+
+// The render made from the notebook at `rel` among those of its bytes. A render's source is
+// relative to its stage-1 root, which the staged content may nest (the private vault under
+// resources/). Any of them will do when none was made from this path.
+const renderOf = (renders, rel) =>
+  renders.find((render) => render.source === rel) ??
+  renders.find((render) => rel.endsWith(`/${render.source}`)) ??
+  renders[0]
 
 // Two notebooks in one folder with the same title (a chapter and its exercises, say) keep their
 // file names in the title so the folder listing stays unambiguous.
@@ -600,7 +610,7 @@ export async function writeWolframPages({
   for (const file of notebooks) {
     const rel = posix(path.relative(contentDir, file))
     const sha = fileSha(file)
-    const render = bySha.get(sha)
+    const render = bySha.has(sha) ? renderOf(bySha.get(sha), rel) : null
     if (!render) {
       missing.push({ source: rel, source_sha: sha })
       continue

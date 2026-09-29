@@ -24,13 +24,19 @@ export async function openGpt(options = {}) {
 }
 
 /**
- * Hide the button and its Ctrl/⌘+J on this page, e.g. once the Scratchpad's lab has Hafezi GPT
- * in its own panel. openGpt() still works: the lab asks through it when it has no panel.
+ * Hide or show the button, e.g. while the Scratchpad's lab has Hafezi GPT in its own panel. Only
+ * the button: Ctrl/⌘+J on the rest of the page still opens the modal, and openGpt() still works.
  */
-export function hideLauncher() {
-  hidden = true
-  if (button) button.hidden = true
-  if (modal?.isOpen()) modal.close()
+export function setLauncherHidden(value) {
+  hidden = value
+  if (button) button.hidden = hidden
+}
+
+/** What a keydown does here: Ctrl/⌘+J opens the modal, or closes it when open; null otherwise. */
+export function shortcutAction(event, modalOpen) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return null
+  if (event.key?.toLowerCase() !== "j") return null
+  return modalOpen ? "close" : "open"
 }
 
 export function installLauncher({ api, session }) {
@@ -51,16 +57,10 @@ export function installLauncher({ api, session }) {
   )
   document.body.append(button)
   document.addEventListener("keydown", (event) => {
-    if (
-      hidden ||
-      !(event.ctrlKey || event.metaKey) ||
-      event.altKey ||
-      event.shiftKey ||
-      event.key.toLowerCase() !== "j"
-    )
-      return
+    const action = shortcutAction(event, !!modal?.isOpen())
+    if (!action) return
     event.preventDefault()
-    if (modal?.isOpen()) modal.close()
+    if (action === "close") modal.close()
     else open().catch((error) => console.error(error))
   })
 }

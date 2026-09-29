@@ -6,7 +6,7 @@
 // member-tools.js lazy-loads mountScratchpad() with its api() (JSON + 401 → login) and the session.
 
 import { h, present, setText } from "../dashboard/dom.js"
-import { hideLauncher, openGpt } from "../gpt/launcher.js"
+import { openGpt, setLauncherHidden } from "../gpt/launcher.js"
 import { gptContext, insertMessage } from "./gpt.js"
 import {
   LAUNCHERS,
@@ -256,10 +256,20 @@ export function mountScratchpad(root, { api, session }) {
     }
   }
 
+  // The site's GPT button hides while the lab in the frame has its own panel (it says so once it
+  // has loaded), so it comes back with each new lab and when the lab closes.
   function open(url) {
     frame.hidden = false
     frame.src = url
     root.classList.add("scratch-open")
+    setLauncherHidden(false)
+  }
+
+  function close() {
+    frame.hidden = true
+    frame.removeAttribute("src")
+    root.classList.remove("scratch-open")
+    setLauncherHidden(false)
   }
 
   async function stopServer() {
@@ -269,9 +279,7 @@ export function mountScratchpad(root, { api, session }) {
     showPending("stop")
     try {
       await api("/api/compute/server", { method: "DELETE" })
-      frame.hidden = true
-      frame.removeAttribute("src")
-      root.classList.remove("scratch-open")
+      close()
       await refresh()
       refreshServers()
     } catch (error) {
@@ -480,7 +488,8 @@ export function mountScratchpad(root, { api, session }) {
     const data = event.data
     if (data?.type === "hafezi-theme:ready") toLab(theme())
     // The lab has Hafezi GPT in its own panel (its Ctrl/⌘+J opens it): no site button over it.
-    if (data?.type === "hafezi-gpt:panel") hideLauncher()
+    // Ctrl/⌘+J outside the frame still opens the site's modal.
+    if (data?.type === "hafezi-gpt:panel") setLauncherHidden(true)
     if (!data || data.type !== "hafezi-gpt:ask") return
     openGpt({ context: gptContext(data.context), codeActions }).catch(showError)
   })

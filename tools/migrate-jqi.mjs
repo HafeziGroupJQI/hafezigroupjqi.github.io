@@ -191,7 +191,7 @@ if (ONLY.includes("people")) {
       office: old.office ?? "TBD",
       email,
       scope: old.scope ?? "TBD",
-      profile: `${SITE}${u}`,
+      profile: `https://hafezigroupjqi.github.io/people/${slug}`,
       photo: photo ? `assets/people/${path.basename(photo)}` : null,
       research_areas: areas,
       projects: old.projects ?? [],

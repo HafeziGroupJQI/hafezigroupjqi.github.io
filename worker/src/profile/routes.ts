@@ -139,7 +139,7 @@ function clean(field: Field, value: unknown): string | null {
   if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))
     throw new HttpError(422, "enter an email address like name@umd.edu, or leave it empty")
   if (field === "profile" && !/^https?:\/\/\S+$/.test(text))
-    throw new HttpError(422, "the profile link must start with https://")
+    throw new HttpError(422, "the website link must start with https://")
   return text
 }
 

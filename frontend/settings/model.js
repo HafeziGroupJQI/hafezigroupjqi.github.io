@@ -7,7 +7,7 @@ export const FIELDS = [
   ["building", "Building", {}],
   ["office", "Office", {}],
   ["scope", "Ask me about", {}],
-  ["profile", "Profile link", { type: "url", placeholder: "https://" }],
+  ["profile", "Website link", { type: "url", placeholder: "https://" }],
 ]
 
 /** The fields whose value differs from the page's (empty counts as none). */

@@ -72,24 +72,41 @@ export function upstreamBody(body: Record<string, unknown>): Record<string, unkn
   return out
 }
 
-/** Pick usage out of a streamed reply as it passes (message_start, then message_delta). */
+/**
+ * Pick usage out of a streamed reply as it passes, and count it as it arrives: message_start's
+ * input at once, then what each message_delta adds (its counts are running totals). A reply the
+ * member stops halfway is still counted, up to where it got.
+ */
 function watchUsage(
-  onDone: (usage: Record<string, number>) => void,
+  onUsage: (usage: Record<string, number>) => void,
 ): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder()
   let buffer = ""
   const usage: Record<string, number> = {}
+  const counted: Record<string, number> = {}
   const read = (line: string) => {
     if (!line.startsWith("data:")) return
+    let found: unknown
     try {
       const event = JSON.parse(line.slice(5))
-      const found = event?.message?.usage ?? event?.usage
-      if (found && typeof found === "object")
-        for (const [key, value] of Object.entries(found))
-          if (typeof value === "number") usage[key] = value
+      found = event?.message?.usage ?? event?.usage
     } catch {
-      // not JSON: not an event we count
+      return // not JSON: not an event we count
     }
+    if (!found || typeof found !== "object") return
+    for (const [key, value] of Object.entries(found))
+      if (typeof value === "number") usage[key] = value
+    const added: Record<string, number> = { input_tokens: 0, output_tokens: 0 }
+    let any = false
+    for (const [key, value] of Object.entries(usage)) {
+      const more = value - (counted[key] ?? 0)
+      if (more > 0) {
+        added[key] = more
+        counted[key] = value
+        any = true
+      }
+    }
+    if (any) onUsage(added)
   }
   return new TransformStream({
     transform(chunk, controller) {
@@ -103,7 +120,6 @@ function watchUsage(
     },
     flush() {
       read(buffer.trim())
-      onDone(usage)
     },
   })
 }

@@ -1,7 +1,7 @@
 import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test"
 import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { issueLabTicket } from "../src/compute/tokens"
-import { upstreamBody } from "../src/gpt/lab-agent"
+import { labAgent, upstreamBody } from "../src/gpt/lab-agent"
 import { LAB_PROMPT } from "../src/gpt/lab-prompt"
 import { VAULT_TOOLS } from "../src/gpt/lab-tools"
 import { ORIGIN } from "./helpers"
@@ -97,6 +97,59 @@ describe("the lab's coding agent endpoint", () => {
     expect(await usageOf("agnes")).toEqual({ input: before.input + 7, output: before.output + 9 })
     // The reply never carries the key.
     expect(reply.text).not.toContain("test-key")
+  })
+
+  it("counts a streamed reply's usage as it arrives, so one stopped halfway still counts", async () => {
+    const encoder = new TextEncoder()
+    const event = (data: object) =>
+      encoder.encode(`event: ${(data as any).type}\ndata: ${JSON.stringify(data)}\n\n`)
+    let cancelled = false
+    // A reply that sends its start, then a first delta's worth, and never finishes on its own.
+    const hanging = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              event({
+                type: "message_start",
+                message: { usage: { input_tokens: 40, output_tokens: 1 } },
+              }),
+            )
+            controller.enqueue(event({ type: "message_delta", usage: { output_tokens: 6 } }))
+          },
+          cancel() {
+            cancelled = true
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      )
+    const ticket = await issueLabTicket(
+      env as any,
+      { login: "halle", role: "member", exp: exp() },
+      "halle",
+    )
+    const url = `${ORIGIN}/lab/${ticket}/hafezi-gpt/anthropic/v1/messages`
+    const ctx = createExecutionContext()
+    const response = await labAgent(
+      new Request(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: ORIGIN },
+        body: JSON.stringify({ ...ask, messages: hello, stream: true }),
+      }),
+      new URL(url),
+      { ...env, ANTHROPIC_API_KEY: "test-key" } as any,
+      ctx,
+      hanging,
+    )
+    const reader = response.body!.getReader()
+    let seen = ""
+    while (!seen.includes("message_delta"))
+      seen += new TextDecoder().decode((await reader.read()).value)
+    // The member stops the reply.
+    await reader.cancel()
+    await waitOnExecutionContext(ctx)
+    expect(cancelled).toBe(true)
+    expect(await usageOf("halle")).toEqual({ input: 40, output: 6 })
   })
 
   it("stops at the member's monthly budget", async () => {

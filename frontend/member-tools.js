@@ -285,7 +285,7 @@ if (session.user) {
       .then(({ mountScratchpad }) => mountScratchpad(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
-  // A member's own settings: their People page, photo and Wolfram Engine licence.
+  // A member's own settings: their People page, photo and Wolfram Engine license.
   mount("data-settings", (root) =>
     import("./settings/index.js")
       .then(({ mountSettings }) => mountSettings(root, { api, session }))

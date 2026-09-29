@@ -41,7 +41,7 @@ export function failureMessage(status, data) {
 
 /**
  * A failure message in pieces, with "Settings (/settings)" as a link: Wolfram code runs on the
- * member's own licence, and the host's message for a missing one says where to add it.
+ * member's own license, and the host's message for a missing one says where to add it.
  */
 export function messageParts(message) {
   const at = message.indexOf("Settings (/settings)")

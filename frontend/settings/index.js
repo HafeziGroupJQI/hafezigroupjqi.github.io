@@ -1,15 +1,15 @@
 // /settings: a member's own settings. Their People page (linked once to their GitHub login, then
 // edited through the public vault: saving queues the edit, and the Worker's hourly update commits
-// it, src/profile/), their photo, and the Wolfram
-// Engine licence their Wolfram code runs on (activated on the compute host: the Worker's
-// /api/compute/wolfram/licence, the host's hafezi_compute/wolfram/licences.py).
+// it, src/profile/), their photo, and the Wolfram Engine license their Wolfram code runs on
+// (activated on the compute host: the Worker's /api/compute/wolfram/license, the host's
+// hafezi_compute/wolfram/licenses.py).
 import { h } from "../dashboard/dom.js"
 import {
   FIELDS,
   avatarFor,
   centreSquare,
   changedFields,
-  licenceSummary,
+  licenseSummary,
   pendingSummary,
   publishLabel,
   slugName,
@@ -333,32 +333,32 @@ async function squareJpeg(file) {
 }
 
 async function showWolfram(section, api) {
-  const heading = h("h2", { id: "settings-wolfram", text: "Wolfram Engine licence" })
+  const heading = h("h2", { id: "settings-wolfram", text: "Wolfram Engine license" })
   const summary = h("p", { text: "Checking…" })
   const status = h("div", { "aria-live": "polite" })
   section.replaceChildren(heading, summary, status)
-  let licence
+  let license
   try {
-    licence = await api("/api/compute/wolfram/licence")
+    license = await api("/api/compute/wolfram/license")
   } catch (error) {
-    licence = { state: "offline", detail: error.message }
+    license = { state: "offline", detail: error.message }
   }
-  summary.textContent = licenceSummary(licence)
-  if (licence.state === "active") {
+  summary.textContent = licenseSummary(license)
+  if (license.state === "active") {
     const remove = h("button", {
       type: "button",
       class: "danger",
-      text: "Remove my licence from the compute host",
+      text: "Remove my license from the compute host",
       onclick: async () => {
         if (
           !confirm(
-            "Remove your Wolfram Engine licence? Wolfram code won't run until you activate it again.",
+            "Remove your Wolfram Engine license? Wolfram code won't run until you activate it again.",
           )
         )
           return
         remove.disabled = true
         try {
-          await api("/api/compute/wolfram/licence", { method: "DELETE" })
+          await api("/api/compute/wolfram/license", { method: "DELETE" })
           void showWolfram(section, api)
         } catch (error) {
           status.replaceChildren(notice("error", error.message))
@@ -369,7 +369,7 @@ async function showWolfram(section, api) {
     section.append(remove)
     return
   }
-  if (licence.state === "offline") return
+  if (license.state === "offline") return
   const id = h("input", {
     id: "wolfram-id",
     type: "email",
@@ -394,7 +394,7 @@ async function showWolfram(section, api) {
           notice("ok", "Activating on the compute host… this takes up to a minute."),
         )
         try {
-          await api("/api/compute/wolfram/licence", {
+          await api("/api/compute/wolfram/license", {
             method: "POST",
             body: JSON.stringify({ wolfram_id: id.value.trim(), password: password.value }),
           })
@@ -445,9 +445,9 @@ async function showWolfram(section, api) {
           href: FREE_ENGINE,
           target: "_blank",
           rel: "noopener",
-          text: "the free Wolfram Engine licence page",
+          text: "the free Wolfram Engine license page",
         }),
-        " and click Get your license. You must be signed in there, or it won't issue the licence.",
+        " and click Get your license. You must be signed in there, or it won't issue the license.",
       ),
       h(
         "li",

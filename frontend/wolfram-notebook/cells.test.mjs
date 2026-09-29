@@ -85,11 +85,11 @@ test("symbols normalize from either shape and match by prefix", () => {
   assert.equal(matchSymbols(symbols, "T", 1).length, 1)
 })
 
-test("a missing-licence message links to Settings", () => {
+test("a missing-license message links to Settings", () => {
   const message =
-    "Wolfram code runs on your own Wolfram Engine licence. Add it in Settings (/settings): it's free."
+    "Wolfram code runs on your own Wolfram Engine license. Add it in Settings (/settings): it's free."
   assert.deepEqual(messageParts(message), [
-    "Wolfram code runs on your own Wolfram Engine licence. Add it in ",
+    "Wolfram code runs on your own Wolfram Engine license. Add it in ",
     { href: "/settings", text: "Settings" },
     ": it's free.",
   ])

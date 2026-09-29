@@ -366,7 +366,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       [],
       { layout: "dashboard" },
     )
-    // A member's own settings (frontend/settings/): their People page, photo and Wolfram licence.
+    // A member's own settings (frontend/settings/): their People page, photo and Wolfram license.
     page(
       "settings",
       "Settings",

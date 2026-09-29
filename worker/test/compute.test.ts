@@ -748,7 +748,7 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect(await (await first).json()).toMatchObject({ text: "4" })
   })
 
-  it("passes a member's Wolfram licence requests to the host, never logging the password", async () => {
+  it("passes a member's Wolfram license requests to the host, never logging the password", async () => {
     const answer = (op: string, result: unknown) =>
       host
         .next((f) => f.type === FrameType.CONTROL && readJsonPayload<any>(f).op === op)
@@ -764,17 +764,17 @@ describe("the compute relay", { timeout: 30_000 }, () => {
           )
           return rpc
         })
-    const status = answer("wolfram_licence", { state: "none" })
-    const got = await alice.fetch("/api/compute/wolfram/licence")
+    const status = answer("wolfram_license", { state: "none" })
+    const got = await alice.fetch("/api/compute/wolfram/license")
     expect(got.status).toBe(200)
     expect(await got.json()).toEqual({ state: "none" })
     expect((await status).args).toEqual({ action: "status" })
 
     const post = (body: unknown) =>
-      alice.fetch("/api/compute/wolfram/licence", { method: "POST", body: JSON.stringify(body) })
+      alice.fetch("/api/compute/wolfram/license", { method: "POST", body: JSON.stringify(body) })
     expect((await post({ wolfram_id: "not an id", password: "x" })).status).toBe(422)
     expect((await post({ wolfram_id: "alice@umd.edu", password: "" })).status).toBe(422)
-    const activation = answer("wolfram_licence", {
+    const activation = answer("wolfram_license", {
       state: "active",
       wolfram_id: "alice@umd.edu",
       activated_at: 1,
@@ -786,12 +786,12 @@ describe("the compute relay", { timeout: 30_000 }, () => {
       wolfram_id: "alice@umd.edu",
       password: "correct horse",
     })
-    const rows = await auditRows("login = 'alice' AND action = 'compute.wolfram_licence'")
+    const rows = await auditRows("login = 'alice' AND action = 'compute.wolfram_license'")
     expect(rows.map((r) => r.target)).toEqual(["activate"])
     expect(JSON.stringify(rows)).not.toContain("correct horse")
 
-    const removal = answer("wolfram_licence", { state: "none" })
-    const removed = await alice.fetch("/api/compute/wolfram/licence", { method: "DELETE" })
+    const removal = answer("wolfram_license", { state: "none" })
+    const removed = await alice.fetch("/api/compute/wolfram/license", { method: "DELETE" })
     expect(await removed.json()).toEqual({ state: "none" })
     expect((await removal).args).toEqual({ action: "remove" })
   })
@@ -804,16 +804,16 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect(run.status).toBe(413)
   })
 
-  it("limits Wolfram licence activations to a few an hour", async () => {
+  it("limits Wolfram license activations to a few an hour", async () => {
     for (let i = 0; i < 5; i++)
       await env.DB.prepare(
         `INSERT INTO audit_log (at, login, action, target)
-         VALUES (?, 'mallory', 'compute.wolfram_licence', 'activate')`,
+         VALUES (?, 'mallory', 'compute.wolfram_license', 'activate')`,
       )
         .bind(Date.now())
         .run()
     const mallory = await memberAs("mallory")
-    const tried = await mallory.fetch("/api/compute/wolfram/licence", {
+    const tried = await mallory.fetch("/api/compute/wolfram/license", {
       method: "POST",
       body: JSON.stringify({ wolfram_id: "m@example.com", password: "guess" }),
     })

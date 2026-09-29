@@ -4,7 +4,7 @@ import {
   avatarFor,
   centreSquare,
   changedFields,
-  licenceSummary,
+  licenseSummary,
   pendingSummary,
   publishLabel,
   slugName,
@@ -46,13 +46,13 @@ test("the avatar is the uploaded photo, then the People page's, then GitHub's", 
   assert.equal(avatarFor({ login: "ada" }), "https://avatars.githubusercontent.com/ada?s=128")
 })
 
-test("the licence line says what state the member's Wolfram licence is in", () => {
-  assert.match(licenceSummary({ state: "none" }), /^Not activated yet/)
+test("the license line says what state the member's Wolfram license is in", () => {
+  assert.match(licenseSummary({ state: "none" }), /^Not activated yet/)
   assert.match(
-    licenceSummary({ state: "active", wolfram_id: "ada@umd.edu" }),
+    licenseSummary({ state: "active", wolfram_id: "ada@umd.edu" }),
     /^Active for ada@umd.edu\./,
   )
-  assert.match(licenceSummary({ state: "offline" }), /offline/)
+  assert.match(licenseSummary({ state: "offline" }), /offline/)
 })
 
 test("saved changes say when they go in, and what they are", () => {

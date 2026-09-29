@@ -43,15 +43,15 @@ export function avatarFor(profile) {
   )
 }
 
-/** A Wolfram licence status line. */
-export function licenceSummary(licence) {
-  if (!licence || licence.state === "offline")
-    return "The compute host is offline, so your licence can't be checked right now."
-  if (licence.state === "active")
-    return `Active${licence.wolfram_id ? ` for ${licence.wolfram_id}` : ""}${
-      licence.activated_at ? `, since ${new Date(licence.activated_at).toLocaleDateString()}` : ""
-    }. Your Wolfram code runs on your own licence.`
-  return "Not activated yet. Wolfram code (the Scratchpad's Wolfram notebooks and Run on guide pages) needs your own Wolfram Engine licence."
+/** A Wolfram license status line. */
+export function licenseSummary(license) {
+  if (!license || license.state === "offline")
+    return "The compute host is offline, so your license can't be checked right now."
+  if (license.state === "active")
+    return `Active${license.wolfram_id ? ` for ${license.wolfram_id}` : ""}${
+      license.activated_at ? `, since ${new Date(license.activated_at).toLocaleDateString()}` : ""
+    }. Your Wolfram code runs on your own license.`
+  return "Not activated yet. Wolfram code (the Scratchpad's Wolfram notebooks and Run on guide pages) needs your own Wolfram Engine license."
 }
 
 /** When saved changes go into the People page: "at 7:00 PM, in 1 h 23 min". */

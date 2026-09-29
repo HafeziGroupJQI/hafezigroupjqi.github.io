@@ -103,6 +103,25 @@ describe("Hafezi GPT on the lab origin", () => {
     expect((await tool("search_site", [])).status).toBe(422)
   })
 
+  it("never gives an owner's lab admin rights over other members' projects", async () => {
+    const alice = await as("alice-lab")
+    const project = await alice.json("/api/gpt/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Shared", visibility: "group" }),
+    })
+    const owner = lab(
+      await issueLabTicket(env as any, { login: "olga", role: "owner", exp: exp() }, "olga"),
+    )
+    const url = `/projects/${project.body.id}`
+    const seen = (await (await owner(url)).json()) as any
+    expect(seen.can_edit).toBe(false)
+    expect((await owner(url, { method: "DELETE" })).status).toBe(403)
+    const rename = { method: "PUT", body: JSON.stringify({ name: "Taken" }) }
+    expect((await owner(url, rename)).status).toBe(403)
+    // The same owner on the site is an admin there.
+    expect((await (await as("olga", "owner")).fetch(`/api/gpt${url}`, rename)).status).toBe(200)
+  })
+
   it("takes writes only from the lab page itself, and only with a valid ticket", async () => {
     const call = lab(own)
     const post = (headers: Record<string, string>) =>

@@ -15,6 +15,8 @@ export interface Session {
   name: string
   role: "member" | "owner"
   exp: number
+  /** A session stood up from a lab ticket (src/gpt/lab.ts): it is never an admin's. */
+  lab?: true
 }
 
 const encoder = new TextEncoder()

@@ -42,6 +42,7 @@ export async function labSession(
     name: ticket.login,
     role: ticket.role,
     exp: ticket.exp,
+    lab: true,
   }
   return { ...base, name: (await navIdentity(env, base)).display_name }
 }

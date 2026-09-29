@@ -8,8 +8,11 @@ import type { Session } from "./session"
 
 export async function isAdmin(
   env: Env,
-  session: Pick<Session, "login" | "role">,
+  session: Pick<Session, "login" | "role" | "lab">,
 ): Promise<boolean> {
+  // Code in the member's lab can read its ticket, so a lab session has the member's own rights
+  // only, even an owner's.
+  if (session.lab) return false
   if (session.role === "owner") return true
   // GitHub logins are case-insensitive, so an admin added as "Dave" is the session's "dave".
   const row = await env.DB.prepare("SELECT 1 FROM admins WHERE login = ? COLLATE NOCASE")

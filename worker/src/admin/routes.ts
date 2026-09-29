@@ -4,10 +4,12 @@ import type { Env } from "../env"
 import { displayTurns } from "../gpt/chat"
 import { GptStore } from "../gpt/store"
 import { HttpError, decodeSegment, json, readJson } from "../http"
+import { decideClaim, pendingClaims } from "../profile/routes"
+import type { VaultFetch } from "../profile/vault"
 import type { Session } from "../session"
 
-// Group-admin console: the audit log, the admin allow-list, Hafezi GPT usage + budgets, and
-// members' Hafezi GPT conversations (read-only). Everything here is admin-only (org owners, or
+// Group-admin console: the audit log, the admin allow-list, Hafezi GPT usage + budgets,
+// members' claims of People pages, and members' Hafezi GPT conversations (read-only). Everything here is admin-only (org owners, or
 // members an admin promoted).
 
 const PAGE = 100
@@ -75,6 +77,7 @@ export async function adminRoutes(
   env: Env,
   session: Session,
   record: Auditor,
+  vaultFetch: VaultFetch,
 ): Promise<Response | null> {
   if (!url.pathname.startsWith("/api/admin/")) return null
   await requireAdmin(env, session)
@@ -207,6 +210,20 @@ export async function adminRoutes(
     }
     record("admin.budget", login, { monthly_tokens: body.monthly_tokens ?? null })
     return json({ login, monthly_tokens: body.monthly_tokens ?? null })
+  }
+
+  // ---- members' claims of People pages (src/profile/routes.ts) ----
+  if (path === "/profile-claims" && request.method === "GET")
+    return json({ claims: await pendingClaims(env) })
+
+  const claim = path.match(/^\/profile-claims\/([^/]+)\/(approve|reject)$/)
+  if (claim && request.method === "POST") {
+    requireMutation(request, env)
+    const login = decodeSegment(claim[1]).toLowerCase()
+    const approve = claim[2] === "approve"
+    const decided = await decideClaim(env, vaultFetch, login, approve)
+    record(`admin.profile.${claim[2]}`, login, { path: decided.path })
+    return json({ login, status: approve ? "approved" : "rejected", ...decided })
   }
 
   // ---- Hafezi GPT conversations, per member (read-only) ----

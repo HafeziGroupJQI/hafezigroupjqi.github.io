@@ -240,7 +240,7 @@ export function createHandler(
     session: Session,
     record: Auditor,
   ): Promise<Response> {
-    const admin = await adminRoutes(request, url, env, session, record)
+    const admin = await adminRoutes(request, url, env, session, record, vaultFetch)
     if (admin) return admin
     const gpt = await gptRoutes(request, url, env, ctx, session, record, gptDeps)
     if (gpt) return gpt

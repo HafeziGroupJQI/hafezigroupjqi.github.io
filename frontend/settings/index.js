@@ -9,6 +9,7 @@ import {
   avatarFor,
   centreSquare,
   changedFields,
+  claimNotice,
   licenseSummary,
   pendingSummary,
   publishLabel,
@@ -65,6 +66,17 @@ async function showProfile(section, api) {
     )
     return
   }
+  if (profile.claim) {
+    section.replaceChildren(
+      heading,
+      h("p", { text: claimNotice(profile.claim) }),
+      h("p", {
+        class: "muted",
+        text: "Until then your name and photo stay as they are, and the page can't be edited here.",
+      }),
+    )
+    return
+  }
   if (!profile.page) {
     section.replaceChildren(heading, ...claimForm(profile, api, () => showProfile(section, api)))
     return
@@ -112,7 +124,7 @@ function claimForm(profile, api, done) {
   )
   return [
     h("p", {
-      text: `Your GitHub login (${profile.login}) isn't linked to a People page yet. Choose yours: you can edit it here straight away, and the page gets "github: ${profile.login}" in the vault with the site's next hourly update.`,
+      text: `Your GitHub login (${profile.login}) isn't linked to a People page yet. Choose yours, and an admin approves the link: then you can edit it here, and the page gets "github: ${profile.login}" in the vault with the site's next hourly update.`,
     }),
     form,
     status,

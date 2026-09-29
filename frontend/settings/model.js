@@ -28,6 +28,10 @@ export function slugName(slug) {
     .join(" ")
 }
 
+/** What a member sees while an admin hasn't decided on their claim of a People page. */
+export const claimNotice = (claim) =>
+  `Waiting for an admin to approve linking your account to ${slugName(claim.slug)}.`
+
 /** The centred square of an image, for a profile photo. */
 export function centreSquare(width, height) {
   const size = Math.min(width, height)

@@ -37,6 +37,10 @@ test("rows read as sentences", () => {
     describe({ action: "gpt.share", target: "c1", detail: { grantee: "*" } }),
     "shared chat c1 with the whole lab",
   )
+  assert.equal(
+    describe({ action: "admin.profile.approve", target: "ada" }),
+    "approved the People page claim of ada",
+  )
 })
 
 test("token and budget formatting", () => {

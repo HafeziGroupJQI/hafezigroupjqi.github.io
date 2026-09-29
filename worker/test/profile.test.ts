@@ -50,11 +50,28 @@ beforeEach(async () => {
     for (const which of ["photo", "pending"])
       await env.ARTIFACTS.delete(`profiles/${login}/${which}.jpg`)
   // Storage is shared across tests, and profile changes count toward a daily limit.
-  await env.DB.prepare("DELETE FROM audit_log WHERE action LIKE 'profile.%'").run()
+  await env.DB.prepare(
+    "DELETE FROM audit_log WHERE action LIKE 'profile.%' OR action LIKE 'admin.profile.%'",
+  ).run()
 })
 
 const claim = (client: Awaited<ReturnType<typeof as>>, path: string) =>
   client.json("/api/profile/claim", { method: "POST", body: JSON.stringify({ path }) })
+
+const decide = async (login: string, decision: "approve" | "reject") =>
+  (await as("olivia", "owner")).json(`/api/admin/profile-claims/${login}/${decision}`, {
+    method: "POST",
+  })
+
+/** Claim a page and have an admin approve it: the member is linked. */
+async function link(client: Awaited<ReturnType<typeof as>>, path: string) {
+  const claimed = await claim(client, path)
+  expect(claimed.status).toBe(200)
+  if (claimed.body.status === "pending") {
+    const login = (await client.json("/api/session")).body.user.login
+    expect((await decide(login, "approve")).status).toBe(200)
+  }
+}
 
 /** The hourly publish, as the cron runs it, at a given time (default: two hours from now). */
 const publish = (at = Date.now() + 2 * WINDOW_MS) => publishDue(env as any, vault.fetch, at)
@@ -87,17 +104,51 @@ describe("member settings: the People page", () => {
     ])
   })
 
-  it("links a page at once, and writes github: <login> into it with the next hourly commit", async () => {
+  it("links a page once an admin approves, and writes github: <login> into it with the next hourly commit", async () => {
     const ada = await as("ada")
-    const linked = await claim(ada, "content/people/ada-lovelace.md")
-    expect(linked.status).toBe(200)
-    expect(linked.body.pending).toMatchObject({ link: true, fields: [], photo: false })
+    const claimed = await claim(ada, "content/people/ada-lovelace.md")
+    expect(claimed.body).toMatchObject({ status: "pending", pending: null })
+    // Waiting for an admin, nothing changes: not the name, not the page, nothing queued.
+    expect((await ada.json("/api/session")).body.user.display_name).toBe("ada")
+    const waiting = (await ada.json("/api/profile")).body
+    expect(waiting).toMatchObject({ page: null, pending: null, display_name: "ada" })
+    expect(waiting.claim).toMatchObject({
+      path: "content/people/ada-lovelace.md",
+      slug: "ada-lovelace",
+    })
+    expect((await save(ada, { title: "Ada" })).status).toBe(409)
+    const photo = { method: "PUT", headers: { "content-type": "image/jpeg" }, body: JPEG }
+    expect((await ada.fetch("/api/profile/photo", photo)).status).toBe(409)
+    expect((await claim(await as("eve"), "content/people/ada-lovelace.md")).status).toBe(409)
+    expect((await claim(ada, "content/people/alumni/grace-hopper.md")).status).toBe(409)
+    expect(await publish()).toEqual({ commit: null, published: [], dropped: [] })
+
+    // Only an admin decides; they see who claimed which page, and when.
+    const eve = await as("eve")
+    expect((await eve.fetch("/api/admin/profile-claims")).status).toBe(403)
+    expect(
+      (await eve.fetch("/api/admin/profile-claims/ada/approve", { method: "POST" })).status,
+    ).toBe(403)
+    const owner = await as("olivia", "owner")
+    const listed = await owner.json("/api/admin/profile-claims")
+    expect(listed.body.claims).toEqual([
+      expect.objectContaining({ login: "ada", path: "content/people/ada-lovelace.md" }),
+    ])
+    const approved = await decide("ada", "approve")
+    expect(approved.body).toMatchObject({ status: "approved", pending: { link: true } })
+    expect((await decide("ada", "approve")).status).toBe(404)
+    expect((await owner.json("/api/admin/profile-claims")).body.claims).toEqual([])
+
     expect(vault.made).toEqual([]) // nothing committed yet
     expect((await ada.json("/api/session")).body.user.display_name).toBe("Ada Lovelace")
     const page = (await ada.json("/api/profile")).body.page
     expect(page).toMatchObject({ slug: "ada-lovelace", url: "/people/ada-lovelace" })
     expect((await claim(ada, "content/people/alumni/grace-hopper.md")).status).toBe(409)
     expect((await claim(await as("eve"), "content/people/ada-lovelace.md")).status).toBe(409)
+    const rows = await auditRows("action LIKE 'admin.profile.%'")
+    expect(rows.map((r) => [r.action, r.login, r.target])).toEqual([
+      ["admin.profile.approve", "olivia", "ada"],
+    ])
 
     expect(await publish(Date.now())).toEqual({ commit: null, published: [], dropped: [] })
     const done = await publish()
@@ -111,23 +162,41 @@ describe("member settings: the People page", () => {
     expect((await ada.json("/api/profile")).body.pending).toBeNull()
   })
 
+  it("frees a page again when an admin turns the claim down", async () => {
+    const eve = await as("eve")
+    expect((await claim(eve, "content/people/ada-lovelace.md")).body.status).toBe("pending")
+    const claimable = async () =>
+      ((await eve.json("/api/profile")).body.claimable as any[]).map((p) => p.slug)
+    expect(await claimable()).not.toContain("ada-lovelace")
+    expect((await decide("eve", "reject")).body).toMatchObject({ status: "rejected" })
+    expect((await eve.json("/api/profile")).body).toMatchObject({ claim: null, page: null })
+    expect(await claimable()).toContain("ada-lovelace")
+    expect((await decide("eve", "reject")).status).toBe(404)
+    // The page's real owner can claim it now.
+    expect((await claim(await as("ada"), "content/people/ada-lovelace.md")).status).toBe(200)
+    const rows = await auditRows("action = 'admin.profile.reject'")
+    expect(rows.map((r) => [r.login, r.target])).toEqual([["olivia", "eve"]])
+    expect(await publish()).toEqual({ commit: null, published: [], dropped: [] })
+  })
+
   it("won't link a page that names another GitHub login, or anything that isn't a People page", async () => {
     const eve = await as("eve")
     expect((await claim(eve, "content/people/charles-babbage.md")).status).toBe(409)
     expect((await claim(eve, "content/notes/x.md")).status).toBe(422)
     expect((await claim(eve, "content/people/index.md")).status).toBe(422)
     expect((await claim(eve, "content/people/nobody.md")).status).toBe(409)
-    // The page's own login may link it; it names them already, so nothing is queued.
+    // The page's own login may link it at once; it names them already, so nothing is queued.
     const charles = await as("CBabbage")
     expect(await claim(charles, "content/people/charles-babbage.md")).toMatchObject({
       status: 200,
-      body: { pending: null },
+      body: { status: "approved", pending: null },
     })
+    expect((await charles.json("/api/session")).body.user.display_name).toBe("Charles Babbage")
   })
 
   it("queues a saved edit, revisable until the hour after next, then commits only what changed", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     const before = Date.now()
     const saved = await save(ada, {
       title: "Ada King",
@@ -173,8 +242,8 @@ describe("member settings: the People page", () => {
   it("commits every member's due edit in one commit, under the site's name", async () => {
     const ada = await as("ada")
     const grace = await as("grace")
-    await claim(ada, "content/people/ada-lovelace.md")
-    await claim(grace, "content/people/alumni/grace-hopper.md")
+    await link(ada, "content/people/ada-lovelace.md")
+    await link(grace, "content/people/alumni/grace-hopper.md")
     await save(ada, { office: "1" })
     await save(grace, { office: "2" })
     const done = await publish()
@@ -189,7 +258,7 @@ describe("member settings: the People page", () => {
 
   it("discards a saved edit on request, keeping the link", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     await save(ada, { title: "Ada King" })
     const discarded = await ada.json("/api/profile/pending", { method: "DELETE" })
     expect(discarded.body.pending).toMatchObject({ fields: [], link: true })
@@ -202,7 +271,7 @@ describe("member settings: the People page", () => {
     const ada = await as("ada")
     const put = (body: object) => save(ada, body)
     expect((await put({ title: "Ada" })).status).toBe(409)
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     expect((await put({ title: "  " })).status).toBe(422)
     expect((await put({ email: "not an address" })).status).toBe(422)
     expect((await put({ profile: "javascript:alert(1)" })).status).toBe(422)
@@ -212,7 +281,7 @@ describe("member settings: the People page", () => {
 
   it("publishes on top of a push that lands meanwhile", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     await save(ada, { office: "2207" })
     vault.beforeUpdate = () => vault.push("content/notes/y.md", "---\ntitle: y\n---\n")
     await publish()
@@ -222,7 +291,7 @@ describe("member settings: the People page", () => {
 
   it("keeps an edit for the next hour when GitHub won't take the commit", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     await save(ada, { office: "2207" })
     // Someone pushes every time: the retry loses too, and the edit waits.
     vault.beforeUpdate = () => {
@@ -237,7 +306,7 @@ describe("member settings: the People page", () => {
 
   it("drops an edit to a page someone relinked by hand", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     await save(ada, { office: "1" })
     vault.push(
       "content/people/ada-lovelace.md",
@@ -250,7 +319,7 @@ describe("member settings: the People page", () => {
 
   it("allows a limited number of saves a day", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     await auditRows("action = 'profile.claim'")
     for (let i = 0; i < 59; i++)
       await env.DB.prepare(
@@ -268,7 +337,7 @@ describe("member settings: the photo", () => {
 
   it("queues a saved photo, shows it in the navbar at once, and commits it with the hour", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     const saved = await putPhoto(ada, JPEG)
     expect(saved.status).toBe(200)
     const { avatar, pending } = (await saved.json()) as any
@@ -297,7 +366,7 @@ describe("member settings: the photo", () => {
 
   it("forgets a discarded photo", async () => {
     const ada = await as("ada")
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     await putPhoto(ada, JPEG)
     await ada.fetch("/api/profile/pending", { method: "DELETE" })
     expect(await env.ARTIFACTS.get("profiles/ada/pending.jpg")).toBeNull()
@@ -310,7 +379,7 @@ describe("member settings: the photo", () => {
   it("takes only JPEGs up to 1 MB, and only after linking", async () => {
     const ada = await as("ada")
     expect((await putPhoto(ada, JPEG)).status).toBe(409)
-    await claim(ada, "content/people/ada-lovelace.md")
+    await link(ada, "content/people/ada-lovelace.md")
     expect((await putPhoto(ada, JPEG, "image/png")).status).toBe(415)
     expect((await putPhoto(ada, new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).status).toBe(422)
     const big = new Uint8Array(1024 * 1024 + 1)

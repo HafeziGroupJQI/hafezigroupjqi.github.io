@@ -1,5 +1,6 @@
 // /admin: the group-admin console. Audit log (who signed in when, what they did), the admin
-// allow-list (org owners are always admins), and Hafezi GPT usage + monthly budgets. The Worker
+// allow-list (org owners are always admins), members' claims of People pages, and Hafezi GPT
+// usage + monthly budgets. The Worker
 // enforces admin access on every /api/admin/* call; this page just shows a notice to non-admins.
 import { h } from "../dashboard/dom.js"
 import {
@@ -17,6 +18,7 @@ import {
 const TABS = [
   ["audit", "Audit log"],
   ["admins", "Admins"],
+  ["claims", "Profile claims"],
   ["usage", "Usage & budgets"],
   ["conversations", "Conversations"],
 ]
@@ -30,7 +32,7 @@ export function mountAdmin(root, { api, session }) {
     h("h1", { class: "dash-title", text: "Admin" }),
     h("p", {
       class: "dash-summary",
-      text: "Sign-ins, member activity, admins and Hafezi GPT usage",
+      text: "Sign-ins, member activity, admins, People page claims and Hafezi GPT usage",
     }),
   )
   root.append(header)
@@ -67,6 +69,13 @@ export function mountAdmin(root, { api, session }) {
         onclick: () => show(id),
       }),
     )
+  // Claims wait for an admin, so the tab says how many there are.
+  const claimsButton = [...tabs.children].find((button) => button.dataset.tab === "claims")
+  const countClaims = (n) =>
+    (claimsButton.textContent = n ? `Profile claims (${n})` : "Profile claims")
+  api("/api/admin/profile-claims")
+    .then((data) => countClaims(data.claims.length))
+    .catch(() => {})
   // Arrow keys, Home and End move between tabs; Tab moves into the panel.
   tabs.addEventListener("keydown", (event) => {
     const buttons = [...tabs.children]
@@ -93,7 +102,13 @@ export function mountAdmin(root, { api, session }) {
     url.searchParams.set("tab", id)
     history.replaceState(history.state, "", url)
     panel.replaceChildren()
-    ;({ audit: auditTab, admins: adminsTab, usage: usageTab, conversations: conversationsTab })
+    ;({
+      audit: auditTab,
+      admins: adminsTab,
+      claims: claimsTab,
+      usage: usageTab,
+      conversations: conversationsTab,
+    })
       [id](panel)
       .catch(fail)
   }
@@ -282,6 +297,71 @@ export function mountAdmin(root, { api, session }) {
         fail(error)
       }
     }
+  }
+
+  // ---- members' claims of People pages ----
+  async function claimsTab(panel) {
+    const data = await api("/api/admin/profile-claims")
+    countClaims(data.claims.length)
+    const decide = (claim, decision) => async () => {
+      if (decision === "reject" && !confirm(`Turn down ${claim.login}'s claim of ${claim.url}?`))
+        return
+      try {
+        await api(`/api/admin/profile-claims/${encodeURIComponent(claim.login)}/${decision}`, {
+          method: "POST",
+        })
+        panel.replaceChildren()
+        await claimsTab(panel)
+      } catch (error) {
+        fail(error)
+      }
+    }
+    panel.append(
+      h("p", {
+        class: "muted",
+        text: "Members link their GitHub login to their People page in Settings. Approve a claim only when the page is theirs: its name and photo then show as theirs in the navbar and Hafezi GPT, and their edits go into the public page. A claim turned down frees the page again.",
+      }),
+      h(
+        "ul",
+        { class: "admin-list" },
+        data.claims.length
+          ? data.claims.map((claim) =>
+              h(
+                "li",
+                { class: "cmd-card" },
+                h(
+                  "header",
+                  {},
+                  h("strong", { class: "mono", text: claim.login }),
+                  h(
+                    "span",
+                    {},
+                    "claims ",
+                    h("a", { href: claim.url, target: "_blank", rel: "noopener", text: claim.url }),
+                  ),
+                  h("span", {
+                    class: "muted",
+                    text: claim.claimed_at ? formatWhen(claim.claimed_at) : "",
+                  }),
+                  h("span", { class: "spacer" }),
+                  h("button", {
+                    type: "button",
+                    class: "primary",
+                    text: "Approve",
+                    onclick: decide(claim, "approve"),
+                  }),
+                  h("button", {
+                    type: "button",
+                    class: "danger",
+                    text: "Reject",
+                    onclick: decide(claim, "reject"),
+                  }),
+                ),
+              ),
+            )
+          : h("li", { class: "dash-empty", text: "No claims are waiting." }),
+      ),
+    )
   }
 
   // ---- usage & budgets ----

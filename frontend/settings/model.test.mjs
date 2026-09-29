@@ -4,6 +4,7 @@ import {
   avatarFor,
   centreSquare,
   changedFields,
+  claimNotice,
   licenseSummary,
   pendingSummary,
   publishLabel,
@@ -27,6 +28,13 @@ test("only changed fields are sent, and emptied ones become null", () => {
 test("a People page's slug reads as a name", () => {
   assert.equal(slugName("ada-lovelace"), "Ada Lovelace")
   assert.equal(slugName("mohammad-hafezi"), "Mohammad Hafezi")
+})
+
+test("a claim waiting for an admin names the page", () => {
+  assert.equal(
+    claimNotice({ slug: "ada-lovelace", path: "content/people/ada-lovelace.md" }),
+    "Waiting for an admin to approve linking your account to Ada Lovelace.",
+  )
 })
 
 test("a photo is cropped to its centred square", () => {

@@ -7,7 +7,9 @@ import { type Page, getScalar, splitPage } from "./frontmatter"
 import { PEOPLE_PAGE, Vault, type VaultFetch } from "./vault"
 
 // A member's own settings (/settings): their People page in the public vault, and a photo. Each
-// member links their GitHub login to one People page once (the page gets `github: <login>`).
+// member links their GitHub login to one People page once (the page gets `github: <login>`). A
+// GitHub sign-in proves the login, not whose page it is, so a claim waits for an admin (/admin)
+// unless the page already names the login; until then it changes nothing anyone sees.
 // Saving queues the edit (profile_pending); the hourly cron commits every edit that is due in one
 // vault commit (publish.ts), so the site rebuilds at most once an hour and an edit can be revised
 // until it goes in. D1 keeps the link, the name and the photo, so the navbar shows a saved edit at
@@ -43,6 +45,9 @@ interface ProfileRow {
   name: string | null
   photo_url: string | null
   photo_at: number | null
+  /** "pending" until an admin approves the claim; links made before claims were checked are approved. */
+  status: "pending" | "approved"
+  claimed_at: number | null
 }
 
 export interface PendingRow {
@@ -58,10 +63,25 @@ export interface PendingRow {
 export const photoKey = (login: string, which: "photo" | "pending") =>
   `profiles/${login.toLowerCase()}/${which}.jpg`
 
-export async function profileRow(env: Env, login: string): Promise<ProfileRow | null> {
+/** The member's link to a People page, approved or waiting for an admin. */
+async function claimRow(env: Env, login: string): Promise<ProfileRow | null> {
   return env.DB.prepare("SELECT * FROM profiles WHERE login = ? COLLATE NOCASE")
     .bind(login)
     .first<ProfileRow>()
+}
+
+/** The member's approved link: the only kind that shows anywhere or can be edited. */
+export async function profileRow(env: Env, login: string): Promise<ProfileRow | null> {
+  const row = await claimRow(env, login)
+  return row?.status === "approved" ? row : null
+}
+
+async function linkedRow(env: Env, login: string): Promise<ProfileRow> {
+  const row = await claimRow(env, login)
+  if (!row) throw new HttpError(409, "link your People page first")
+  if (row.status !== "approved")
+    throw new HttpError(409, "an admin hasn't approved the link to your People page yet")
+  return row
 }
 
 async function pendingRow(env: Env, login: string): Promise<PendingRow | null> {
@@ -196,6 +216,58 @@ async function queue(
   return next
 }
 
+function claimView(row: ProfileRow) {
+  return {
+    login: row.login,
+    path: row.path,
+    slug: slugOf(row.path),
+    url: pageUrl(row.path),
+    claimed_at: row.claimed_at,
+  }
+}
+
+/** The claims waiting for an admin (/admin), oldest first. */
+export async function pendingClaims(env: Env): Promise<ReturnType<typeof claimView>[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM profiles WHERE status = 'pending' ORDER BY claimed_at, login",
+  ).all<ProfileRow>()
+  return results.map(claimView)
+}
+
+/**
+ * An admin's decision on a claim. Approved, the link counts from now: the member's name and photo
+ * show, they can edit the page, and it gets `github: <login>` with the next hourly commit.
+ * Turned down, the claim is gone and the page can be claimed again.
+ */
+export async function decideClaim(
+  env: Env,
+  vaultFetch: VaultFetch,
+  login: string,
+  approve: boolean,
+): Promise<{ path: string; pending: ReturnType<typeof pendingView> }> {
+  const row = await claimRow(env, login)
+  if (row?.status !== "pending") throw new HttpError(404, `no claim from ${login} is waiting`)
+  if (!approve) {
+    await env.DB.prepare("DELETE FROM profiles WHERE login = ? AND status = 'pending'")
+      .bind(row.login)
+      .run()
+    return { path: row.path, pending: null }
+  }
+  const page = parse(await new Vault(env, vaultFetch).read(row.path), row.path)
+  checkLinked(page, row.login, row.path)
+  const { meta } = await env.DB.prepare(
+    `UPDATE profiles SET status = 'approved', name = ?, photo_url = ?, updated_at = ?
+     WHERE login = ? AND status = 'pending'`,
+  )
+    .bind(getScalar(page, "title"), siteUrl(getScalar(page, "photo")), Date.now(), row.login)
+    .run()
+  if (!meta.changes) throw new HttpError(409, `the claim from ${login} was just decided`)
+  const pending = getScalar(page, "github")
+    ? null
+    : await queue(env, row, fields(page), { link: true })
+  return { path: row.path, pending: pendingView(pending) }
+}
+
 export async function profileRoutes(
   request: Request,
   url: URL,
@@ -228,10 +300,18 @@ export async function profileRoutes(
   }
 
   if (path === "/api/profile" && request.method === "GET") {
-    const row = await profileRow(env, session.login)
+    const row = await claimRow(env, session.login)
     const identity = await navIdentity(env, session)
-    const base = { login: session.login, ...identity, vault_ready: vault.ready }
+    const base = { login: session.login, ...identity, vault_ready: vault.ready, claim: null }
     if (!vault.ready) return json({ ...base, page: null, pending: null, claimable: [] })
+    if (row?.status === "pending")
+      return json({
+        ...base,
+        claim: claimView(row),
+        page: null,
+        pending: null,
+        claimable: [],
+      })
     if (row) {
       const page = parse(await vault.read(row.path), row.path)
       const pending = await pendingRow(env, row.login)
@@ -267,39 +347,46 @@ export async function profileRoutes(
     const target = typeof body.path === "string" ? body.path : ""
     if (!PEOPLE_PAGE.test(target) || target.endsWith("/index.md"))
       throw new HttpError(422, "choose a People page")
-    const existing = await profileRow(env, session.login)
-    if (existing) throw new HttpError(409, `you are already linked to ${existing.path}`)
+    const existing = await claimRow(env, session.login)
+    if (existing)
+      throw new HttpError(
+        409,
+        existing.status === "pending"
+          ? `you already asked to link ${existing.path}; an admin will approve it`
+          : `you are already linked to ${existing.path}`,
+      )
     const other = await env.DB.prepare("SELECT login FROM profiles WHERE path = ?")
       .bind(target)
       .first<{ login: string }>()
-    if (other) throw new HttpError(409, `${target} is already linked to another member`)
+    if (other) throw new HttpError(409, `${target} is already claimed by another member`)
     await underDailyLimit(env, session.login)
     const page = parse(await vault.read(target), target)
     checkLinked(page, session.login, target)
-    const row: ProfileRow = {
-      login: session.login,
-      path: target,
-      name: getScalar(page, "title"),
-      photo_url: siteUrl(getScalar(page, "photo")),
-      photo_at: null,
-    }
+    // A page that already says `github: <login>` was linked by the vault's editors; any other
+    // claim waits for an admin, and until then the member's name, photo and page stay as they were.
+    const status = getScalar(page, "github") ? "approved" : "pending"
+    const now = Date.now()
     await env.DB.prepare(
-      `INSERT INTO profiles (login, path, name, photo_url, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO profiles (login, path, name, photo_url, status, claimed_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(row.login, row.path, row.name, row.photo_url, Date.now())
+      .bind(
+        session.login,
+        target,
+        getScalar(page, "title"),
+        siteUrl(getScalar(page, "photo")),
+        status,
+        now,
+        now,
+      )
       .run()
-    // The page gets `github: <login>` with the next hourly commit (none if it already has it).
-    const pending = getScalar(page, "github")
-      ? null
-      : await queue(env, row, fields(page), { link: true })
-    record("profile.claim", target, { queued: pending !== null })
-    return json({ path: target, pending: pendingView(pending) })
+    record("profile.claim", target, { status })
+    return json({ path: target, status, pending: null })
   }
 
   if (path === "/api/profile" && request.method === "PUT") {
     requireMutation(request, env)
-    const row = await profileRow(env, session.login)
-    if (!row) throw new HttpError(409, "link your People page first")
+    const row = await linkedRow(env, session.login)
     const body = (await readJson(request)) as Record<string, unknown>
     const wanted: Partial<Record<Field, string | null>> = {}
     for (const field of EDITABLE) if (field in body) wanted[field] = clean(field, body[field])
@@ -314,8 +401,7 @@ export async function profileRoutes(
   // A new photo, sent when the member saves (never on choosing it): queued like any edit.
   if (path === "/api/profile/photo" && request.method === "PUT") {
     requireMutation(request, env)
-    const row = await profileRow(env, session.login)
-    if (!row) throw new HttpError(409, "link your People page first")
+    const row = await linkedRow(env, session.login)
     if (!/^image\/jpeg\b/.test(request.headers.get("content-type") ?? ""))
       throw new HttpError(415, "send the photo as a JPEG")
     const bytes = new Uint8Array(await request.arrayBuffer())

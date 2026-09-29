@@ -32,6 +32,9 @@ describe("private documents", () => {
     expect(partial.status).toBe(206)
     expect(await partial.text()).toBe("%PDF")
     expect(upstreamCalls).toHaveLength(1)
+    // A notebook page's download link (?raw) saves the file.
+    const raw = await client.fetch(`${PDF}?raw=1`)
+    expect(raw.headers.get("content-disposition")).toBe('attachment; filename="manual.pdf"')
   })
 
   it("reports an unavailable store and ignores unknown or synthetic paths", async () => {

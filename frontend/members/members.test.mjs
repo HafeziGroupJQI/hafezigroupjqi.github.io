@@ -2,7 +2,14 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { isLive, safeNext } from "./auth.js"
 import { createSseParser } from "./sse-parse.js"
-import { alwaysPass, isImmutable, isSessionExpired, route, target } from "./sw-route.js"
+import {
+  alwaysPass,
+  isImmutable,
+  isSessionExpired,
+  notebookPage,
+  route,
+  target,
+} from "./sw-route.js"
 
 test("signed out, the service worker never touches a request", () => {
   for (const path of ["/", "/resources/notes", "/api/session", "/devices"])
@@ -19,6 +26,21 @@ test("signed in, pages and assets come from the member edition and /api goes to 
   assert.equal(route({ method: "GET", path: "/index-4bf5a71f.css", mode: "no-cors" }, true), "site")
   assert.equal(route({ method: "POST", path: "/api/devices", mode: "cors" }, true), "api")
   assert.equal(route({ method: "GET", path: "/api/session", mode: "cors" }, true), "api")
+})
+
+test("opening a raw notebook shows its rendered page; its download link still gets the file", () => {
+  const go = (path, search = "", mode = "navigate") =>
+    route({ method: "GET", path, mode, search }, true)
+  assert.equal(go("/resources/code/jumpstart/01_ring.ipynb"), "notebook")
+  assert.equal(go("/resources/code/wolfram-guide/eiwl3-01.NB"), "notebook")
+  assert.equal(
+    notebookPage("/resources/code/jumpstart/01_ring.ipynb"),
+    "/resources/code/jumpstart/01_ring",
+  )
+  assert.equal(go("/resources/code/jumpstart/01_ring.ipynb", "?raw=1"), "site")
+  assert.equal(go("/resources/code/jumpstart/01_ring.ipynb", "", "cors"), "site")
+  assert.equal(go("/resources/code/jumpstart/01_ring"), "site")
+  assert.equal(route({ method: "GET", path: "/x.ipynb", mode: "navigate" }, false), "network")
 })
 
 test("sign-in pages, the worker script and non-GET page requests are left alone", () => {

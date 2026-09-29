@@ -8,6 +8,7 @@ import {
   alwaysPass,
   isImmutable,
   isSessionExpired,
+  notebookPage,
   route,
   target,
 } from "./sw-route.js"
@@ -72,8 +73,13 @@ function reissue(response, keep = KEEP_HEADERS) {
 
 async function handle(request, url) {
   const auth = await session()
-  const kind = route({ method: request.method, path: url.pathname, mode: request.mode }, !!auth)
+  const kind = route(
+    { method: request.method, path: url.pathname, mode: request.mode, search: url.search },
+    !!auth,
+  )
   if (kind === "network") return fetch(request)
+  if (kind === "notebook")
+    return Response.redirect(new URL(notebookPage(url.pathname), url.origin), 302)
   // The lab moved to its own origin: an old /jupyter/ link opens the Scratchpad instead.
   if (kind === "retired")
     return request.mode === "navigate"

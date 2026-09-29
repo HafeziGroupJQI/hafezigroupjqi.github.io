@@ -17,9 +17,11 @@ export async function serveDocument(
   upstream: Upstream = (input, init) => fetch(input, init),
 ): Promise<Response> {
   const filename = (sitePath.split("/").pop() ?? "document").replace(/["\\]/g, "")
+  // ?raw (a notebook page's download link) saves the file instead of showing it.
+  const disposition = new URL(request.url).searchParams.has("raw") ? "attachment" : "inline"
   const finish = (response: Response) => {
     const out = withPrivateHeaders(response, { store: true })
-    out.headers.set("content-disposition", `inline; filename="${filename}"`)
+    out.headers.set("content-disposition", `${disposition}; filename="${filename}"`)
     return out
   }
   const cache = caches.default

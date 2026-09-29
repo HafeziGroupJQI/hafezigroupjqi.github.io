@@ -285,6 +285,14 @@ if (session.user) {
       .then(({ mountScratchpad }) => mountScratchpad(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
+  // A notebook page's link to its raw file downloads it (?raw): opened plainly, a raw notebook
+  // shows its rendered page (members service worker), which is this page.
+  for (const link of document.querySelectorAll("p.wl-source a[href]")) {
+    const url = new URL(link.href, location.href)
+    url.searchParams.set("raw", "1")
+    link.href = url.pathname + url.search
+    link.setAttribute("download", "")
+  }
   // A member's own settings: their People page, photo and Wolfram Engine license.
   mount("data-settings", (root) =>
     import("./settings/index.js")

@@ -14,18 +14,24 @@ export const alwaysPass = (path) => ALWAYS_PASS.some((pattern) => pattern.test(p
 
 export const isCompute = (path) => path === "/jupyter" || path.startsWith("/jupyter/")
 
+/** A raw notebook's path: its rendered page is the same path without the extension. */
+export const notebookPage = (path) => path.replace(/\.(ipynb|nb)$/i, "")
+
 /**
- * @param {{method: string, path: string, mode?: string}} request  a same-origin request
+ * @param {{method: string, path: string, mode?: string, search?: string}} request  a same-origin request
  * @param {boolean} signedIn
- * @returns {"network" | "site" | "api" | "retired"}
+ * @returns {"network" | "site" | "api" | "retired" | "notebook"}
  */
-export function route({ method, path, mode }, signedIn) {
+export function route({ method, path, mode, search = "" }, signedIn) {
   if (!signedIn || alwaysPass(path)) return "network"
   if (isCompute(path)) return "retired"
   if (path === "/api" || path.startsWith("/api/")) return "api"
   // Never replay a form POST (or anything but a read) into the member site.
   if (method !== "GET" && method !== "HEAD") return "network"
-  if (mode === "navigate") return "site"
+  // Opening a raw notebook in the browser shows its rendered page; ?raw (the page's own download
+  // link) and anything but a navigation (a fetch, a download) still get the file.
+  if (mode === "navigate" && notebookPage(path) !== path && !new URLSearchParams(search).has("raw"))
+    return "notebook"
   return "site"
 }
 

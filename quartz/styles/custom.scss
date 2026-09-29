@@ -3573,6 +3573,11 @@ a.gpt-cite:hover {
 html.gpt-modal-open .gpt-fab {
   display: none;
 }
+// No button over an open Scratchpad lab, whose toasts sit in the same corner, whether or not its
+// own GPT panel has reported in (Ctrl/⌘+J still opens the modal).
+body:has(.scratchpad.scratch-open) .gpt-fab {
+  display: none;
+}
 .gpt-modal {
   position: fixed;
   inset: 0 0 0 auto;

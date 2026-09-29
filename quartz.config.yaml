@@ -134,6 +134,9 @@ plugins:
     enabled: true
   - source: "@quartz-community/og-image"
     enabled: true
+  # Each page's Markdown source beside its HTML, for the page's Export menu.
+  - source: "./quartz/plugins/local/page-source"
+    enabled: true
   - source: "@quartz-community/cname"
     enabled: false
   - source: "@quartz-community/canvas-page"

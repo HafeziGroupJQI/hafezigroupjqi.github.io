@@ -20,6 +20,16 @@ describe("the member edition behind /api/site", () => {
     expect((await client.fetch("/api/site/nowhere")).status).toBe(404)
   })
 
+  it("serves a page's Markdown source (its Export menu's download) to members only", async () => {
+    const client = await member()
+    const source = await client.fetch("/api/site/resources/notes.md")
+    expect(source.status).toBe(200)
+    expect(source.headers.get("content-type")).toMatch(/^text\/markdown/)
+    expect(source.headers.get("cache-control")).toBe("private, no-store")
+    expect(await source.text()).toContain("title: Private notes")
+    expect((await SELF.fetch(`${ORIGIN}/api/site/resources/notes.md`)).status).toBe(401)
+  })
+
   it("caches only content-hashed scripts, so a deploy's entry script is never stale", async () => {
     const client = await member()
     const cache = async (path: string) =>

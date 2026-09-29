@@ -68,4 +68,6 @@
   // SESSION_SECRET) and COMPUTE_HOST_KEY_HASH (lowercase hex sha256 of the host's bearer key).
   // Settings: GITHUB_VAULT_TOKEN, a fine-grained token for VAULT_REPO alone with Contents: read and
   // write; unset, members can't edit their People page.
+  // Uploads: GITHUB_VAULT_PRIVATE_TOKEN, a fine-grained token for DOCS_REPO alone with Contents and
+  // Pull requests read/write and Commit statuses read; unset, members can't upload.
 }

@@ -17,6 +17,9 @@ export interface Env {
   VAULT_REPO?: string
   /** A token that may write VAULT_REPO's contents (fine-grained: that repo, Contents read/write). */
   GITHUB_VAULT_TOKEN?: string
+  /** A token on DOCS_REPO (vault-private) alone for members' uploads (src/uploads/): fine-grained,
+   *  Contents and Pull requests read/write, Commit statuses read. Unset, uploads are off. */
+  GITHUB_VAULT_PRIVATE_TOKEN?: string
   /** The github.io site: the only browser origin (besides ALLOWED_ORIGINS), the OAuth callback
    *  host, and where non-API requests to the Worker are redirected. */
   PUBLIC_SITE_URL: string

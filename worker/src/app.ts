@@ -19,6 +19,7 @@ import { isLabAgentPath, labAgent } from "./gpt/lab-agent"
 import { gptRoutes } from "./gpt/routes"
 import { navIdentity, profileRoutes } from "./profile/routes"
 import type { VaultFetch } from "./profile/vault"
+import type { RepoFetch } from "./repo"
 import type { SkillsManifest } from "./gpt/skills"
 import {
   HttpError,
@@ -31,6 +32,7 @@ import {
   withPrivateHeaders,
 } from "./http"
 import { type Session, endSessions, readSession } from "./session"
+import { uploadRoutes } from "./uploads/routes"
 
 // The Worker is an API. Browsers only ever show https://hafezigroupjqi.github.io: its service
 // worker fetches the member edition of every page from GET /api/site/<path> with a bearer token,
@@ -78,6 +80,8 @@ export interface HandlerOptions {
   skills?: SkillsManifest
   /** Outbound fetch for the public vault's GitHub API (profile edits); tests substitute a fake. */
   vault?: VaultFetch
+  /** Outbound fetch for vault-private's GitHub API (members' uploads); tests substitute a fake. */
+  privateVault?: RepoFetch
 }
 
 export function createHandler(
@@ -88,6 +92,7 @@ export function createHandler(
   const upstream: Upstream = options.upstream ?? ((input, init) => fetch(input, init))
   const githubFetch: GitHubFetch = options.github ?? ((input, init) => fetch(input, init))
   const vaultFetch: VaultFetch = options.vault ?? ((input, init) => fetch(input, init))
+  const privateVaultFetch: RepoFetch = options.privateVault ?? ((input, init) => fetch(input, init))
   const gptDeps = {
     manifest,
     skills: options.skills ?? { skills: [] },
@@ -250,6 +255,8 @@ export function createHandler(
     if (devices) return devices
     const profile = await profileRoutes(request, url, env, session, record, vaultFetch)
     if (profile) return profile
+    const uploads = await uploadRoutes(request, url, env, session, record, privateVaultFetch)
+    if (uploads) return uploads
     return problem(404, "not found")
   }
 

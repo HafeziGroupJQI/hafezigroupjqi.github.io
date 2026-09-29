@@ -43,6 +43,29 @@ export function getScalar(page: Page, key: string): string | null {
   return parseInline(inline)
 }
 
+/**
+ * A top-level key as a list of strings: a flow list (`tags: [internal, notes]`) or a block list
+ * (`- internal` lines). Null when it is missing or not a list.
+ */
+export function getList(page: Page, key: string): string[] | null {
+  const found = span(page.front, key)
+  if (!found) return null
+  const [start, end] = found
+  const inline = page.front[start].slice(page.front[start].indexOf(":") + 1).trim()
+  if (inline.startsWith("[")) {
+    const close = inline.lastIndexOf("]")
+    if (close < 0) return null
+    const items = inline.slice(1, close).trim()
+    return items ? items.split(",").map((item) => parseInline(item.trim()) ?? "") : []
+  }
+  if (inline) return null
+  return page.front
+    .slice(start + 1, end)
+    .map((line) => line.match(/^\s*-\s*(.*)$/))
+    .filter((match) => match !== null)
+    .map((match) => parseInline(match[1].trim()) ?? "")
+}
+
 function parseInline(raw: string): string | null {
   if (raw === "" || raw === "~" || raw === "null" || raw === "Null" || raw === "NULL") return null
   if (raw.startsWith('"')) {

@@ -1,6 +1,6 @@
 import type { Auditor } from "../audit"
 import type { Env } from "../env"
-import { HttpError, decodeSegment, json } from "../http"
+import { HttpError, decodeSegment, json, readLimited } from "../http"
 import { DEFAULT_MODEL } from "./models"
 import type { GptStore } from "./store"
 
@@ -129,9 +129,13 @@ export async function labChatRoutes(
   }
   write()
   if (method === "PUT") {
-    const text = await request.text()
-    if (new TextEncoder().encode(text).length > MAX_LAB_CHAT_BYTES)
-      throw new HttpError(413, "this chat is too large to save (5 MB at most)")
+    const text = new TextDecoder().decode(
+      await readLimited(
+        request,
+        MAX_LAB_CHAT_BYTES,
+        "this chat is too large to save (5 MB at most)",
+      ),
+    )
     const chat = parseLabChat(text)
     const model = existing?.model ?? DEFAULT_MODEL
     const conversation = await store.saveLabChat(

@@ -248,5 +248,18 @@ describe("the lab's AI chats, kept as Hafezi GPT conversations", () => {
     )
     const big = JSON.stringify({ ...chat(), pad: "x".repeat(5 * 1024 * 1024) })
     expect((await mine("/lab-chats/x", { method: "PUT", body: big })).status).toBe(413)
+    // A chunked body has no length to check first: it is counted as it arrives.
+    let sent = 0
+    const chunk = new Uint8Array(64 * 1024).fill(0x20)
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent += chunk.byteLength
+        controller.enqueue(chunk)
+        if (sent > 64 * 1024 * 1024) controller.close()
+      },
+    })
+    const chunked = await mine("/lab-chats/x", { method: "PUT", body: endless })
+    expect(chunked.status).toBe(413)
+    expect(sent).toBeLessThan(16 * 1024 * 1024)
   })
 })

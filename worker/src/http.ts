@@ -42,6 +42,39 @@ export function decodeSegment(value: string): string {
   }
 }
 
+/**
+ * A request body of at most `max` bytes: refused by its content-length before any of it is read,
+ * and counted as it is read, since a chunked body has no length to check.
+ */
+export async function readLimited(
+  request: Request,
+  max: number,
+  tooLarge: string,
+): Promise<Uint8Array> {
+  if (Number(request.headers.get("content-length") ?? 0) > max) throw new HttpError(413, tooLarge)
+  if (!request.body) return new Uint8Array()
+  const reader = request.body.getReader()
+  const parts: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      await reader.cancel().catch(() => {})
+      throw new HttpError(413, tooLarge)
+    }
+    parts.push(value)
+  }
+  const body = new Uint8Array(size)
+  let offset = 0
+  for (const part of parts) {
+    body.set(part, offset)
+    offset += part.byteLength
+  }
+  return body
+}
+
 export async function readJson(request: Request): Promise<unknown> {
   let body: unknown
   try {

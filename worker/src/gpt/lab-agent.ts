@@ -1,5 +1,5 @@
 import type { Env } from "../env"
-import { HttpError, withPrivateHeaders } from "../http"
+import { HttpError, readLimited, withPrivateHeaders } from "../http"
 import type { AnthropicFetch } from "./chat"
 import { labSession } from "./lab"
 import { withLabPrompt } from "./lab-prompt"
@@ -136,11 +136,11 @@ export async function labAgent(
   if (request.method !== "POST") throw new HttpError(405, "method not allowed")
   const session = await labSession(request, url, env, token)
   if (!env.ANTHROPIC_API_KEY) throw new HttpError(503, "Hafezi GPT's model is not set up")
-  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY)
-    throw new HttpError(413, "the request is too large")
+  // Counted as it is read too: a chunked body has no content-length to check.
+  const bytes = await readLimited(request, MAX_BODY, "the request is too large")
   let body: Record<string, unknown>
   try {
-    body = (await request.json()) as Record<string, unknown>
+    body = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>
   } catch {
     throw new HttpError(422, "request body must be JSON")
   }

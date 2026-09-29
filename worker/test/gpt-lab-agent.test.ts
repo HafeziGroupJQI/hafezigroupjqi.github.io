@@ -152,6 +152,34 @@ describe("the lab's coding agent endpoint", () => {
     expect(await usageOf("halle")).toEqual({ input: 40, output: 6 })
   })
 
+  it("refuses a body over 4 MB, chunked or not, before anything is sent on", async () => {
+    const big = { ...ask, messages: [{ role: "user", content: "x".repeat(4 * 1024 * 1024) }] }
+    expect((await agent(own, big)).status).toBe(413)
+    let sent = 0
+    const chunk = new TextEncoder().encode(" ".repeat(64 * 1024))
+    const chunked = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent += chunk.byteLength
+        controller.enqueue(chunk)
+        if (sent > 64 * 1024 * 1024) controller.close()
+      },
+    })
+    const ctx = createExecutionContext()
+    const response = await (worker as ExportedHandler).fetch!(
+      new Request(`${ORIGIN}/lab/${own}/hafezi-gpt/anthropic/v1/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: ORIGIN },
+        body: chunked,
+      }) as any,
+      { ...env, ANTHROPIC_API_KEY: "test-key" } as any,
+      ctx,
+    )
+    await waitOnExecutionContext(ctx)
+    expect(response.status).toBe(413)
+    expect(sent).toBeLessThan(16 * 1024 * 1024)
+    expect(anthropicCalls).toHaveLength(0)
+  })
+
   it("stops at the member's monthly budget", async () => {
     await env.DB.prepare("INSERT OR REPLACE INTO gpt_budgets (login, monthly_tokens) VALUES (?, 1)")
       .bind("agnes")

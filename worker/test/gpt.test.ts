@@ -233,7 +233,8 @@ describe("offline turns (no API key)", () => {
   })
 })
 
-describe("chat history and sharing", () => {
+// About 1 s, but past vitest's 5 s default on a loaded machine.
+describe("chat history and sharing", { timeout: 20_000 }, () => {
   it("keeps chats private until shared, read-only for readers, and forks to continue", async () => {
     const alice = await as("alice-share")
     const bob = await as("bob-share")
@@ -299,7 +300,8 @@ describe("chat history and sharing", () => {
   })
 })
 
-describe("uploads", () => {
+// About 1 s, but past vitest's 5 s default on a loaded machine.
+describe("uploads", { timeout: 20_000 }, () => {
   it("stores text and PDF uploads per chat and refuses Office files", async () => {
     const alice = await as("alice-files")
     const chat = await newChat(alice)

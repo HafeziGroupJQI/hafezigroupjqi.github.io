@@ -190,12 +190,26 @@ body {
   .search {
     width: 100%;
   }
+  // Below the desktop breakpoint the section nav (which doesn't fold, unlike the old Explorer)
+  // follows the article and its graph and backlinks, under a rule.
   @media (max-width: 999px) {
     display: block;
-    margin-bottom: 24px;
+    order: 2;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--jqi-rule);
     .explorer .title-button {
       display: none;
     }
+  }
+}
+@media (max-width: 999px) {
+  .page-content {
+    display: flex;
+    flex-direction: column;
+  }
+  .page-content__aside {
+    order: 1;
   }
 }
 

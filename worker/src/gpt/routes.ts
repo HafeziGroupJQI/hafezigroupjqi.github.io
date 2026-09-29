@@ -4,7 +4,7 @@ import type { Env } from "../env"
 import { HttpError, decodeSegment, json, readJson } from "../http"
 import type { Session } from "../session"
 import { type GptDeps, displayTurns, postMessage, readTurn } from "./chat"
-import { estimateTokens, projectKnowledge, uploadKind } from "./context"
+import { estimateTokens, fileHeaders, projectKnowledge, storedMime, uploadKind } from "./context"
 import { loadKnowledge } from "./knowledge"
 import { labChatKey, labChatRoutes } from "./lab-chats"
 import { vaultTool, vaultToolSpecs } from "./lab-tools"
@@ -166,12 +166,7 @@ export async function gptRoutes(
     if (method === "GET") {
       const object = await env.ARTIFACTS.get(file.r2_key)
       if (!object) throw new HttpError(404, "file not found")
-      return new Response(object.body, {
-        headers: {
-          "content-type": file.mime,
-          "content-disposition": `inline; filename="${file.name.replace(/["\\\r\n]/g, "")}"`,
-        },
-      })
+      return new Response(object.body, { headers: fileHeaders(file) })
     }
     if (method === "DELETE") {
       write()
@@ -466,13 +461,13 @@ async function upload(
   if (!file || typeof file === "string") throw new HttpError(422, "choose a file")
   if (file.size > MAX_UPLOAD_BYTES) throw new HttpError(413, "files can be up to 25 MB")
   const name = (file.name || "file").replace(/[\\/\r\n"]/g, "_").slice(0, 200)
-  const mime = file.type || "application/octet-stream"
-  const kind = uploadKind(mime, name)
+  const kind = uploadKind(file.type || "application/octet-stream", name)
   if (!kind)
     throw new HttpError(
       415,
       `${name}: upload PDFs, images, or text/code files (convert Office documents to PDF first)`,
     )
+  const mime = storedMime(kind, file.type)
   const id = newId("f")
   const bytes = await file.arrayBuffer()
   const key = `gpt/${login}/${id}/${name}`

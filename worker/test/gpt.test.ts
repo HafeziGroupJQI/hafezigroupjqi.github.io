@@ -1,5 +1,6 @@
 import { SELF, createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
+import { issueLabTicket } from "../src/compute/tokens"
 import { ORIGIN, as, auditRows } from "./helpers"
 import worker, { anthropicCalls, anthropicScript } from "./worker"
 
@@ -330,6 +331,95 @@ describe("uploads", { timeout: 20_000 }, () => {
     expect(sent.status).toBe(200)
     const { body } = await alice.json(`/api/gpt/conversations/${chat.id}`)
     expect(body.turns[0].files).toEqual([{ id: file.id, name: "sweep.py", mime: "text/x-python" }])
+  })
+
+  it("serves uploads so they never run: text as plain text, images and PDFs as themselves", async () => {
+    const alice = await as("alice-serve")
+    const project = await alice.json("/api/gpt/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Figures", visibility: "group" }),
+    })
+    const add = async (name: string, type: string, content: string | Uint8Array) => {
+      const response = await uploadTo(
+        alice,
+        `/api/gpt/projects/${project.body.id}/files`,
+        name,
+        type,
+        content,
+      )
+      expect(response.status).toBe(201)
+      return (await response.json()) as any
+    }
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'
+    const html = await add("page.html", "text/html", "<script>alert(1)</script>")
+    // The name says text, the type says SVG: it is stored as text, not as an active type.
+    const disguised = await add("fig.txt", "image/svg+xml", svg)
+    expect(disguised.mime).toBe("text/plain")
+    const png = await add("plot.png", "image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
+    const pdf = await add("notes.pdf", "text/html", "%PDF-1.4")
+    expect(pdf.mime).toBe("application/pdf")
+    // A file stored before this check, under the type its uploader claimed.
+    await env.DB.prepare(
+      `INSERT INTO gpt_files (id, project_id, conversation_id, owner, name, mime, size, r2_key,
+         tokens_est, created_at) VALUES ('f_legacy_svg', ?, NULL, 'alice-serve', 'old.txt',
+         'image/svg+xml', 10, ?, 1, 0)`,
+    )
+      .bind(project.body.id, disguised.r2_key)
+      .run()
+
+    const bob = await as("bob-serve")
+    const served = async (id: string) => {
+      const response = await bob.fetch(`/api/gpt/files/${id}`)
+      expect(response.status).toBe(200)
+      await response.arrayBuffer()
+      return Object.fromEntries(
+        ["content-type", "content-disposition", "content-security-policy"].map((h) => [
+          h,
+          response.headers.get(h),
+        ]),
+      )
+    }
+    const sandbox = "sandbox; default-src 'none'"
+    for (const id of [html.id, disguised.id, "f_legacy_svg"])
+      expect(await served(id)).toMatchObject({
+        "content-type": "text/plain; charset=utf-8",
+        "content-security-policy": sandbox,
+      })
+    expect(await served(png.id)).toEqual({
+      "content-type": "image/png",
+      "content-disposition": 'inline; filename="plot.png"',
+      "content-security-policy": sandbox,
+    })
+    expect(await served(pdf.id)).toMatchObject({ "content-type": "application/pdf" })
+    // A kind no longer accepted downloads instead of opening.
+    await env.DB.prepare(
+      "UPDATE gpt_files SET mime = 'application/x-msdownload', name = 'x' WHERE id = ?",
+    )
+      .bind(html.id)
+      .run()
+    expect(await served(html.id)).toMatchObject({
+      "content-type": "application/octet-stream",
+      "content-disposition": 'attachment; filename="x"',
+      "content-security-policy": sandbox,
+    })
+    expect(
+      (await bob.fetch(`/api/gpt/files/${png.id}`)).headers.get("x-content-type-options"),
+    ).toBe("nosniff")
+
+    // The same file on the lab origin, where the lab ticket lives.
+    const ticket = await issueLabTicket(
+      env as any,
+      { login: "alice-serve", role: "member", exp: Math.floor(Date.now() / 1000) + 3600 },
+      "alice-serve",
+    )
+    const onLab = await SELF.fetch(
+      `${ORIGIN}/lab/${ticket}/hafezi-gpt/api/gpt/files/${disguised.id}`,
+    )
+    expect(onLab.status).toBe(200)
+    expect(onLab.headers.get("content-type")).toBe("text/plain; charset=utf-8")
+    expect(onLab.headers.get("content-security-policy")).toBe(sandbox)
+    expect(onLab.headers.get("x-content-type-options")).toBe("nosniff")
+    await onLab.arrayBuffer()
   })
 })
 

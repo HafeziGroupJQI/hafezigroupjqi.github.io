@@ -184,6 +184,44 @@ export function uploadKind(mime: string, name: string): "pdf" | "image" | "text"
   return null
 }
 
+/**
+ * The type an upload is stored under: its kind decides, so a name can't smuggle in an active type
+ * (an SVG sent as fig.txt is text, stored as text/plain, never image/svg+xml).
+ */
+export function storedMime(kind: "pdf" | "image" | "text", mime: string): string {
+  if (kind === "pdf") return "application/pdf"
+  if (kind === "image") return mime
+  return isTextMime(mime) ? mime.slice(0, 100) : "text/plain"
+}
+
+/** Served files never run: no scripts, no subresources, and nothing is sniffed. */
+export const SANDBOX_CSP = "sandbox; default-src 'none'"
+
+/**
+ * How an uploaded file is served back (on the site and on the lab origin): PDFs and plain images
+ * open in the browser, text of any kind (HTML and SVG included) shows as plain text, and anything
+ * else downloads. The type comes from the file's kind, so older rows stored under an active type
+ * are safe too. PDFs go without the sandbox: browsers refuse to show a PDF in a sandboxed
+ * document, and their viewers never run a PDF's scripts as the site.
+ */
+export function fileHeaders(file: Pick<FileRow, "mime" | "name">): Record<string, string> {
+  const kind = uploadKind(file.mime, file.name)
+  const type =
+    kind === "pdf"
+      ? "application/pdf"
+      : kind === "image"
+        ? file.mime
+        : kind === "text"
+          ? "text/plain; charset=utf-8"
+          : "application/octet-stream"
+  return {
+    "content-type": type,
+    "content-disposition": `${kind ? "inline" : "attachment"}; filename="${file.name.replace(/["\\\r\n]/g, "")}"`,
+    "x-content-type-options": "nosniff",
+    ...(kind === "pdf" ? {} : { "content-security-policy": SANDBOX_CSP }),
+  }
+}
+
 function textDocument(title: string, context: string, data: string): Block {
   return {
     type: "document",

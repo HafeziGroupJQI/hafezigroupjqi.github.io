@@ -232,6 +232,29 @@ describe("the lab's AI chats, kept as Hafezi GPT conversations", () => {
       expect((await put(name)).status, JSON.stringify(name)).toBe(422)
   })
 
+  it("leaves a chat's time alone when the lab saves it unchanged", async () => {
+    const call = lab(
+      await issueLabTicket(env as any, { login: "xan", role: "member", exp: exp() }, "xan"),
+    )
+    const body = JSON.stringify(chat("Same"))
+    const put = async (text: string) =>
+      (await (await call("/lab-chats/Kept", { method: "PUT", body: text })).json()) as any
+    const first = await put(body)
+    const updatedAt = async () =>
+      (
+        await env.DB.prepare("SELECT updated_at FROM gpt_conversations WHERE id = ?")
+          .bind(first.conversation_id)
+          .first<{ updated_at: number }>()
+      )?.updated_at
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(await put(body)).toEqual(first)
+    expect(await updatedAt()).toBe(first.updated_at)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    const changed = await put(JSON.stringify(chat("Changed")))
+    expect(changed.updated_at).toBeGreaterThan(first.updated_at)
+    expect(await updatedAt()).toBe(changed.updated_at)
+  })
+
   it("creates only, never overwrites, when a save says If-None-Match: *", async () => {
     const call = lab(
       await issueLabTicket(env as any, { login: "vic", role: "member", exp: exp() }, "vic"),

@@ -137,13 +137,24 @@ export async function labChatRoutes(
     const createOnly = request.headers.get("if-none-match")?.trim() === "*"
     const taken = `a lab chat named "${name}" already exists`
     if (createOnly && existing) throw new HttpError(409, taken)
-    const text = new TextDecoder().decode(
-      await readLimited(
-        request,
-        MAX_LAB_CHAT_BYTES,
-        "this chat is too large to save (5 MB at most)",
-      ),
+    const bytes = await readLimited(
+      request,
+      MAX_LAB_CHAT_BYTES,
+      "this chat is too large to save (5 MB at most)",
     )
+    // The lab saves every chat again each time it loads: a save of what is stored already changes
+    // nothing, so /gpt keeps the chat's time and place in the list.
+    const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+    if (existing) {
+      const stored = await env.ARTIFACTS.head(labChatKey(existing.id))
+      if (stored?.customMetadata?.sha256 === digest) {
+        record.recorded = true
+        return json({ name, conversation_id: existing.id, updated_at: existing.updated_at })
+      }
+    }
+    const text = new TextDecoder().decode(bytes)
     const chat = parseLabChat(text)
     const model = existing?.model ?? DEFAULT_MODEL
     const conversation = await store.saveLabChat(
@@ -157,6 +168,7 @@ export async function labChatRoutes(
     if (!conversation) throw new HttpError(409, taken)
     await env.ARTIFACTS.put(labChatKey(conversation.id), text, {
       httpMetadata: { contentType: "application/json" },
+      customMetadata: { sha256: digest },
     })
     // Autosave writes every few seconds while a chat is open: only its first save is audited.
     if (existing) record.recorded = true

@@ -93,7 +93,11 @@ export function describeStatus(status) {
   if (!status?.host?.online) return { label: "compute host offline", tone: "offline" }
   const server = status.server?.server
   if (server === "running") return { label: "server running", tone: "online" }
-  if (server === "pending") return { label: "server starting", tone: "pending" }
+  // The host says which way a pending server is going (pending: "spawn" or "stop"), when it can.
+  if (server === "pending")
+    return status.server.pending === "stop"
+      ? { label: "server stopping", tone: "pending" }
+      : { label: "server starting", tone: "pending" }
   if (server === "stopped") return { label: "host online · server stopped", tone: "stale" }
   return { label: "host online", tone: "stale" }
 }

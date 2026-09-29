@@ -136,6 +136,10 @@ export function mountScratchpad(root, { api, session }) {
     banner.hidden = false
     banner.replaceChildren(h("span", { text: error.message }))
   }
+  const showStatus = ({ label, tone }) => {
+    setText(pill, label)
+    pill.className = `status status-${tone}`
+  }
   const setBusy = (value) => {
     busy = value
     const online = !!status?.host?.online
@@ -162,9 +166,7 @@ export function mountScratchpad(root, { api, session }) {
       ownGroup.dataset.asked = "1"
       void loadProfiles()
     }
-    const { label, tone } = describeStatus(status)
-    setText(pill, label)
-    pill.className = `status status-${tone}`
+    showStatus(describeStatus(status))
     if (!busy) setBusy(false)
   }
 
@@ -235,6 +237,8 @@ export function mountScratchpad(root, { api, session }) {
   async function stopServer() {
     if (!confirm("Stop your server? Unsaved notebook changes are lost.")) return
     setBusy(true)
+    // The host takes a few seconds to stop the lab: the pill says so until the next status.
+    showStatus(describeStatus({ ...status, server: { server: "pending", pending: "stop" } }))
     try {
       await api("/api/compute/server", { method: "DELETE" })
       frame.hidden = true
@@ -242,6 +246,7 @@ export function mountScratchpad(root, { api, session }) {
       root.classList.remove("scratch-open")
       await refresh()
     } catch (error) {
+      showStatus(describeStatus(status))
       showError(error)
     } finally {
       setBusy(false)

@@ -64,6 +64,12 @@ test("status pill wording", () => {
     describeStatus({ host: { online: true }, server: { server: "stopped" } }).label,
     /stopped/,
   )
+  // A pending server is starting, unless the host says it is stopping.
+  const pending = (extra) =>
+    describeStatus({ host: { online: true }, server: { server: "pending", ...extra } })
+  assert.deepEqual(pending({ pending: "stop" }), { label: "server stopping", tone: "pending" })
+  assert.deepEqual(pending({ pending: "spawn" }), { label: "server starting", tone: "pending" })
+  assert.deepEqual(pending({}), { label: "server starting", tone: "pending" })
 })
 
 test("?open= names a file in the member's storage; absolute or parent paths are ignored", () => {

@@ -222,7 +222,8 @@ describe("the lab's coding agent endpoint", () => {
       messages: [{ role: "user", content: [{ type: "text", text: "x = np." }] }],
     }
     expect((await agent(own, completion, { overrides })).status).toBe(200)
-    expect(anthropicCalls[0].body.max_tokens).toBe(16_000)
+    expect(anthropicCalls[0].body.max_tokens).toBe(512)
+    expect(anthropicCalls[0].body.system).toEqual(completion.system)
     const tools = [{ name: "add_cell", input_schema: { type: "object" } }]
     expect((await agent(own, { ...ask, messages: hello, tools }, { overrides })).status).toBe(429)
     expect(
@@ -232,12 +233,29 @@ describe("the lab's coding agent endpoint", () => {
     expect(anthropicCalls).toHaveLength(1)
   })
 
+  it("sends a ghost-text completion with its completer's own prompt, capped at 512 tokens", () => {
+    const system = [{ type: "text", text: "You are an AI code completion assistant." }]
+    const completion = { model: "claude-haiku-4-5", max_tokens: 64_000, system, messages: hello }
+    expect(upstreamBody(completion)).toEqual({ ...completion, max_tokens: 512 })
+    expect(upstreamBody({ ...completion, max_tokens: 100 }).max_tokens).toBe(100)
+    const { system: _, ...bare } = completion
+    expect(upstreamBody(bare)).toEqual({ ...bare, max_tokens: 512 })
+    // The agent's turns, which stream or carry tools, still get the lab's section.
+    const tools = [{ name: "add_cell", input_schema: { type: "object" } }]
+    for (const turn of [{ stream: true }, { tools }]) {
+      const sent = upstreamBody({ ...completion, ...turn })
+      expect(sent.system).toEqual([...system, { type: "text", text: LAB_PROMPT }])
+      expect(sent.max_tokens).toBe(16_000)
+    }
+  })
+
   it("offers only the site's models, and no sampling knobs where the model refuses them", () => {
     expect(() => upstreamBody({ model: "claude-3-opus", messages: hello })).toThrow(/not available/)
     expect(() => upstreamBody({ model: "claude-sonnet-5", messages: [] })).toThrow(/non-empty/)
     const haiku = upstreamBody({
       model: "claude-haiku-4-5",
       messages: hello,
+      stream: true,
       temperature: 0.1,
       max_tokens: 10_000_000,
       tools: [{ type: "code_execution_20250825", name: "code_execution" }],
@@ -246,6 +264,7 @@ describe("the lab's coding agent endpoint", () => {
     expect(haiku).toEqual({
       model: "claude-haiku-4-5",
       messages: hello,
+      stream: true,
       max_tokens: 16_000,
       system: LAB_PROMPT,
       temperature: 0.1,
@@ -253,7 +272,8 @@ describe("the lab's coding agent endpoint", () => {
   })
 
   it("adds the lab's section after the agent's own system prompt, in the form it came", () => {
-    const system = (sent: unknown) => upstreamBody({ ...ask, messages: hello, system: sent }).system
+    const system = (sent: unknown) =>
+      upstreamBody({ ...ask, messages: hello, stream: true, system: sent }).system
     expect(system("You are Jupyternaut.")).toBe(`You are Jupyternaut.\n\n${LAB_PROMPT}`)
     const blocks = [
       { type: "text", text: "You are Jupyternaut." },
@@ -270,7 +290,8 @@ describe("the lab's coding agent endpoint", () => {
     const system = [
       { type: "text", text: "You are Jupyternaut.", cache_control: { type: "ephemeral" } },
     ]
-    const reply = await agent(own, { ...ask, messages: hello, system })
+    const tools = [{ name: "add_cell", input_schema: { type: "object" } }]
+    const reply = await agent(own, { ...ask, messages: hello, system, tools })
     expect(reply.status).toBe(200)
     expect(anthropicCalls[0].body.system).toEqual([...system, { type: "text", text: LAB_PROMPT }])
   })

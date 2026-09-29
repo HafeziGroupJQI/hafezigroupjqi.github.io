@@ -38,22 +38,26 @@ export const AGENT_MODELS: Record<string, GptModel> = {
 const NO_SAMPLING = new Set(["claude-sonnet-5", "claude-opus-5-5"])
 const MAX_BODY = 4 * 1024 * 1024
 const MAX_TOKENS = 16_000
+/** A ghost-text completion is a line or a few: its completer asks for 64,000 all the same. */
+const COMPLETION_TOKENS = 512
+
+/**
+ * Ghost-text completions (a prompt, no tools, not streamed) come each time the member pauses
+ * while typing, and a chat's title is asked for the same way; the agent's own turns stream.
+ */
+export const isCompletion = (sent: Record<string, unknown>) => !sent.tools && !sent.stream
 
 /**
  * The request sent on: only what the agent needs, never server tools, MCP or betas, with the
- * lab's section after its system prompt.
+ * lab's section after its system prompt. A completion keeps its completer's prompt as it came:
+ * the lab's section would cost more than the completion itself.
  */
 export function upstreamBody(body: Record<string, unknown>): Record<string, unknown> {
   const model = typeof body.model === "string" ? body.model : ""
   if (!AGENT_MODELS[model]) throw new HttpError(422, `model ${model || "(none)"} is not available`)
   if (!Array.isArray(body.messages) || !body.messages.length)
     throw new HttpError(422, "messages must be a non-empty list")
-  const out: Record<string, unknown> = {
-    model,
-    messages: body.messages,
-    max_tokens: Math.min(Number(body.max_tokens) || 4096, MAX_TOKENS),
-    system: withLabPrompt(body.system),
-  }
+  const out: Record<string, unknown> = { model, messages: body.messages }
   for (const key of ["stream", "stop_sequences", "tool_choice"] as const)
     if (body[key] !== undefined) out[key] = body[key]
   if (Array.isArray(body.tools)) {
@@ -66,6 +70,11 @@ export function upstreamBody(body: Record<string, unknown>): Record<string, unkn
     if (tools.length) out.tools = tools
     else delete out.tool_choice
   }
+  const completion = isCompletion(out)
+  const cap = completion ? COMPLETION_TOKENS : MAX_TOKENS
+  out.max_tokens = Math.min(Number(body.max_tokens) || 4096, cap)
+  if (!completion) out.system = withLabPrompt(body.system)
+  else if (body.system !== undefined) out.system = body.system
   if (!NO_SAMPLING.has(model))
     for (const key of ["temperature", "top_p", "top_k"] as const)
       if (typeof body[key] === "number") out[key] = body[key]
@@ -152,9 +161,8 @@ export async function labAgent(
       402,
       "you've used this month's Hafezi GPT budget; ask a group admin to raise it",
     )
-  // Ghost-text completions (a prompt, no tools, not streamed) come each time the member pauses
-  // while typing: they have their own allowance, so they never use up the agent's.
-  const completion = !sent.tools && !sent.stream
+  // Completions have their own allowance, so a member typing never uses up the agent's.
+  const completion = isCompletion(sent)
   const limiter = completion ? env.COMPLETE_LIMIT : env.COMPUTE_LIMIT
   if (limiter) {
     const key = `${completion ? "complete" : "agent"}:${session.login}`

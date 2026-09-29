@@ -6,6 +6,7 @@ import type { Session } from "../session"
 import { type GptDeps, displayTurns, postMessage, readTurn } from "./chat"
 import { estimateTokens, projectKnowledge, uploadKind } from "./context"
 import { loadKnowledge } from "./knowledge"
+import { vaultTool, vaultToolSpecs } from "./lab-tools"
 import { DEFAULT_MODEL, MODELS } from "./models"
 import { allSkills, validateSkill } from "./skills"
 import { type FileRow, GptStore, type Project, newId } from "./store"
@@ -183,6 +184,15 @@ export async function gptRoutes(
       return json({ deleted: file.id })
     }
     throw new HttpError(405, "method not allowed")
+  }
+
+  // ---- the site tools, for the lab's coding agent (lab-tools.ts) ----
+  if (path === "/tools" && method === "GET") return json(vaultToolSpecs())
+  const toolMatch = path.match(/^\/tools\/([a-z_]+)$/)
+  if (toolMatch) {
+    if (method !== "POST") throw new HttpError(405, "method not allowed")
+    write()
+    return json(await vaultTool(toolMatch[1], await readJson(request), env, store, deps))
   }
 
   // ---- skills ----

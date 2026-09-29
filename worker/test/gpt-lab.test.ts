@@ -83,6 +83,26 @@ describe("Hafezi GPT on the lab origin", () => {
     })
   })
 
+  it("answers the coding agent's site tools as text", async () => {
+    const call = lab(own)
+    const specs = (await (await call("/tools")).json()) as any[]
+    expect(specs.map((t) => t.name)).toEqual(["search_site", "read_page", "list_pages"])
+    expect(specs[0].input_schema.required).toEqual(["query"])
+    const tool = (name: string, input: object) =>
+      call(`/tools/${name}`, { method: "POST", body: JSON.stringify(input) })
+    const found = (await (await tool("search_site", { query: "santec laser" })).json()) as any
+    expect(found.is_error).toBe(false)
+    expect(found.text).toContain("## Santec TSL tunable laser")
+    const page = (await (await tool("read_page", { page: "equipment/santec-tsl" })).json()) as any
+    expect(page.text).toContain("# Santec TSL tunable laser")
+    expect(page.text).toContain("swept-wavelength source")
+    const missing = (await (await tool("read_page", { page: "no/such-page" })).json()) as any
+    expect(missing.is_error).toBe(true)
+    // Only these three: not the chat's uploads or skills.
+    expect((await tool("read_file", { file_id: "f_1" })).status).toBe(404)
+    expect((await tool("search_site", [])).status).toBe(422)
+  })
+
   it("takes writes only from the lab page itself, and only with a valid ticket", async () => {
     const call = lab(own)
     const post = (headers: Record<string, string>) =>

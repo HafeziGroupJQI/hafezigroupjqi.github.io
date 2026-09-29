@@ -59,6 +59,18 @@ test("rows read as sentences", () => {
     describe({ action: "admin.profile.approve", target: "ada" }),
     "approved the People page claim of ada",
   )
+  assert.equal(
+    describe({ action: "uploads.rename", target: "notes/a.pdf", detail: { to: "files/a.pdf" } }),
+    "staged a move of notes/a.pdf to files/a.pdf",
+  )
+  assert.equal(
+    describe({ action: "uploads.send", target: "0123456789ab", detail: { pull: 4 } }),
+    "sent upload draft 0123456789ab as pull request #4",
+  )
+  assert.equal(
+    describe({ action: "admin.uploads.discard", target: "0123456789ab", detail: { login: "ada" } }),
+    "discarded the upload draft 0123456789ab of ada",
+  )
 })
 
 test("token and budget formatting", () => {

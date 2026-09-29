@@ -6,6 +6,7 @@ export const ACTION_GROUPS = [
   ["gpt", "Hafezi GPT"],
   ["device", "Devices"],
   ["doc", "Private documents"],
+  ["uploads", "Uploads"],
   ["admin", "Admin changes"],
   ["api", "Other writes"],
 ]
@@ -41,6 +42,20 @@ const LABELS = {
   "admin.profile.approve": "approved the People page claim of",
   "admin.profile.reject": "turned down the People page claim of",
   "profile.claim": "asked to link People page",
+  "uploads.create": "started upload draft",
+  "uploads.stage": "staged",
+  "uploads.rename": "staged a move of",
+  "uploads.delete": "staged the deletion of",
+  "uploads.unstage": "took out of a draft",
+  "uploads.note": "edited the note of upload draft",
+  "uploads.send": "sent upload draft",
+  "uploads.discard": "discarded upload draft",
+  "uploads.merge": "had upload draft merged:",
+  "uploads.failed": "had upload draft fail the vault's check:",
+  "uploads.conflict": "had upload draft conflict with main:",
+  "uploads.review": "had upload draft left for an admin:",
+  "uploads.closed": "had upload draft closed on GitHub:",
+  "admin.uploads.discard": "discarded the upload draft",
   "gpt.message": "asked Hafezi GPT in",
   "gpt.share": "shared chat",
   "gpt.unshare": "unshared chat",
@@ -67,6 +82,9 @@ export function describe(row) {
   }
   if (row.action === "gpt.share" && detail.grantee)
     text += ` with ${detail.grantee === "*" ? "the whole lab" : detail.grantee}`
+  if (row.action === "uploads.rename" && detail.to) text += ` to ${detail.to}`
+  if (row.action === "uploads.send" && detail.pull) text += ` as pull request #${detail.pull}`
+  if (row.action === "admin.uploads.discard" && detail.login) text += ` of ${detail.login}`
   if (row.action.startsWith("api.") && row.status) text += ` → ${row.status}`
   return text
 }

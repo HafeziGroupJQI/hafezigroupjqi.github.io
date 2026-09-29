@@ -1,6 +1,6 @@
 // /admin: the group-admin console. Audit log (who signed in when, what they did), the admin
-// allow-list (org owners are always admins), members' claims of People pages, and Hafezi GPT
-// usage + monthly budgets. The Worker
+// allow-list (org owners are always admins), members' claims of People pages, members' upload
+// drafts, and Hafezi GPT usage + monthly budgets. The Worker
 // enforces admin access on every /api/admin/* call; this page just shows a notice to non-admins.
 import { h } from "../dashboard/dom.js"
 import {
@@ -15,11 +15,13 @@ import {
   parseBudget,
   tabUrl,
 } from "./model.js"
+import { changeLabel, draftName, statusLabel } from "../uploads/model.js"
 
 const TABS = [
   ["audit", "Audit log"],
   ["admins", "Admins"],
   ["claims", "Profile claims"],
+  ["uploads", "Uploads"],
   ["usage", "Usage & budgets"],
   ["conversations", "Conversations"],
 ]
@@ -33,7 +35,7 @@ export function mountAdmin(root, { api, session }) {
     h("h1", { class: "dash-title", text: "Admin" }),
     h("p", {
       class: "dash-summary",
-      text: "Sign-ins, member activity, admins, People page claims and Hafezi GPT usage",
+      text: "Sign-ins, member activity, admins, People page claims, uploads and Hafezi GPT usage",
     }),
   )
   root.append(header)
@@ -77,6 +79,15 @@ export function mountAdmin(root, { api, session }) {
   api("/api/admin/profile-claims")
     .then((data) => countClaims(data.claims.length))
     .catch(() => {})
+  // Drafts with something in them that runs wait for an admin to merge them on GitHub.
+  const uploadsButton = [...tabs.children].find((button) => button.dataset.tab === "uploads")
+  const countUploads = (drafts) => {
+    const n = drafts.filter((draft) => draft.status === "review").length
+    uploadsButton.textContent = n ? `Uploads (${n})` : "Uploads"
+  }
+  api("/api/admin/uploads")
+    .then((data) => countUploads(data.drafts))
+    .catch(() => {})
   // Arrow keys, Home and End move between tabs; Tab moves into the panel.
   tabs.addEventListener("keydown", (event) => {
     const buttons = [...tabs.children]
@@ -105,6 +116,7 @@ export function mountAdmin(root, { api, session }) {
       audit: auditTab,
       admins: adminsTab,
       claims: claimsTab,
+      uploads: uploadsTab,
       usage: usageTab,
       conversations: conversationsTab,
     })
@@ -359,6 +371,75 @@ export function mountAdmin(root, { api, session }) {
               ),
             )
           : h("li", { class: "dash-empty", text: "No claims are waiting." }),
+      ),
+    )
+  }
+
+  // ---- members' uploads to the private vault ----
+  async function uploadsTab(panel) {
+    const data = await api("/api/admin/uploads")
+    countUploads(data.drafts)
+    const drop = (draft) => async () => {
+      if (
+        !confirm(`Discard ${draft.login}'s draft "${draftName(draft)}"? Its pull request closes.`)
+      )
+        return
+      try {
+        await api(`/api/admin/uploads/${draft.id}/discard`, { method: "POST" })
+        panel.replaceChildren()
+        await uploadsTab(panel)
+      } catch (error) {
+        fail(error)
+      }
+    }
+    panel.append(
+      h("p", {
+        class: "muted",
+        text: "Members' drafts of changes to the private vault. A sent draft is a pull request on GitHub, merged by the hourly run once the vault's check passes. A draft with something in it that runs (Quarto code, a Wolfram notebook, HTML in a page or a notebook's outputs) waits for an admin: read its pull request's diff, then merge it on GitHub. Discarding one closes its pull request.",
+      }),
+      h(
+        "ul",
+        { class: "admin-list" },
+        data.drafts.length
+          ? data.drafts.map((draft) =>
+              h(
+                "li",
+                { class: `cmd-card${draft.status === "review" ? " audit-admin" : ""}` },
+                h(
+                  "header",
+                  {},
+                  h("strong", { class: "mono", text: draft.login }),
+                  h("span", { text: draftName(draft) }),
+                  h("span", { class: "spacer" }),
+                  draft.pull
+                    ? h("a", {
+                        href: draft.pull.url,
+                        target: "_blank",
+                        rel: "noopener",
+                        text: `Pull request #${draft.pull.number}`,
+                      })
+                    : null,
+                  h("button", {
+                    type: "button",
+                    class: "danger",
+                    text: "Discard",
+                    onclick: drop(draft),
+                  }),
+                ),
+                h("p", { class: "muted", text: statusLabel(draft) }),
+                h(
+                  "ul",
+                  {},
+                  draft.changes.map((change) =>
+                    h("li", {
+                      text:
+                        changeLabel(change) + (change.review ? ` (runs: ${change.review})` : ""),
+                    }),
+                  ),
+                ),
+              ),
+            )
+          : h("li", { class: "dash-empty", text: "No drafts are open." }),
       ),
     )
   }

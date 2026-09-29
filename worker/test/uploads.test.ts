@@ -558,6 +558,44 @@ describe("uploads: drafts", () => {
   })
 })
 
+describe("uploads: admins", () => {
+  it("see every member's open drafts, and can discard one", async () => {
+    const ada = await as("ada")
+    const id = (await create(ada, "scans")).body.id
+    await stage(ada, id, "notes/scan.pdf", PDF)
+    await send(ada, id)
+    const other = (await create(await as("eve"))).body.id
+    expect((await (await as("eve")).json("/api/admin/uploads")).status).toBe(403)
+    const owner = await as("olivia", "owner")
+    const listed = await owner.json("/api/admin/uploads")
+    expect(listed.body.drafts.map((d: any) => [d.login, d.id, d.status])).toEqual([
+      ["ada", id, "open"],
+      ["eve", other, "editing"],
+    ])
+    expect(listed.body.drafts[0].pull.url).toBe(
+      "https://github.com/HafeziGroupJQI/vault-private/pull/1",
+    )
+    expect((await owner.json(`/api/admin/uploads/${id}/discard`, { method: "POST" })).body).toEqual(
+      {
+        id,
+        status: "discarded",
+      },
+    )
+    expect(repo.pulls.get(1)!.state).toBe("closed")
+    expect(repo.refs.has(`uploads/ada/${id}`)).toBe(false)
+    expect((await ada.json(`/api/uploads/drafts/${id}`)).body).toMatchObject({
+      status: "discarded",
+      detail: { message: "discarded by olivia" },
+    })
+    expect((await owner.json(`/api/admin/uploads/${id}/discard`, { method: "POST" })).status).toBe(
+      409,
+    )
+    expect(await auditRows("action = 'admin.uploads.discard'")).toEqual([
+      expect.objectContaining({ login: "olivia", target: id }),
+    ])
+  })
+})
+
 describe("uploads: the hourly merge", () => {
   /** The hourly run, as the cron makes it, at a given time. */
   const merge = (at: number) => mergeDue(env as any, repo.fetch, at)

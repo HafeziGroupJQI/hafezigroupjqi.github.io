@@ -83,6 +83,19 @@ export async function changesOfAll(env: Env, ids: string[]): Promise<Map<string,
   return out
 }
 
+/** Every member's live drafts, with their changes, for /admin: those due soonest first. */
+export async function liveDrafts(env: Env, repo: string) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM upload_drafts WHERE ${LIVE_SQL}
+     ORDER BY status = 'editing', COALESCE(due_at, updated_at), login`,
+  ).all<DraftRow>()
+  const changes = await changesOfAll(
+    env,
+    results.map((row) => row.id),
+  )
+  return results.map((row) => draftView(repo, row, changes.get(row.id) ?? []))
+}
+
 /** A draft as the members site shows it. */
 export function draftView(repo: string, row: DraftRow, changes: ChangeRow[]) {
   const live = LIVE.includes(row.status)

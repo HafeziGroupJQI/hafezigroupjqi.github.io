@@ -6,10 +6,13 @@ import { GptStore } from "../gpt/store"
 import { HttpError, decodeSegment, json, readJson } from "../http"
 import { decideClaim, pendingClaims } from "../profile/routes"
 import type { VaultFetch } from "../profile/vault"
+import type { RepoFetch } from "../repo"
 import type { Session } from "../session"
+import { discard, draftRow, liveDrafts } from "../uploads/drafts"
+import { PrivateVault } from "../uploads/github"
 
 // Group-admin console: the audit log, the admin allow-list, Hafezi GPT usage + budgets,
-// members' claims of People pages, and members' Hafezi GPT conversations (read-only). Everything here is admin-only (org owners, or
+// members' claims of People pages, members' upload drafts, and members' Hafezi GPT conversations (read-only). Everything here is admin-only (org owners, or
 // members an admin promoted).
 
 const PAGE = 100
@@ -78,6 +81,7 @@ export async function adminRoutes(
   session: Session,
   record: Auditor,
   vaultFetch: VaultFetch,
+  privateVaultFetch: RepoFetch,
 ): Promise<Response | null> {
   if (!url.pathname.startsWith("/api/admin/")) return null
   await requireAdmin(env, session)
@@ -224,6 +228,25 @@ export async function adminRoutes(
     const decided = await decideClaim(env, vaultFetch, login, approve)
     record(`admin.profile.${claim[2]}`, login, { path: decided.path })
     return json({ login, status: approve ? "approved" : "rejected", ...decided })
+  }
+
+  // ---- members' uploads to vault-private (src/uploads/) ----
+  if (path === "/uploads" && request.method === "GET")
+    return json({ drafts: await liveDrafts(env, new PrivateVault(env, privateVaultFetch).repo) })
+
+  const upload = path.match(/^\/uploads\/([0-9a-f]{12})\/discard$/)
+  if (upload && request.method === "POST") {
+    requireMutation(request, env)
+    const row = await draftRow(env, upload[1])
+    if (!row) throw new HttpError(404, "no such draft")
+    await discard(
+      env,
+      new PrivateVault(env, privateVaultFetch),
+      row,
+      `discarded by ${session.login}`,
+    )
+    record("admin.uploads.discard", row.id, { login: row.login, pull: row.pr_number })
+    return json({ id: row.id, status: "discarded" })
   }
 
   // ---- Hafezi GPT conversations, per member (read-only) ----

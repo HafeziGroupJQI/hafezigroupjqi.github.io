@@ -168,6 +168,8 @@ test("preparation builds distinct home, people, directory, alumni, and places pa
     assert.match(read("places/index"), /places-directory/)
     assert.match(read("people/amy"), /Amy's biography/)
     assert.match(read("materials/index"), /Material data stays here/)
+    // Recently modified is members only: the public build has no such page.
+    assert.ok(!fs.existsSync(path.join(built.output, "recent.md")))
     assert.equal(fs.readFileSync(path.join(source, "index.md"), "utf8"), before)
     assert.ok(fs.existsSync(path.join(source, "people/directory/contacts.base")))
   } finally {

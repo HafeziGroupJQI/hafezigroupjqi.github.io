@@ -45,6 +45,7 @@ export const MEMBER_PAGES = [
   "/admin",
   "/scratchpad",
   "/settings",
+  "/recent",
 ]
 
 const SITE_PREFIX = "/api/site"

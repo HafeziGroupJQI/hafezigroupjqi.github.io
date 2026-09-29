@@ -20,8 +20,8 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
         (section === "research" ? f.frontmatter?.type === "research" : false),
     )
     .sort((a, b) => String(a.frontmatter?.title).localeCompare(String(b.frontmatter?.title)))
-  // The navbar's member menus (Resources, Tools), in the member build only.
-  const members = navigation().filter((item) => item.member && item.children)
+  // The navbar's member entries (Recently modified, Resources, Tools), in the member build only.
+  const members = navigation().filter((item) => item.member)
   const link = (target: string, label: string) => (
     <a
       href={resolveRelative(slug, target as FullSlug)}
@@ -57,32 +57,36 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
         // member build and hidden until signed in (the session script reveals [data-member] and,
         // for admins, [data-admin-only]). The public build has none.
         <ul class="section-nav__members" data-member="" hidden>
-          {members.map((menu) => (
-            <li>
-              {menu.menu === "resources" ? (
-                link("resources/index", menu.label)
-              ) : (
-                <span class="section-nav__label">{menu.label}</span>
-              )}
-              <ul>
-                {[
-                  ...(menu.children ?? []),
-                  ...(menu.menu === "resources" ? extraResources : []),
-                ].map((child) => (
-                  <li
-                    data-admin-only={child.admin ? "" : undefined}
-                    hidden={child.admin ? true : undefined}
-                  >
-                    {child.href ? (
-                      <a href={child.href}>{child.label}</a>
-                    ) : (
-                      link(child.slug!, child.label)
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
+          {members.map((menu) =>
+            !menu.children ? (
+              <li>{link(menu.slug!, menu.label)}</li>
+            ) : (
+              <li>
+                {menu.menu === "resources" ? (
+                  link("resources/index", menu.label)
+                ) : (
+                  <span class="section-nav__label">{menu.label}</span>
+                )}
+                <ul>
+                  {[
+                    ...(menu.children ?? []),
+                    ...(menu.menu === "resources" ? extraResources : []),
+                  ].map((child) => (
+                    <li
+                      data-admin-only={child.admin ? "" : undefined}
+                      hidden={child.admin ? true : undefined}
+                    >
+                      {child.href ? (
+                        <a href={child.href}>{child.label}</a>
+                      ) : (
+                        link(child.slug!, child.label)
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </nav>

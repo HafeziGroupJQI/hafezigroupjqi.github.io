@@ -1,6 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import { prepareSite } from "./prepare-site.mjs"
+import { recentChanges } from "./recent-changes.mjs"
+import { recentPage } from "./site-model.mjs"
 import { writeTagPages } from "./tag-pages.mjs"
 
 export const excluded = new Set([
@@ -65,6 +67,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "admin",
       "scratchpad",
       "settings",
+      "recent",
       // The Scratchpad's JupyterLab: the service worker answers /jupyter/* from the compute relay.
       "jupyter",
     ]) {
@@ -318,6 +321,16 @@ export function prepareUnified(publicSource, privateSource, yaml) {
         "</div>",
       ].join("\n\n"),
       ["internal"],
+    )
+    // Members only: the public site's pages, newest-changed first, and who changed them, from the
+    // public vault's history (the real vault, not the staged copy).
+    page(
+      "recent",
+      "Recently modified",
+      [
+        "The public site's pages, most recently changed first, and who changed them. It is updated with every site update.",
+        recentPage(recentChanges(prepared.input, prepared.records)),
+      ].join("\n\n"),
     )
     page(
       "calendar",

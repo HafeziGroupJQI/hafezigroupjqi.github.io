@@ -97,7 +97,12 @@ describe("github sign-in (start → GitHub → github.io callback → exchange)"
     state = new URL(authorize_url).searchParams.get("state")!
     const wrongNonce = await call(
       "/api/auth/exchange",
-      postJson({ code: "code-member", state, nonce: "x" + nonce.slice(1) }),
+      // Another first character: "x" + nonce.slice(1) was the same nonce whenever it began with x.
+      postJson({
+        code: "code-member",
+        state,
+        nonce: (nonce[0] === "x" ? "y" : "x") + nonce.slice(1),
+      }),
       github,
     )
     expect(wrongNonce.status).toBe(400)

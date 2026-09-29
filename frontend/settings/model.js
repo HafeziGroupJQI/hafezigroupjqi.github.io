@@ -53,3 +53,21 @@ export function licenceSummary(licence) {
     }. Your Wolfram code runs on your own licence.`
   return "Not activated yet. Wolfram code (the Scratchpad's Wolfram notebooks and Run on guide pages) needs your own Wolfram Engine licence."
 }
+
+/** When saved changes go into the People page: "at 7:00 PM, in 1 h 23 min". */
+export function publishLabel(dueAt, now = Date.now(), locale = undefined) {
+  const at = new Date(dueAt).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })
+  const minutes = Math.max(0, Math.round((dueAt - now) / 60_000))
+  const hours = Math.floor(minutes / 60)
+  const left = hours ? `${hours} h ${minutes % 60} min` : `${minutes} min`
+  return `at ${at}, in ${left}`
+}
+
+/** The names of what a saved edit changes, for "Saved: your name and photo". */
+export function pendingSummary(pending) {
+  const labels = Object.fromEntries(FIELDS.map(([key, label]) => [key, label.toLowerCase()]))
+  const parts = (pending?.fields ?? []).map((key) => labels[key] ?? key)
+  if (pending?.photo) parts.push("photo")
+  if (!parts.length) return ""
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
+}

@@ -1,6 +1,14 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { avatarFor, centreSquare, changedFields, licenceSummary, slugName } from "./model.js"
+import {
+  avatarFor,
+  centreSquare,
+  changedFields,
+  licenceSummary,
+  pendingSummary,
+  publishLabel,
+  slugName,
+} from "./model.js"
 
 test("only changed fields are sent, and emptied ones become null", () => {
   const current = { title: "Ada Lovelace", email: null, office: "2369", scope: "Engines" }
@@ -45,4 +53,20 @@ test("the licence line says what state the member's Wolfram licence is in", () =
     /^Active for ada@umd.edu\./,
   )
   assert.match(licenceSummary({ state: "offline" }), /offline/)
+})
+
+test("saved changes say when they go in, and what they are", () => {
+  const due = Date.UTC(2026, 8, 28, 23, 0)
+  assert.match(
+    publishLabel(due, due - 83 * 60_000, "en-US"),
+    /^at \d{1,2}:00 (AM|PM), in 1 h 23 min$/,
+  )
+  assert.match(publishLabel(due, due - 5 * 60_000, "en-US"), /, in 5 min$/)
+  assert.match(publishLabel(due, due + 60_000, "en-US"), /, in 0 min$/)
+  assert.equal(pendingSummary({ fields: ["title"], photo: true }), "name and photo")
+  assert.equal(
+    pendingSummary({ fields: ["email", "office", "scope"], photo: false }),
+    "email, office and ask me about",
+  )
+  assert.equal(pendingSummary({ fields: [], photo: false, link: true }), "")
 })

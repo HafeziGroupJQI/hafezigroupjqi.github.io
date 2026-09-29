@@ -1,5 +1,6 @@
 // /settings: a member's own settings. Their People page (linked once to their GitHub login, then
-// edited by a commit to the public vault: src/profile/ in the Worker), their photo, and the Wolfram
+// edited through the public vault: saving queues the edit, and the Worker's hourly update commits
+// it, src/profile/), their photo, and the Wolfram
 // Engine licence their Wolfram code runs on (activated on the compute host: the Worker's
 // /api/compute/wolfram/licence, the host's hafezi_compute/wolfram/licences.py).
 import { h } from "../dashboard/dom.js"
@@ -9,6 +10,8 @@ import {
   centreSquare,
   changedFields,
   licenceSummary,
+  pendingSummary,
+  publishLabel,
   slugName,
 } from "./model.js"
 
@@ -109,7 +112,7 @@ function claimForm(profile, api, done) {
   )
   return [
     h("p", {
-      text: `Your GitHub login (${profile.login}) isn't linked to a People page yet. Choose yours: the page gets "github: ${profile.login}" in the vault, and then you can edit it here.`,
+      text: `Your GitHub login (${profile.login}) isn't linked to a People page yet. Choose yours: you can edit it here straight away, and the page gets "github: ${profile.login}" in the vault with the site's next hourly update.`,
     }),
     form,
     status,
@@ -122,7 +125,9 @@ function claimForm(profile, api, done) {
 
 function pageForm(profile, api, done) {
   const { page } = profile
+  let pending = profile.pending
   const status = h("div", { "aria-live": "polite" })
+  const banner = h("div", { class: "settings-pending", "aria-live": "polite" })
   const inputs = {}
   const rows = FIELDS.map(([key, label, options]) => {
     inputs[key] = h("input", {
@@ -141,6 +146,39 @@ function pageForm(profile, api, done) {
       inputs[key],
     )
   })
+  // Saved changes wait for the hourly update, and can be changed or discarded until then.
+  function showPending() {
+    const what = pendingSummary(pending)
+    if (!pending || (!what && !pending.link)) {
+      banner.replaceChildren()
+      return
+    }
+    const when = publishLabel(pending.due_at)
+    banner.replaceChildren(
+      h("p", {
+        text: what
+          ? `Saved: your ${what}. It goes into your People page ${when}, with the site's hourly update. Until then you can keep changing it.`
+          : `Your page is linked. It gets "github: ${profile.login}" ${when}, with the site's hourly update.`,
+      }),
+      what
+        ? h("button", {
+            type: "button",
+            class: "danger",
+            text: "Discard saved changes",
+            onclick: async () => {
+              try {
+                const result = await api("/api/profile/pending", { method: "DELETE" })
+                pending = result.pending
+                done()
+              } catch (error) {
+                status.replaceChildren(notice("error", error.message))
+              }
+            },
+          })
+        : null,
+    )
+  }
+  const picker = photoPicker(profile, status)
   const save = h("button", { type: "submit", class: "primary", text: "Save" })
   const form = h(
     "form",
@@ -152,25 +190,39 @@ function pageForm(profile, api, done) {
           Object.entries(inputs).map(([k, input]) => [k, input.value]),
         )
         const changes = changedFields(page.fields, values)
-        if (!Object.keys(changes).length) {
+        const photo = picker.chosen()
+        if (!Object.keys(changes).length && !photo) {
           status.replaceChildren(notice("ok", "Nothing changed."))
           return
         }
         save.disabled = true
-        status.replaceChildren(notice("ok", "Saving to the vault…"))
+        status.replaceChildren(notice("ok", "Saving…"))
         try {
-          await api("/api/profile", { method: "PUT", body: JSON.stringify(changes) })
-          Object.assign(
-            page.fields,
-            Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null])),
-          )
-          if (changes.title) announce({ display_name: changes.title })
-          status.replaceChildren(
-            notice(
-              "ok",
-              "Saved. Your People page shows it after the next site deploy, in a few minutes.",
-            ),
-          )
+          // The photo leaves the browser only now, with the rest of the edit.
+          if (photo) {
+            const saved = await api("/api/profile/photo", {
+              method: "PUT",
+              headers: { "Content-Type": "image/jpeg" },
+              body: photo,
+            })
+            pending = saved.pending
+            picker.saved(saved.avatar)
+            announce({ avatar: saved.avatar })
+          }
+          if (Object.keys(changes).length) {
+            const saved = await api("/api/profile", {
+              method: "PUT",
+              body: JSON.stringify(changes),
+            })
+            pending = saved.pending
+            Object.assign(
+              page.fields,
+              Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null])),
+            )
+            if (changes.title) announce({ display_name: changes.title })
+          }
+          status.replaceChildren()
+          showPending()
         } catch (error) {
           status.replaceChildren(notice("error", error.message))
         } finally {
@@ -186,21 +238,26 @@ function pageForm(profile, api, done) {
     ),
     save,
   )
+  showPending()
   return [
     h(
       "p",
       {},
       "Linked to ",
       h("a", { href: page.url, text: page.url }),
-      ". Changes are committed to the public vault, so everyone can see them on the People page.",
+      ". Saved changes go into the public vault with the site's next hourly update, so everyone can see them on the People page.",
     ),
-    photoPicker(profile, api, status),
+    banner,
+    picker.node,
     form,
     status,
   ]
 }
 
-function photoPicker(profile, api, status) {
+/** The photo: a new one is only a preview here until the member presses Save. */
+function photoPicker(profile, status) {
+  let chosen = null
+  let preview = null
   const image = h("img", {
     class: "settings-avatar",
     src: avatarFor(profile),
@@ -217,25 +274,18 @@ function photoPicker(profile, api, status) {
       const file = input.files?.[0]
       input.value = ""
       if (!file) return
-      status.replaceChildren(notice("ok", "Uploading your photo…"))
       try {
-        const jpeg = await squareJpeg(file)
-        const saved = await api("/api/profile/photo", {
-          method: "PUT",
-          headers: { "Content-Type": "image/jpeg" },
-          body: jpeg,
-        })
-        image.src = saved.avatar
-        announce({ avatar: saved.avatar })
-        status.replaceChildren(
-          notice("ok", "Photo saved. The People page shows it after the next site deploy."),
-        )
+        chosen = await squareJpeg(file)
+        if (preview) URL.revokeObjectURL(preview)
+        preview = URL.createObjectURL(chosen)
+        image.src = preview
+        status.replaceChildren(notice("ok", "New photo chosen. Press Save to use it."))
       } catch (error) {
         status.replaceChildren(notice("error", error.message))
       }
     },
   })
-  return h(
+  const node = h(
     "div",
     { class: "settings-photo" },
     image,
@@ -244,9 +294,19 @@ function photoPicker(profile, api, status) {
       {},
       input,
       h("label", { for: "settings-photo", class: "btn", text: "Change photo" }),
-      h("p", { class: "muted", text: "Cropped to a square and resized before upload." }),
+      h("p", { class: "muted", text: "Cropped to a square. It's used once you press Save." }),
     ),
   )
+  return {
+    node,
+    chosen: () => chosen,
+    saved(avatar) {
+      chosen = null
+      if (preview) URL.revokeObjectURL(preview)
+      preview = null
+      image.src = avatar
+    },
+  }
 }
 
 /** The picture's centred square as a JPEG of at most PHOTO_SIZE pixels a side. */

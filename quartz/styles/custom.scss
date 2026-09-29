@@ -2623,6 +2623,22 @@ a.device-card:hover {
 .settings-steps li {
   margin: 4px 0;
 }
+// Saved changes waiting for the hourly update.
+.settings-pending:not(:empty) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--jqi-rule);
+  border-left: 4px solid var(--jqi-red, #e21833);
+  border-radius: 6px;
+}
+.settings-pending p {
+  margin: 0;
+  flex: 1 1 24rem;
+}
 .settings-note {
   margin: 8px 0;
   color: var(--jqi-muted);

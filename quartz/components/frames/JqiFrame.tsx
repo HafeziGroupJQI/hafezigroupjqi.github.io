@@ -70,6 +70,12 @@ export const JqiFrame: PageFrame = {
       internal && slug.startsWith("resources/")
         ? ((frontmatter?.tags ?? []) as string[]).filter((tag) => tag !== "internal")
         : []
+    // A private page's own file in the vault (tools/prepare-unified.mjs), for its Replace and Move
+    // tools (frontend/member-tools.js).
+    const vaultSource =
+      internal && slug.startsWith("resources/") && typeof frontmatter?.vault_source === "string"
+        ? frontmatter.vault_source
+        : undefined
     return (
       <div
         class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}${tagPage ? " site-tag" : ""}${dashboard ? " site-dashboard" : ""}`}
@@ -97,7 +103,7 @@ export const JqiFrame: PageFrame = {
                 <SectionNav {...componentData} />
               </div>
               <div class="page-content__main">
-                <div class="page-content__header popover-hint">
+                <div class="page-content__header popover-hint" data-vault-source={vaultSource}>
                   <>
                     <nav class="public-breadcrumbs" aria-label="Breadcrumb">
                       <a href={resolveRelative(slug, "index" as FullSlug)}>Home</a>

@@ -9,6 +9,7 @@ import { installLauncher } from "./gpt/launcher.js"
 import { h } from "./dashboard/dom.js"
 import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
+import { uploadsUrl } from "./uploads/model.js"
 
 const zone = "America/New_York"
 // Member pages are served at hafezigroupjqi.github.io by the members service worker, which also
@@ -300,6 +301,21 @@ if (session.user) {
     import("./notebook-page/index.js")
       .then(({ mountNotebookPage }) => mountNotebookPage(sourceBar))
       .catch((error) => showError(sourceBar.parentElement, error))
+  // A private page's file (a note's own, or a notebook's or Quarto page's source): replace it with
+  // a new version or move it, as a draft on /uploads that becomes a pull request.
+  const vaultFile =
+    document.querySelector("[data-vault-source]")?.dataset.vaultSource ??
+    document.querySelector("p.wl-source[data-source], .wl-notebook[data-source]")?.dataset.source
+  const header = document.querySelector(".page-content__header")
+  if (vaultFile && header)
+    header.append(
+      h(
+        "p",
+        { class: "page-file-tools" },
+        h("a", { href: uploadsUrl("replace", vaultFile), text: "Replace this file…" }),
+        h("a", { href: uploadsUrl("rename", vaultFile), text: "Rename or move…" }),
+      ),
+    )
   // A member's own settings: their People page, photo and Wolfram Engine license.
   mount("data-settings", (root) =>
     import("./settings/index.js")

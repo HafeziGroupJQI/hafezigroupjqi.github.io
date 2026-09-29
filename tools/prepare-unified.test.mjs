@@ -50,6 +50,8 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     assert.match(read("resources/notes/test.md"), /resources\/old-note/)
     assert.match(read("resources/notes/test.md"), /\[\[resources\/notes\/other\|Other\]\]/)
     assert.match(read("resources/notes/test.md"), /\/resources\/notes\/file.txt/)
+    // Each private page knows its own file in the vault, for its Replace and Move tools.
+    assert.match(read("resources/notes/test.md"), /vault_source: notes\/test.md/)
     assert.match(read("resources/index.md"), /resource-grid[\s\S]*\/resources\/notes\//)
     assert.match(read("resources/topics/index.md"), /href="\/tags\/private-tag"/)
     assert.match(read("resources/notes/index.md"), /tags:\n  - internal\n  - notes/)
@@ -136,6 +138,8 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
       /---\n\n<p class="wl-source" data-source="code\/Sweep &amp; fit\.qmd">Rendered from <a class="internal" href="\/resources\/code\/sweep--and--fit\.qmd">Sweep &amp; fit\.qmd<\/a><\/p>\n\nThe sweep\.\n$/,
     )
     assert.ok(!fs.existsSync(path.join(built.output, "resources/code/Sweep & fit.qmd")))
+    // A Quarto page's own file is its source.
+    assert.match(read("resources/code/Sweep & fit.md"), /vault_source: code\/Sweep & fit.qmd/)
     assert.doesNotMatch(note, /wl-source/)
     // The notebooks themselves are staged; their pages are made later in the build.
     assert.ok(

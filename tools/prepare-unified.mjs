@@ -128,6 +128,13 @@ export function prepareUnified(publicSource, privateSource, yaml) {
           )
         for (const key of ["photo", "image", "manual"])
           if (typeof fm[key] === "string") fm[key] = privateLink(fm[key], sourceFile, root)
+        // The page's own file in the vault (a Quarto page's is its .qmd), for the page's tools:
+        // replace or move it through /uploads (frontend/member-tools.js).
+        if (filename.endsWith(".md"))
+          fm.vault_source =
+            typeof fm.rendered_from === "string"
+              ? fm.rendered_from
+              : path.relative(root, sourceFile).split(path.sep).join("/")
         const bar = qmdSourceBar(fm, root)
         text =
           `---\n${yaml.stringify(fm)}---\n` +

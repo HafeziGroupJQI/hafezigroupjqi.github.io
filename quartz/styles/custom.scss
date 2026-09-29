@@ -2699,6 +2699,18 @@ a.device-card:hover {
   }
 }
 
+// A private page's Replace and Move tools, under its title (frontend/member-tools.js).
+.page-file-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 4px 0 12px;
+  font-size: 0.85rem;
+}
+.page-file-tools a {
+  color: var(--jqi-muted);
+}
+
 // ---- Uploads (/uploads): a member's drafts of changes to the private vault ----
 .uploads-page {
   max-width: 860px;

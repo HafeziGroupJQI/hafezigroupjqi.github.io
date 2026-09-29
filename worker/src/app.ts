@@ -9,6 +9,7 @@ import { type Upstream, serveDocument } from "./docs"
 import type { DocsManifest, Env } from "./env"
 import type { AnthropicFetch } from "./gpt/chat"
 import { isLabGptPath, labGptRequest } from "./gpt/lab"
+import { isLabAgentPath, labAgent } from "./gpt/lab-agent"
 import { gptRoutes } from "./gpt/routes"
 import { navIdentity, profileRoutes } from "./profile/routes"
 import type { VaultFetch } from "./profile/vault"
@@ -123,6 +124,9 @@ export function createHandler(
   ): Promise<Response> {
     const path = url.pathname
     if (path === "/api/health") return json({ ok: true, version: VERSION })
+
+    // The lab's coding agent: a Messages API endpoint on the lab origin, for the member's own lab.
+    if (isLabAgentPath(path)) return labAgent(request, url, env, ctx, gptDeps.anthropicFetch)
 
     // Hafezi GPT in the lab's own panel, on the lab origin: the lab ticket is its credential there.
     if (isLabGptPath(path)) {

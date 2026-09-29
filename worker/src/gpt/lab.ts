@@ -15,17 +15,15 @@ const LAB_GPT = /^\/lab\/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\/hafezi-gpt(\/api\/gpt
 export const isLabGptPath = (path: string) => LAB_GPT.test(path)
 
 /**
- * The member session and the /api/gpt request a lab-origin GPT call stands for. The Origin check
- * is done here (same origin only), so the request passed on carries no Origin for the site's own
- * check (requireMutation) to refuse.
+ * The member a lab-origin request comes from, from the lab ticket in its path: same origin only
+ * (writes must say so), no service workers, and only in the member's own lab.
  */
-export async function labGptRequest(
+export async function labSession(
   request: Request,
   url: URL,
   env: Env,
-): Promise<{ session: Session; request: Request; url: URL }> {
-  const [, token, apiPath] = url.pathname.match(LAB_GPT) ?? []
-  if (!token) throw new HttpError(404, "not found")
+  token: string,
+): Promise<Session> {
   const origin = request.headers.get("origin")
   if (origin !== null && origin !== url.origin)
     throw new HttpError(403, "request from an unknown origin")
@@ -45,7 +43,22 @@ export async function labGptRequest(
     role: ticket.role,
     exp: ticket.exp,
   }
-  const session = { ...base, name: (await navIdentity(env, base)).display_name }
+  return { ...base, name: (await navIdentity(env, base)).display_name }
+}
+
+/**
+ * The member session and the /api/gpt request a lab-origin GPT call stands for. The Origin check
+ * is done here (same origin only), so the request passed on carries no Origin for the site's own
+ * check (requireMutation) to refuse.
+ */
+export async function labGptRequest(
+  request: Request,
+  url: URL,
+  env: Env,
+): Promise<{ session: Session; request: Request; url: URL }> {
+  const [, token, apiPath] = url.pathname.match(LAB_GPT) ?? []
+  if (!token) throw new HttpError(404, "not found")
+  const session = await labSession(request, url, env, token)
   const apiUrl = new URL(apiPath + url.search, url.origin)
   const headers = new Headers(request.headers)
   headers.delete("origin")

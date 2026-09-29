@@ -14,9 +14,8 @@ import {
   uploadStart,
 } from "./drive.js"
 
-test("the client ID is one public value, empty until the site has a Google OAuth client", () => {
-  assert.equal(typeof GOOGLE_CLIENT_ID, "string")
-  if (GOOGLE_CLIENT_ID) assert.match(GOOGLE_CLIENT_ID, /^[\w-]+\.apps\.googleusercontent\.com$/)
+test("the client ID is the site's Google OAuth client, a public value", () => {
+  assert.match(GOOGLE_CLIENT_ID, /^[\w-]+\.apps\.googleusercontent\.com$/)
   // drive.file: only the files this site makes; Google needs no verification for it.
   assert.equal(DRIVE_SCOPE, "https://www.googleapis.com/auth/drive.file")
 })

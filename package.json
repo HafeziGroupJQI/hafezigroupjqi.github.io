@@ -21,7 +21,7 @@
     "prebuild": "npm run install-plugins",
     "render-qmd": "node tools/render-qmd.mjs",
     "render-excalidraw": "node tools/render-excalidraw.mjs",
-    "setup:browser": "agent-browser install",
+    "setup:browser": "playwright-core install --only-shell chromium",
     "sync-theme": "node tools/sync-theme.mjs",
     "build": "node tools/build-site.mjs",
     "serve": "node tools/build-site.mjs --serve",
@@ -58,6 +58,7 @@
     "@codemirror/legacy-modes": "^6.5.4",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
+    "@excalidraw/excalidraw": "^0.18.1",
     "@floating-ui/dom": "^1.7.4",
     "@fullcalendar/core": "6.1.19",
     "@fullcalendar/daygrid": "6.1.19",
@@ -130,10 +131,13 @@
     "marked": "^16.4.2",
     "micromorph": "^0.4.5",
     "minimatch": "^10.1.1",
+    "playwright-core": "1.63.0",
     "preact": "^10.28.2",
     "preact-render-to-string": "^6.6.5",
     "pretty-bytes": "^7.1.0",
     "pretty-time": "^1.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "rehype-slug": "^6.0.0",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
@@ -168,6 +172,9 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "agent-browser": "$agent-browser"
+    "agent-browser": "$agent-browser",
+    "lodash-es": "^4.18.1",
+    "nanoid@3": "^3.3.19",
+    "nanoid@4": "^5.1.16"
   }
 }

@@ -1,12 +1,18 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+import { build } from "esbuild"
 import LZString from "lz-string"
+import { chromium } from "playwright-core"
 import yaml from "yaml"
 
-const rendererEntry = fileURLToPath(new URL("./index.js", import.meta.resolve("excalidraw-render")))
+// Drawings are exported by Excalidraw itself in headless Chromium (tools/render-excalidraw-page.mjs).
+// The page, its bundle and Excalidraw's fonts are served from memory and the installed package;
+// every other request is blocked, so a build never loads code or fonts from the network.
+const pageOrigin = "https://excalidraw.invalid"
+const excalidrawAssets = path.dirname(fileURLToPath(import.meta.resolve("@excalidraw/excalidraw")))
+const fontDirectory = path.join(excalidrawAssets, "fonts")
+const pageHtml = `<!doctype html><meta charset="utf-8"><script>window.EXCALIDRAW_ASSET_PATH = "${pageOrigin}/"</script>`
 
 const drawingPattern = /\.excalidraw(?:\.md)?$/
 const pagePattern = /\.(?:md|qmd)$/
@@ -99,6 +105,76 @@ const sanitizeSvg = (filename) => {
     throw new Error(`${filename}: renderer produced unsafe external content`)
 }
 
+async function bundlePage() {
+  const outdir = path.resolve("excalidraw-page")
+  const result = await build({
+    entryPoints: { page: fileURLToPath(new URL("./render-excalidraw-page.mjs", import.meta.url)) },
+    bundle: true,
+    splitting: true,
+    format: "esm",
+    outdir,
+    write: false,
+    define: { "process.env.NODE_ENV": '"production"' },
+    // only its text-to-diagram dialog loads Mermaid, never an export
+    external: ["@excalidraw/mermaid-to-excalidraw"],
+    logLevel: "warning",
+  })
+  return new Map(
+    result.outputFiles.map((file) => [
+      `/${normalize(path.relative(outdir, file.path))}`,
+      file.text,
+    ]),
+  )
+}
+
+const pageResponse = (bundle, pathname) => {
+  if (pathname === "/") return { contentType: "text/html", body: pageHtml }
+  if (bundle.has(pathname)) return { contentType: "text/javascript", body: bundle.get(pathname) }
+  const font = path.join(excalidrawAssets, decodeURIComponent(pathname))
+  if (font.startsWith(fontDirectory + path.sep) && fs.existsSync(font)) return { path: font }
+}
+
+async function openRenderer() {
+  const bundle = await bundlePage()
+  const browser = await chromium.launch()
+  try {
+    const context = await browser.newContext({ serviceWorkers: "block" })
+    const blocked = []
+    await context.route("**/*", (route) => {
+      const url = new URL(route.request().url())
+      const response = url.origin === pageOrigin && pageResponse(bundle, url.pathname)
+      if (response) return route.fulfill(response)
+      blocked.push(url.href)
+      return route.abort("blockedbyclient")
+    })
+    const page = await context.newPage()
+    page.on("console", (message) => {
+      if (message.type() === "error") console.error(`render-excalidraw: ${message.text()}`)
+    })
+    await page.goto(`${pageOrigin}/`)
+    const render = (scene) => {
+      let timer
+      return Promise.race([
+        page.evaluate(
+          async ({ entry, elements, files }) =>
+            (await import(entry)).renderDrawing(elements, files),
+          { entry: `${pageOrigin}/page.js`, ...scene },
+        ),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("timed out after 60s")), 60_000)
+        }),
+      ]).finally(() => {
+        clearTimeout(timer)
+        if (blocked.length) throw new Error(`blocked requests: ${blocked.join(", ")}`)
+      })
+    }
+    return { render, close: () => browser.close() }
+  } catch (error) {
+    await browser.close()
+    throw error
+  }
+}
+
 export async function renderDrawings(rootDirectory) {
   const root = fs.realpathSync(rootDirectory)
   const filenames = walk(root).filter((filename) => drawingPattern.test(filename))
@@ -107,34 +183,16 @@ export async function renderDrawings(rootDirectory) {
     return []
   }
 
-  const client = new Client({ name: "hafezi-site-build", version: "1.0.0" })
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [rendererEntry],
-    stderr: "inherit",
-  })
-  await client.connect(transport)
+  const renderer = await openRenderer()
   const drawings = []
   try {
     for (const filename of filenames) {
-      const scene = parseDrawing(filename)
       const output = drawingOutputPath(root, filename)
       fs.mkdirSync(path.dirname(output), { recursive: true })
-      const result = await client.callTool({
-        name: "create_excalidraw_diagram",
-        arguments: {
-          elements: JSON.stringify(scene.elements),
-          files: Object.keys(scene.files).length ? scene.files : undefined,
-          outputPath: output,
-          format: "svg",
-        },
+      const svg = await renderer.render(parseDrawing(filename)).catch((error) => {
+        throw new Error(`${filename}: ${error.message}`)
       })
-      if (result.isError)
-        throw new Error(
-          result.content
-            .map((item) => (item.type === "text" ? item.text : "render error"))
-            .join("\n"),
-        )
+      fs.writeFileSync(output, svg)
       sanitizeSvg(output)
       const relative = normalize(path.relative(root, filename))
       drawings.push({
@@ -146,7 +204,7 @@ export async function renderDrawings(rootDirectory) {
       console.log(`render-excalidraw: ${relative} -> ${normalize(path.relative(root, output))}`)
     }
   } finally {
-    await client.close()
+    await renderer.close()
   }
 
   for (const page of walk(root).filter(

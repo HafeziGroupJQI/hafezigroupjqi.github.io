@@ -85,8 +85,9 @@ export function bearer(request: Request): string | null {
 
 export async function readSession(request: Request, env: Env): Promise<Session | null> {
   const session = await verify<Session>(bearer(request) ?? undefined, env.SESSION_SECRET, "session")
-  if (!session || !session.login) return null
-  return session
+  if (!session || typeof session.login !== "string" || !session.login) return null
+  // Logins are lowercase everywhere; a bearer from before that rule may still carry GitHub's casing.
+  return { ...session, login: session.login.toLowerCase() }
 }
 
 export async function issueSession(
@@ -94,6 +95,6 @@ export async function issueSession(
   env: Env,
 ): Promise<{ token: string; exp: number }> {
   const exp = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE
-  const session: Session = { typ: "session", ...user, exp }
+  const session: Session = { typ: "session", ...user, login: user.login.toLowerCase(), exp }
   return { token: await sign(session, env.SESSION_SECRET), exp }
 }

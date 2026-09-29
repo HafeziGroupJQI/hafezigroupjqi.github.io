@@ -331,7 +331,9 @@ export async function gptRoutes(
       if (method === "POST" && !conv[3]) {
         const body = (await readJson(request)) as { grantee?: unknown }
         const grantee =
-          typeof body.grantee === "string" ? body.grantee.trim().replace(/^@/, "") : ""
+          typeof body.grantee === "string"
+            ? body.grantee.trim().replace(/^@/, "").toLowerCase()
+            : ""
         if (grantee !== "*" && !LOGIN.test(grantee))
           throw new HttpError(422, "share with a GitHub login, or * for the whole lab")
         if (grantee === login) throw new HttpError(422, "that's you")
@@ -340,7 +342,7 @@ export async function gptRoutes(
         return json(await store.shares(conversation.id), 201)
       }
       if (method === "DELETE" && conv[3]) {
-        const grantee = decodeSegment(conv[3])
+        const grantee = decodeSegment(conv[3]).toLowerCase()
         if (!(await store.unshare(conversation.id, grantee)))
           throw new HttpError(404, "not shared with them")
         record("gpt.unshare", conversation.id, { grantee })

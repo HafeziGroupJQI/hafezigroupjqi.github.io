@@ -31,7 +31,7 @@ const month = (at = Date.now()) => new Date(at).toISOString().slice(0, 7)
 function auditQuery(params: URLSearchParams, limit: number) {
   const where: string[] = []
   const binds: unknown[] = []
-  const login = params.get("login")?.trim()
+  const login = params.get("login")?.trim().toLowerCase()
   if (login) {
     where.push("login = ?")
     binds.push(login)
@@ -136,7 +136,8 @@ export async function adminRoutes(
     if (request.method === "POST") {
       requireMutation(request, env)
       const body = (await readJson(request)) as { login?: unknown }
-      const login = typeof body.login === "string" ? body.login.trim().replace(/^@/, "") : ""
+      const login =
+        typeof body.login === "string" ? body.login.trim().replace(/^@/, "").toLowerCase() : ""
       if (!LOGIN.test(login)) throw new HttpError(422, "enter a GitHub login")
       await env.DB.prepare(
         `INSERT INTO admins (login, added_by, added_at) SELECT ?1, ?2, ?3
@@ -153,7 +154,7 @@ export async function adminRoutes(
   const demote = path.match(/^\/admins\/([^/]+)$/)
   if (demote && request.method === "DELETE") {
     requireMutation(request, env)
-    const login = decodeSegment(demote[1])
+    const login = decodeSegment(demote[1]).toLowerCase()
     const { meta } = await env.DB.prepare("DELETE FROM admins WHERE login = ? COLLATE NOCASE")
       .bind(login)
       .run()
@@ -188,7 +189,7 @@ export async function adminRoutes(
   const budget = path.match(/^\/budgets\/([^/]+)$/)
   if (budget && request.method === "PUT") {
     requireMutation(request, env)
-    const login = decodeSegment(budget[1])
+    const login = decodeSegment(budget[1]).toLowerCase()
     if (!LOGIN.test(login)) throw new HttpError(422, "invalid login")
     const body = (await readJson(request)) as { monthly_tokens?: unknown }
     if (body.monthly_tokens === null) {

@@ -22,6 +22,7 @@ export const githubCalls: string[] = []
 export const githubAccounts: Record<string, { org?: object; team?: object }> = {
   "code-owner": { org: { state: "active", role: "admin" } },
   "code-member": { team: { state: "active" } },
+  "code-Mixed-Case": { team: { state: "active" } },
   "code-outsider": {},
 }
 let lastCode = ""

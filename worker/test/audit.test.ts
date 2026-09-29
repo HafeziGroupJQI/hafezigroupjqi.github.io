@@ -128,9 +128,9 @@ describe("admin console", () => {
     expect(rows.map((r) => [r.action, r.target])).toEqual([
       ["admin.promote", "dave"],
       ["admin.demote", "dave"],
-      ["admin.promote", "Dave"],
-      ["admin.promote", "Dave"],
-      ["admin.demote", "DAVE"],
+      ["admin.promote", "dave"],
+      ["admin.promote", "dave"],
+      ["admin.demote", "dave"],
     ])
   })
 

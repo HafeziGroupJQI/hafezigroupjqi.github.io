@@ -149,16 +149,19 @@ export async function exchange(
     org.ok ? ((await org.json()) as Membership) : null,
     team.ok ? ((await team.json()) as Membership) : null,
   )
+  // GitHub logins are case-insensitive: the site keeps them lowercase everywhere (the lab's
+  // tickets, D1's owner columns), and GitHub's casing only as the default display name.
+  const login = profile.login.toLowerCase()
   if (!allowed) {
     audit(env, ctx, request, {
-      login: profile.login,
+      login,
       action: "auth.denied",
       status: 403,
       detail: { reason: role },
     })
     throw new HttpError(403, `${profile.login}: ${role}`)
   }
-  const user = { login: profile.login, name: profile.name ?? profile.login, role }
+  const user = { login, name: profile.name ?? profile.login, role }
   audit(env, ctx, request, { login: user.login, role, action: "auth.login", status: 200 })
   return json({ ...(await issueSession(user, env)), user, next: pending.next })
 }

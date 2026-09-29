@@ -85,5 +85,5 @@ export async function verifyLabTicket(env: Env, token: string | null): Promise<L
     typeof ticket.exp !== "number"
   )
     return null
-  return ticket
+  return { ...ticket, login: ticket.login.toLowerCase(), target: ticket.target.toLowerCase() }
 }

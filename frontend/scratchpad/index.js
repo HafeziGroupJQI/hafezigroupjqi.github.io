@@ -15,6 +15,7 @@ import {
   describeStatus,
   formatMemory,
   launchUrl,
+  ownProfiles,
   requestedFork,
   requestedPath,
 } from "./launch.js"
@@ -62,11 +63,38 @@ export function mountScratchpad(root, { api, session }) {
   )
   const banner = h("div", { class: "dash-error", role: "alert", hidden: true })
 
+  // Built-in profiles, then the member's own (~/profiles, made from notebooks in the lab).
+  const ownGroup = h("optgroup", { label: "Your profiles", hidden: true })
   const profile = h(
     "select",
     { "aria-label": "IPython profile" },
-    PROFILES.map(([id, label]) => h("option", { value: id, text: label })),
+    h(
+      "optgroup",
+      { label: "Built-in" },
+      PROFILES.map(([id, label]) => h("option", { value: id, text: label })),
+    ),
+    ownGroup,
   )
+  // Asked of the host when it comes online and whenever the list is opened, so a profile just
+  // saved in the lab shows up without reloading the page.
+  let profilesLoading = null
+  function loadProfiles() {
+    if (profilesLoading || !status?.host?.online) return profilesLoading
+    profilesLoading = api("/api/compute/profiles")
+      .then((listing) => {
+        const chosen = profile.value
+        const own = ownProfiles(listing)
+        ownGroup.replaceChildren(
+          ...own.map(([id, label]) => h("option", { value: id, text: label })),
+        )
+        ownGroup.hidden = !own.length
+        profile.value = [...profile.options].some((o) => o.value === chosen) ? chosen : "base"
+      })
+      .catch(() => {}) // an older host without the op: the built-ins stay
+      .finally(() => (profilesLoading = null))
+    return profilesLoading
+  }
+  profile.addEventListener("focus", () => void loadProfiles())
   const launchers = h(
     "div",
     { class: "scratch-launchers" },
@@ -130,6 +158,10 @@ export function mountScratchpad(root, { api, session }) {
       showError(error)
     }
     if (status?.lab) newTab.href = `${status.lab}lab`
+    if (status?.host?.online && ownGroup.hidden && !ownGroup.dataset.asked) {
+      ownGroup.dataset.asked = "1"
+      void loadProfiles()
+    }
     const { label, tone } = describeStatus(status)
     setText(pill, label)
     pill.className = `status status-${tone}`

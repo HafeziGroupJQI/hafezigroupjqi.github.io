@@ -31,6 +31,10 @@ export const PROFILES = [
   "meep",
 ]
 
+// A member's own profile (compute: ~/profiles/<name>.py, made from a notebook): "user-<name>",
+// whose kernel is hafezi-user-<name>. The host checks that the file exists.
+export const USER_PROFILE = /^user-[a-z0-9][a-z0-9_-]{0,39}$/
+
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
 // Request headers JupyterLab needs upstream; each is also in the CORS allow-list (http.ts). Never
 // cookie, authorization or x-forwarded-*: the host injects its own Hub token.
@@ -280,7 +284,10 @@ export async function computeRoutes(
         profile?: unknown
       }
       const profile = body?.profile ?? "base"
-      if (typeof profile !== "string" || !PROFILES.includes(profile))
+      if (
+        typeof profile !== "string" ||
+        !(PROFILES.includes(profile) || USER_PROFILE.test(profile))
+      )
         throw new HttpError(422, "unknown profile")
       record("compute.start", session.login, { profile })
       // Progress streams as NDJSON, then the final line.
@@ -400,6 +407,12 @@ export async function computeRoutes(
       { action: "activate", wolfram_id: wolframId, password },
       { timeout_ms: 150_000 },
     )
+  }
+
+  if (route === "/profiles") {
+    if (method !== "GET") throw new HttpError(405, "method not allowed")
+    // The member's ~/profiles folder: the built-ins (read-only) and the ones they made.
+    return control(env, session, "profiles", {}, { timeout_ms: 15_000 })
   }
 
   if (route === "/fork") {

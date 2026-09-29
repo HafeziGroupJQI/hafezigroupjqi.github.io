@@ -660,6 +660,34 @@ describe("the compute relay", { timeout: 30_000 }, () => {
     expect(lines[0]).toEqual({ progress: { message: "spawning", percent: 50 } })
     expect(lines.at(-1)).toMatchObject({ done: true, ok: true, result: { server: "running" } })
 
+    // A member's own profile starts the same way; the host checks the file is there.
+    const ensureOwn = answer("ensure_server", { server: "running", url: "/jupyter/user/alice/" })
+    const own = await alice.fetch("/api/compute/server", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: "user-ring_fits" }),
+    })
+    await own.text()
+    expect((await ensureOwn).args).toEqual({ profile: "user-ring_fits" })
+    for (const profile of ["user-", "user-../x", "user-Rings", "mine-x"]) {
+      const refused = await alice.fetch("/api/compute/server", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profile }),
+      })
+      expect(refused.status).toBe(422)
+    }
+
+    const profilesRpc = answer("profiles", {
+      profiles: [
+        { id: "gds", name: "gds", title: "GDS layout", builtin: true },
+        { id: "user-ring_fits", name: "ring_fits", title: "Ring fits", builtin: false },
+      ],
+    })
+    const profiles = (await (await alice.fetch("/api/compute/profiles")).json()) as any
+    expect(profiles.profiles.map((p: any) => p.id)).toEqual(["gds", "user-ring_fits"])
+    expect((await profilesRpc).args).toEqual({})
+
     const stop = answer("stop_server", { server: "stopped" })
     const stopped = await alice.fetch("/api/compute/server", { method: "DELETE" })
     expect(await stopped.json()).toEqual({ server: "stopped" })

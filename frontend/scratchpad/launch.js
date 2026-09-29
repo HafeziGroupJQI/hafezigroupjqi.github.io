@@ -29,9 +29,22 @@ export const LAUNCHERS = [
   { id: "wolfram", label: "Wolfram notebook", view: "nb", kernel: "wolfram" },
 ]
 
+// A member's own profile (compute: ~/profiles/<name>.py, made from a notebook) has the id
+// user-<name> and the kernel hafezi-user-<name>.
+export const USER_PROFILE = /^user-[a-z0-9][a-z0-9_-]{0,39}$/
+
 export function kernelFor(launcher, profile = "base") {
   if (launcher.kernel !== "profile") return launcher.kernel
+  if (USER_PROFILE.test(profile)) return `hafezi-${profile}`
   return `hafezi-${PROFILES.some(([id]) => id === profile) ? profile : "base"}`
+}
+
+/** The member's own profiles from /api/compute/profiles, as [id, label] by label. */
+export function ownProfiles(listing) {
+  return (listing?.profiles ?? [])
+    .filter((p) => !p.builtin && typeof p.id === "string" && USER_PROFILE.test(p.id))
+    .map((p) => [p.id, String(p.title || p.name)])
+    .sort((a, b) => a[1].localeCompare(b[1]))
 }
 
 /**

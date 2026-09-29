@@ -7,6 +7,7 @@ import {
   formatMemory,
   kernelFor,
   launchUrl,
+  ownProfiles,
   requestedFork,
   requestedPath,
 } from "./launch.js"
@@ -99,4 +100,25 @@ test("the ENEE graduate courses profile has its own kernel", () => {
   const ipython = LAUNCHERS.find((item) => item.id === "ipython")
   assert.equal(kernelFor(ipython, "courses"), "hafezi-courses")
   assert.equal(kernelFor(ipython, "base"), "hafezi-base")
+})
+
+test("a member's own profile launches its own kernel, and only well-formed ones are listed", () => {
+  const ipython = LAUNCHERS.find((l) => l.id === "ipython")
+  assert.equal(kernelFor(ipython, "user-ring_fits"), "hafezi-user-ring_fits")
+  assert.equal(kernelFor(ipython, "user-../x"), "hafezi-base")
+  assert.deepEqual(
+    ownProfiles({
+      profiles: [
+        { id: "gds", name: "gds", title: "GDS layout", builtin: true },
+        { id: "user-zeta", name: "zeta", title: "Zeta fits", builtin: false },
+        { id: "user-alpha", name: "alpha", title: "", builtin: false },
+        { id: "user-Bad", name: "Bad", title: "Bad", builtin: false },
+      ],
+    }),
+    [
+      ["user-alpha", "alpha"],
+      ["user-zeta", "Zeta fits"],
+    ],
+  )
+  assert.deepEqual(ownProfiles(null), [])
 })

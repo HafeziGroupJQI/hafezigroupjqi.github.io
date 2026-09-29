@@ -704,9 +704,18 @@ describe("Claude turns (scripted API)", () => {
     })
   })
 
-  it("talks to the claude-bridge with the site's tools but no betas or thinking; pages inlined", async () => {
+  it("talks to the claude-bridge with the site's tools, pages and images but no betas or thinking", async () => {
     const alice = await as("alice-bridge")
     const chat = await newChat(alice, { origin_slug: "equipment/santec-tsl" })
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+    const upload = await uploadTo(
+      alice,
+      `/api/gpt/conversations/${chat.id}/files`,
+      "plot.png",
+      "image/png",
+      png,
+    )
+    const file = (await upload.json()) as any
     anthropicScript.push({
       content: [{ type: "text", text: "It is a tunable laser." }],
       stop_reason: "end_turn",
@@ -715,7 +724,7 @@ describe("Claude turns (scripted API)", () => {
     const { events } = await keyed(
       alice,
       `/api/gpt/conversations/${chat.id}/messages`,
-      { method: "POST", body: JSON.stringify({ text: "What is this?" }) },
+      { method: "POST", body: JSON.stringify({ text: "What is this?", files: [file.id] }) },
       { ANTHROPIC_BASE_URL: "https://bridge-example.trycloudflare.com" },
     )
     expect(events.at(-1)!.name).toBe("done")
@@ -726,10 +735,15 @@ describe("Claude turns (scripted API)", () => {
     expect(request.body.thinking).toBeUndefined()
     expect(request.body.context_management).toBeUndefined()
     expect(JSON.stringify(request.body.system)).not.toMatch(/no tools are available/)
+    // The bridge passes images and PDFs to the model, and writes documents into its prompt.
     const content = request.body.messages[0].content
-    expect(content.every((b: any) => b.type === "text")).toBe(true)
-    expect(content[1].text).toContain('<document title="Santec TSL tunable laser"')
-    expect(content[1].text).toContain("swept-wavelength source")
+    const page = content.find((b: any) => b.type === "document")
+    expect(page).toMatchObject({ title: "Santec TSL tunable laser", source: { type: "text" } })
+    expect(page.source.data).toContain("swept-wavelength source")
+    expect(content.find((b: any) => b.type === "image")).toEqual({
+      type: "image",
+      source: { type: "base64", media_type: "image/png", data: "iVBORw==" },
+    })
     // No extra title request: the title comes from the message itself.
     expect(anthropicCalls.filter((c) => !c.body.stream)).toHaveLength(0)
   })

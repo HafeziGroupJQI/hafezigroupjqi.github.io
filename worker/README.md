@@ -103,7 +103,8 @@ member page (`frontend/gpt/`, `src/gpt/`). It knows the whole member edition of 
 History is append-only and replayed exactly (thinking and compaction blocks included), with
 binaries stored as R2 references rather than base64. Long chats use server-side compaction.
 Without `ANTHROPIC_API_KEY` the chat answers offline, listing the context it would have sent.
-Through a local claude-bridge (`ANTHROPIC_BASE_URL` on localhost) it runs without tools.
+Through a claude-bridge (any `ANTHROPIC_BASE_URL` but Anthropic's) it runs the same tools, by
+emulation, and sends images and PDFs, but no betas: no compaction or citations.
 
 ## Configuration
 

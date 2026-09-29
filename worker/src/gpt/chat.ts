@@ -89,29 +89,6 @@ function readContext(value: unknown): ScratchpadContext | null {
   return { label: label.trim().slice(0, 200) || "Scratchpad", text }
 }
 
-/**
- * The claude-bridge: text in and out, no thinking or betas. It runs the site's tools by
- * emulation (the model lists its calls in a structured answer), so they are sent as usual.
- */
-const flattenForBridge = (message: MessageParam): MessageParam => {
-  if (typeof message.content === "string") return message
-  // The bridge keeps text blocks only, so inline text documents as tagged text.
-  const content = message.content.map((block): Block => {
-    if (block.type === "document" && block.source.type === "text")
-      return {
-        type: "text",
-        text: `<document title="${block.title ?? ""}" source="${block.context ?? ""}">\n${block.source.data}\n</document>`,
-      }
-    if (block.type === "document" || block.type === "image")
-      return {
-        type: "text",
-        text: `[${block.type === "image" ? "an image" : "a PDF"} (not readable through the local bridge)]`,
-      }
-    return block
-  })
-  return { ...message, content }
-}
-
 const isBridge = (env: Env) => {
   // Any Messages endpoint other than Anthropic's is the claude-bridge (~/src/claude-bridge): local
   // under wrangler dev, or tunnelled for the deployed Worker when there is no API key.
@@ -380,12 +357,14 @@ async function converse(t: TurnContext): Promise<TurnResult> {
   const opened = new Map<string, ResolvedRef["label"]>()
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+    // The claude-bridge has no betas. It takes images, PDFs and documents as they are, and runs
+    // the site's tools by emulation (the model lists its calls in a structured answer).
     const params: Anthropic.Beta.MessageCreateParamsStreaming = bridge
       ? {
           model: m.id,
           max_tokens: MAX_OUTPUT_TOKENS,
           system,
-          messages: messages.map(flattenForBridge),
+          messages,
           tools: TOOLS,
           stream: true,
         }

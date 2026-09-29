@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk"
 import type { Upstream } from "../docs"
 import type { DocumentEntry, Env } from "../env"
-import { HttpError } from "../http"
+import { HttpError, SANDBOX_CSP } from "../http"
 import type { Knowledge, Page } from "./knowledge"
 import type { Skill } from "./skills"
 import type { FileRow, Project } from "./store"
@@ -193,9 +193,6 @@ export function storedMime(kind: "pdf" | "image" | "text", mime: string): string
   if (kind === "image") return mime
   return isTextMime(mime) ? mime.slice(0, 100) : "text/plain"
 }
-
-/** Served files never run: no scripts, no subresources, and nothing is sniffed. */
-export const SANDBOX_CSP = "sandbox; default-src 'none'"
 
 /**
  * How an uploaded file is served back (on the site and on the lab origin): PDFs and plain images

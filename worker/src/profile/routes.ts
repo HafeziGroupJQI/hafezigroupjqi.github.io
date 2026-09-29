@@ -1,7 +1,7 @@
 import type { Auditor } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
-import { HttpError, decodeSegment, json, readJson } from "../http"
+import { HttpError, SANDBOX_CSP, decodeSegment, json, readJson } from "../http"
 import type { Session } from "../session"
 import { type Page, getScalar, splitPage } from "./frontmatter"
 import { PEOPLE_PAGE, Vault, type VaultFetch } from "./vault"
@@ -216,8 +216,14 @@ export async function profileRoutes(
       (await env.ARTIFACTS.get(photoKey(login, "pending"))) ??
       (await env.ARTIFACTS.get(photoKey(login, "photo")))
     if (!object) throw new HttpError(404, "no photo")
+    // The browser made the JPEG, but the bytes are the member's: shown as a JPEG, never sniffed.
     return new Response(object.body, {
-      headers: { "content-type": "image/jpeg", "content-length": String(object.size) },
+      headers: {
+        "content-type": "image/jpeg",
+        "content-length": String(object.size),
+        "x-content-type-options": "nosniff",
+        "content-security-policy": SANDBOX_CSP,
+      },
     })
   }
 

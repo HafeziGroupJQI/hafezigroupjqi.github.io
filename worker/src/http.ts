@@ -30,6 +30,9 @@ export function withPrivateHeaders(response: Response, { store = false } = {}): 
   return out
 }
 
+/** For bytes a member chose (uploads, photos): nothing in them runs, and nothing loads. */
+export const SANDBOX_CSP = "sandbox; default-src 'none'"
+
 /** decodeURIComponent for a piece of the request path: a malformed escape is a 400, not a 500. */
 export function decodeSegment(value: string): string {
   try {

@@ -277,6 +277,10 @@ describe("member settings: the photo", () => {
     expect((await ada.json("/api/session")).body.user.avatar).toBe(avatar)
     const served = await (await as("eve")).fetch(avatar)
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(JPEG)
+    // Whatever the bytes are, they are shown as a JPEG and nothing in them runs.
+    expect(served.headers.get("content-type")).toBe("image/jpeg")
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(served.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'")
 
     await publish()
     expect(vault.bytes("content/assets/people/ada-lovelace.jpg")).toEqual(JPEG)

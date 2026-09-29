@@ -71,12 +71,68 @@
       "wire_hex": "030400000100000068656c6c6f"
     },
     {
+      "name": "reset_relay",
+      "type": 4,
+      "flags": 0,
+      "stream_id": 1,
+      "json": {
+        "code": "timeout",
+        "reason": "no response"
+      },
+      "wire_hex": "04000000010000007b22636f6465223a2274696d656f7574222c22726561736f6e223a226e6f20726573706f6e7365227d"
+    },
+    {
+      "name": "reset_host",
+      "type": 4,
+      "flags": 0,
+      "stream_id": 3,
+      "json": {
+        "code": 503,
+        "reason": "server not running"
+      },
+      "wire_hex": "04000000030000007b22636f6465223a3530332c22726561736f6e223a22736572766572206e6f742072756e6e696e67227d"
+    },
+    {
       "name": "window",
       "type": 5,
       "flags": 0,
       "stream_id": 3,
       "bytes_hex": "00000400",
       "wire_hex": "050000000300000000000400"
+    },
+    {
+      "name": "open_ws",
+      "type": 6,
+      "flags": 0,
+      "stream_id": 5,
+      "json": {
+        "method": "GET",
+        "target": "/jupyter/user/alice/api/kernels/k1/channels?session_id=s",
+        "headers": [
+          [
+            "accept-language",
+            "en"
+          ]
+        ],
+        "assertion": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.d0fct4L_QEHBJXqJ47GWx5X0n9NTSg89sWIFTx1hXFg",
+        "window": 524288,
+        "ws_url": "wss://w.example/lab/t.k",
+        "ticket": "",
+        "protocols": [
+          "v1.kernel.websocket.jupyter.org"
+        ]
+      },
+      "wire_hex": "06000000050000007b226d6574686f64223a22474554222c22746172676574223a222f6a7570797465722f757365722f616c6963652f6170692f6b65726e656c732f6b312f6368616e6e656c733f73657373696f6e5f69643d73222c2268656164657273223a5b5b226163636570742d6c616e6775616765222c22656e225d5d2c22617373657274696f6e223a2265794a30655841694f694a6a623231776458526c496977695958566b496a6f696147466d5a5870704c574e7662584231644755694c434a736232647062694936496d467361574e6c49697769636d39735a534936496d316c62574a6c63694973496d6c68644349364d5463354d4441774d4441774d4377695a586877496a6f304d5441794e4451304f44417766512e6430666374344c5f514548424a58714a34374757783558306e394e54536738397357494654783168584667222c2277696e646f77223a3532343238382c2277735f75726c223a227773733a2f2f772e6578616d706c652f6c61622f742e6b222c227469636b6574223a22222c2270726f746f636f6c73223a5b2276312e6b65726e656c2e776562736f636b65742e6a7570797465722e6f7267225d7d"
+    },
+    {
+      "name": "ws_accept",
+      "type": 7,
+      "flags": 0,
+      "stream_id": 5,
+      "json": {
+        "protocol": "v1.kernel.websocket.jupyter.org"
+      },
+      "wire_hex": "07000000050000007b2270726f746f636f6c223a2276312e6b65726e656c2e776562736f636b65742e6a7570797465722e6f7267227d"
     },
     {
       "name": "ws_msg_bin_fin",
@@ -116,6 +172,16 @@
       "wire_hex": "10000000000000007b2270726f746f223a312c22686f73745f6964223a2277736c222c2276657273696f6e223a22302e312e30222c226d61785f73747265616d73223a36347d"
     },
     {
+      "name": "goaway",
+      "type": 17,
+      "flags": 0,
+      "stream_id": 0,
+      "json": {
+        "reason": "replaced"
+      },
+      "wire_hex": "11000000000000007b22726561736f6e223a227265706c61636564227d"
+    },
+    {
       "name": "control",
       "type": 18,
       "flags": 0,
@@ -127,6 +193,38 @@
         "args": {}
       },
       "wire_hex": "12000000000000007b227270635f6964223a372c226f70223a22737461747573222c22617373657274696f6e223a2265794a30655841694f694a6a623231776458526c496977695958566b496a6f696147466d5a5870704c574e7662584231644755694c434a736232647062694936496d467361574e6c49697769636d39735a534936496d316c62574a6c63694973496d6c68644349364d5463354d4441774d4441774d4377695a586877496a6f304d5441794e4451304f44417766512e6430666374344c5f514548424a58714a34374757783558306e394e54536738397357494654783168584667222c2261726773223a7b7d7d"
+    },
+    {
+      "name": "control_result_progress",
+      "type": 19,
+      "flags": 0,
+      "stream_id": 0,
+      "json": {
+        "rpc_id": 7,
+        "ok": true,
+        "progress": {
+          "message": "Spawning server...",
+          "percent": 10
+        },
+        "done": false
+      },
+      "wire_hex": "13000000000000007b227270635f6964223a372c226f6b223a747275652c2270726f6772657373223a7b226d657373616765223a22537061776e696e67207365727665722e2e2e222c2270657263656e74223a31307d2c22646f6e65223a66616c73657d"
+    },
+    {
+      "name": "control_result_done",
+      "type": 19,
+      "flags": 0,
+      "stream_id": 0,
+      "json": {
+        "rpc_id": 7,
+        "ok": true,
+        "result": {
+          "server": "running",
+          "url": "/jupyter/user/alice/"
+        },
+        "done": true
+      },
+      "wire_hex": "13000000000000007b227270635f6964223a372c226f6b223a747275652c22726573756c74223a7b22736572766572223a2272756e6e696e67222c2275726c223a222f6a7570797465722f757365722f616c6963652f227d2c22646f6e65223a747275657d"
     }
   ]
 }

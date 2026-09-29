@@ -73,6 +73,11 @@ describe("compute frames and tokens (shared vectors)", () => {
     expect(hex(closePayload(1000, "bye"))).toBe("e803627965")
   })
 
+  it("has a shared vector for every frame type", () => {
+    const covered = new Set(vectors.frames.map((v) => v.type))
+    expect(Object.values(FrameType).filter((type) => !covered.has(type))).toEqual([])
+  })
+
   it("rejects short and oversize frames", () => {
     expect(() => decodeFrame(new Uint8Array(7))).toThrow()
     expect(() => decodeFrame(new Uint8Array(8 + MAX_PAYLOAD + 1))).toThrow()

@@ -129,6 +129,11 @@ export async function labChatRoutes(
   }
   write()
   if (method === "PUT") {
+    // A rename in the lab writes the new name, then deletes the old one: with If-None-Match: *,
+    // a save only creates, so a rename onto another chat's name can't overwrite that chat.
+    const createOnly = request.headers.get("if-none-match")?.trim() === "*"
+    const taken = `a lab chat named "${name}" already exists`
+    if (createOnly && existing) throw new HttpError(409, taken)
     const text = new TextDecoder().decode(
       await readLimited(
         request,
@@ -144,7 +149,9 @@ export async function labChatRoutes(
       labChatTitle(chat, name),
       model,
       labTranscript(chat, model),
+      { createOnly },
     )
+    if (!conversation) throw new HttpError(409, taken)
     await env.ARTIFACTS.put(labChatKey(conversation.id), text, {
       httpMetadata: { contentType: "application/json" },
     })

@@ -231,6 +231,24 @@ describe("the lab's AI chats, kept as Hafezi GPT conversations", () => {
       expect((await put(name)).status, JSON.stringify(name)).toBe(422)
   })
 
+  it("creates only, never overwrites, when a save says If-None-Match: *", async () => {
+    const call = lab(
+      await issueLabTicket(env as any, { login: "vic", role: "member", exp: exp() }, "vic"),
+    )
+    const put = (name: string, title: string, headers: Record<string, string> = {}) =>
+      call(`/lab-chats/${name}`, { method: "PUT", body: JSON.stringify(chat(title)), headers })
+    const created = await put("Notes", "Mine", { "if-none-match": "*" })
+    expect(created.status).toBe(200)
+    // A rename onto a taken name: the lab's own chat stays as it was.
+    await put("Other", "Theirs")
+    const onto = await put("Notes", "Theirs", { "if-none-match": "*" })
+    expect(onto.status).toBe(409)
+    expect(((await (await call("/lab-chats/Notes")).json()) as any).metadata.title).toBe("Mine")
+    // Without the header, a save still replaces the chat (autosave).
+    expect((await put("Notes", "Revised")).status).toBe(200)
+    expect(((await (await call("/lab-chats/Notes")).json()) as any).metadata.title).toBe("Revised")
+  })
+
   it("keeps each member's lab chats apart and refuses bad names and bodies", async () => {
     const mine = lab(
       await issueLabTicket(env as any, { login: "sam", role: "member", exp: exp() }, "sam"),

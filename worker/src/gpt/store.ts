@@ -371,25 +371,30 @@ export class GptStore {
       .first<Conversation>()
   }
 
-  /** Create or update the lab chat's conversation, replacing its messages with the lab's text. */
+  /**
+   * Create or update the lab chat's conversation, replacing its messages with the lab's text.
+   * With createOnly, a chat by that name that exists already is left alone (null).
+   */
   async saveLabChat(
     login: string,
     name: string,
     title: string,
     model: string,
     rows: Array<{ role: "user" | "assistant"; content: unknown[]; meta: Record<string, unknown> }>,
-  ): Promise<Conversation> {
+    { createOnly = false }: { createOnly?: boolean } = {},
+  ): Promise<Conversation | null> {
     const now = Date.now()
     // Two saves of a new chat can race: the unique (owner, lab_name) index keeps one row.
-    await this.db
+    const { meta } = await this.db
       .prepare(
         `INSERT INTO gpt_conversations (id, project_id, owner, title, model, origin_slug, forked_from,
            lab_name, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?)
          ON CONFLICT (owner, lab_name) WHERE lab_name IS NOT NULL
-         DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at`,
+         DO ${createOnly ? "NOTHING" : "UPDATE SET title = excluded.title, updated_at = excluded.updated_at"}`,
       )
       .bind(newId("c"), login, title, model, name, now, now)
       .run()
+    if (createOnly && !meta.changes) return null
     const conversation = (await this.labChat(login, name))!
     await this.db.batch([
       this.db.prepare("DELETE FROM gpt_messages WHERE conversation_id = ?").bind(conversation.id),

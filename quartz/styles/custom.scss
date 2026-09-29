@@ -4172,6 +4172,17 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+.page-export__note {
+  max-width: 250px;
+  margin: 2px 14px 6px;
+  color: var(--jqi-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  a {
+    color: inherit;
+    text-decoration: underline;
+  }
+}
 @media (hover: hover) and (min-width: 800px) {
   .wl-notebook figure.wl-cell .wl-toolbar {
     opacity: 0.8;

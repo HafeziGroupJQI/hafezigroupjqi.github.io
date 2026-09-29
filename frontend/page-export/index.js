@@ -1,12 +1,16 @@
 // The Export menu under a page's title, on every content page of both editions (JqiFrame's
 // [data-page-tools], whose data-source is the page's Markdown source; static/page-export.js): the
 // page as Markdown or Quarto, the file a notebook or Quarto page was rendered from (a Jupyter
-// notebook also as Quarto or Markdown, notebook-page/exporting.js), and a PDF from the print dialog.
-// Which items a page gets: menu.js; the Quarto conversion: quarto.js; printing: print.js. A
-// disclosure menu: Enter or Space opens it, the arrow keys move through it, Escape closes it.
+// notebook also as Quarto or Markdown, notebook-page/exporting.js), a PDF from the print dialog, and
+// the page saved to the member's Google Drive. Which items a page gets: menu.js; the Quarto
+// conversion: quarto.js; printing: print.js; Google Drive: drive.js and doc.js. A disclosure menu:
+// Enter or Space opens it, the arrow keys move through it, Escape closes it.
 
 import { h } from "../dashboard/dom.js"
 import { convertNotebook } from "../notebook-page/exporting.js"
+import { GOOGLE_CLIENT_ID } from "./config.js"
+import { DOC_LIMIT, articleHtml, docDocument } from "./doc.js"
+import { GOOGLE_DOC, colabUrl, driveToken, driveType, loadGis, uploadToDrive } from "./drive.js"
 import { exportItems, pageStem } from "./menu.js"
 import { preparePrint } from "./print.js"
 import { markdownToQmd } from "./quarto.js"
@@ -74,9 +78,23 @@ function menu(groups, run) {
           ),
         ),
       ),
+      group.note
+        ? h(
+            "p",
+            { class: "page-export__note" },
+            `${group.note.text} `,
+            h("a", { href: group.note.link.href, text: group.note.link.text }),
+          )
+        : null,
     ]),
   )
   const details = h("details", { class: "page-export" }, summary, panel)
+  // Google's sign-in script loads as the menu first opens, so a click on a Drive item can open its
+  // window straight away (browsers let only a click open one).
+  if (groups.some((group) => group.items.some((item) => item.id.startsWith("drive-"))))
+    details.addEventListener("toggle", () => details.open && loadGis().catch(() => {}), {
+      once: true,
+    })
   details.addEventListener("keydown", (event) => {
     const buttons = [...panel.querySelectorAll("button:not(:disabled)")]
     if (event.key === "Escape" && details.open) {
@@ -108,7 +126,7 @@ export function mountPageExport(tools) {
   const article = document.querySelector(".page-body")
   const source = tools.dataset.source || null
   const rendered = renderedFile(article)
-  const groups = exportItems({ source, rendered: rendered?.name })
+  const groups = exportItems({ source, rendered: rendered?.name, drive: !!GOOGLE_CLIENT_ID })
   if (!groups.length) return
   const stem = pageStem(source ?? rendered?.name ?? location.pathname)
   const title =
@@ -116,6 +134,26 @@ export function mountPageExport(tools) {
     document.title.replace(/ \| Hafezi Group$/, "")
   const pageSource = async () => (await fetchOk(source, "the page's source")).text()
   const fetchRendered = () => fetchOk(rendered.url, rendered.name)
+  // Save to Google Drive: sign in first, while the click still counts, then make the file and send
+  // it; the status line links to it, and a notebook also to Colab.
+  const toDrive = (make) => async (say) => {
+    say("Waiting for Google sign-in…")
+    const token = await driveToken(GOOGLE_CLIENT_ID)
+    say("Preparing…")
+    const { metadata, type, body } = await make()
+    say("Saving to Google Drive…")
+    const file = await uploadToDrive(token, {
+      metadata: { ...metadata, description: `From ${location.href}` },
+      type,
+      body,
+    })
+    const link = (href, text) => h("a", { href, target: "_blank", rel: "noopener", text })
+    return [
+      "Saved to Google Drive: ",
+      link(file.webViewLink ?? `https://drive.google.com/open?id=${file.id}`, "open it"),
+      ...(/\.ipynb$/i.test(file.name) ? [" or ", link(colabUrl(file.id), "open it in Colab")] : []),
+    ]
+  }
   const notebookAs = (format) => async () =>
     save(convertNotebook(await (await fetchRendered()).text(), format, rendered.name))
   const actions = {
@@ -134,20 +172,44 @@ export function mountPageExport(tools) {
     "notebook-md": notebookAs("md"),
     // The browser's print dialog, whose destination "Save as PDF" makes the file.
     pdf: async () => print(),
+    "drive-doc": toDrive(async () => {
+      // The member edition's images are members-only: Google gets them inlined.
+      const members = !!document.querySelector(".site-internal")
+      const markdown = source ? await pageSource().catch(() => null) : null
+      const html = docDocument({
+        title,
+        url: location.href,
+        body: await articleHtml(article, { members, source: markdown }),
+      })
+      const size = new Blob([html]).size
+      if (size > DOC_LIMIT)
+        throw new Error(
+          `the page is ${Math.ceil(size / 2 ** 20)} MB with its images; Google Docs takes 50 MB`,
+        )
+      return { metadata: { name: title, mimeType: GOOGLE_DOC }, type: "text/html", body: html }
+    }),
+    "drive-source": toDrive(async () => ({
+      metadata: { name: `${stem}.md`, mimeType: driveType(`${stem}.md`) },
+      type: driveType(`${stem}.md`),
+      body: await pageSource(),
+    })),
+    "drive-rendered": toDrive(async () => ({
+      metadata: { name: rendered.name, mimeType: driveType(rendered.name) },
+      type: driveType(rendered.name),
+      body: await (await fetchRendered()).blob(),
+    })),
   }
   const status = h("span", { class: "wl-status", role: "status" })
-  let busy = false
+  // The latest choice owns the status line; one still waiting (on Google's window, say) is dropped.
+  let latest = 0
   const run = async (item) => {
-    if (busy) return
-    busy = true
-    status.textContent = "Preparing…"
+    const mine = ++latest
+    const say = (...nodes) => mine === latest && status.replaceChildren(...nodes)
+    say("Preparing…")
     try {
-      await actions[item.id]()
-      status.textContent = ""
+      say(...((await actions[item.id](say)) ?? []))
     } catch (error) {
-      status.textContent = `Export failed: ${error.message}`
-    } finally {
-      busy = false
+      say(`Export failed: ${error.message}`)
     }
   }
   tools.append(menu(groups, run), status)

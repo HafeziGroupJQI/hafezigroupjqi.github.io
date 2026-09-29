@@ -16,11 +16,18 @@ const MAX_TEXT = 100_000
 
 export const labChatKey = (conversationId: string) => `gpt/lab-chats/${conversationId}.json`
 
-/** A chat's name as the lab gives it ("Hafezi GPT", "Hafezi GPT-1", or the member's own). */
+/**
+ * A chat's name as the lab gives it ("Hafezi GPT", "Hafezi GPT-1", or the member's own), in one
+ * Unicode form (NFC), so a name typed two ways is one chat. Controls and invisible format
+ * characters (bidi overrides, zero-width spaces) would make two names look the same: refused.
+ */
 export function labChatName(raw: string): string {
-  const name = raw.trim()
-  if (!name || name.length > 120 || name.startsWith(".") || /[/\\\u0000-\u001f\u007f]/.test(name))
-    throw new HttpError(422, "a lab chat's name is 1 to 120 characters, without slashes")
+  const name = raw.normalize("NFC").trim()
+  if (!name || name.length > 120 || name.startsWith(".") || /[/\\\p{Cc}\p{Cf}]/u.test(name))
+    throw new HttpError(
+      422,
+      "a lab chat's name is 1 to 120 characters, without slashes or invisible characters",
+    )
   return name
 }
 

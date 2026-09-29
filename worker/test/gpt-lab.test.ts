@@ -208,6 +208,29 @@ describe("the lab's AI chats, kept as Hafezi GPT conversations", () => {
     expect((await site.fetch(`/api/gpt/conversations/${conversation_id}`)).status).toBe(404)
   })
 
+  it("reads a name typed two ways as one chat, and refuses invisible characters", async () => {
+    const call = lab(
+      await issueLabTicket(env as any, { login: "uma", role: "member", exp: exp() }, "uma"),
+    )
+    const put = (name: string) =>
+      call(`/lab-chats/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        body: JSON.stringify(chat()),
+      })
+    const composed = "Caf\u00e9"
+    const decomposed = "Cafe\u0301"
+    const first = (await (await put(decomposed)).json()) as any
+    const second = (await (await put(` ${composed} `)).json()) as any
+    expect(second).toMatchObject({ name: composed, conversation_id: first.conversation_id })
+    expect(((await (await call("/lab-chats")).json()) as any[]).map((c) => c.name)).toEqual([
+      composed,
+    ])
+    expect((await call(`/lab-chats/${encodeURIComponent(decomposed)}`)).status).toBe(200)
+    // A right-to-left override or a zero-width space would pass for another chat's name.
+    for (const name of ["txt.\u202eexe", "Caf\u200be", "a\u0085b", "\u2066x"])
+      expect((await put(name)).status, JSON.stringify(name)).toBe(422)
+  })
+
   it("keeps each member's lab chats apart and refuses bad names and bodies", async () => {
     const mine = lab(
       await issueLabTicket(env as any, { login: "sam", role: "member", exp: exp() }, "sam"),

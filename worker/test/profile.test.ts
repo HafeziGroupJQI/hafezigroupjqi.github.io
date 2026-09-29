@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
+import { formatScalar, getScalar, joinPage, setScalar, splitPage } from "../src/profile/frontmatter"
 import { publishDue } from "../src/profile/publish"
 import { WINDOW_MS, dueAt } from "../src/profile/routes"
 import { ORIGIN, as, auditRows } from "./helpers"
@@ -275,7 +276,12 @@ describe("member settings: the People page", () => {
     expect((await put({ title: "  " })).status).toBe(422)
     expect((await put({ email: "not an address" })).status).toBe(422)
     expect((await put({ profile: "javascript:alert(1)" })).status).toBe(422)
+    expect((await put({ profile: "http://example.com" })).status).toBe(422)
     expect((await put({ office: "a\nb" })).status).toBe(422)
+    // YAML reads NEL, LS and PS as line breaks; DEL and the other controls have no place here.
+    for (const bad of ["a\u0085b", "a\u2028b", "a\u2029b", "a\u007fb", "a\u0000b", "a\u009bb"])
+      expect((await put({ scope: bad })).status, JSON.stringify(bad)).toBe(422)
+    expect((await put({ profile: "https://example.com/ada" })).status).toBe(200)
     expect((await put({ scope: "x".repeat(501) })).status).toBe(422)
   })
 
@@ -328,6 +334,21 @@ describe("member settings: the People page", () => {
         .bind(Date.now())
         .run()
     expect((await save(ada, { office: "1" })).status).toBe(429)
+  })
+})
+
+describe("front matter", () => {
+  it("writes a value YAML would break across lines as one escaped line, and reads it back", () => {
+    for (const value of ["a\u2028b", "x\u0085y", "del\u007f", "c1\u009b", "tab\there"]) {
+      const page = splitPage(PAGE)!
+      setScalar(page, "scope", value)
+      const text = joinPage(page)
+      expect(text).not.toMatch(/[\u0085\u2028\u2029\u007f-\u009f\t]/)
+      expect(text.split("\n").filter((line) => line.startsWith("scope:"))).toHaveLength(1)
+      expect(getScalar(splitPage(text)!, "scope")).toBe(value)
+    }
+    expect(formatScalar("Ada Lovelace")).toBe("Ada Lovelace")
+    expect(formatScalar("Ada\u2028Lovelace")).toBe('"Ada\\u2028Lovelace"')
   })
 })
 

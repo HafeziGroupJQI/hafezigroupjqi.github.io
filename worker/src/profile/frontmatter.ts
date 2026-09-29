@@ -60,14 +60,23 @@ function parseInline(raw: string): string | null {
   return raw.replace(/\s+#.*$/, "").trim()
 }
 
+// Characters JSON leaves as they are but YAML reads as line breaks (NEL, LS, PS), plus DEL and
+// the C1 controls: escaped, so a value never spills onto a line of its own.
+const UNSAFE = /[\u007f-\u009f\u2028\u2029]/g
+
 /** YAML for a scalar: plain when that reads back as the same string, JSON-quoted otherwise. */
 export function formatScalar(value: string | null): string {
   if (value === null) return "null"
   const plain =
     /^[A-Za-z(][^:#\n]*$/.test(value) &&
+    !/[\p{Cc}\u2028\u2029]/u.test(value) &&
     !/\s$/.test(value) &&
     !/^(?:true|false|yes|no|on|off|null|y|n)$/i.test(value)
-  return plain ? value : JSON.stringify(value)
+  if (plain) return value
+  return JSON.stringify(value).replace(
+    UNSAFE,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  )
 }
 
 /** Set a top-level scalar key, in place when it exists, otherwise before `before` (or at the end). */

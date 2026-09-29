@@ -153,12 +153,14 @@ function clean(field: Field, value: unknown): string | null {
     if (field === "title") throw new HttpError(422, "your name can't be empty")
     return null
   }
-  if (/[\r\n]/.test(text)) throw new HttpError(422, `${field} must be one line`)
+  // YAML also breaks lines at NEL, LS and PS, and controls have no place in a People page.
+  if (/[\r\n\u0085\u2028\u2029]/.test(text)) throw new HttpError(422, `${field} must be one line`)
+  if (/\p{Cc}/u.test(text)) throw new HttpError(422, `${field} can't contain control characters`)
   if (text.length > LIMITS[field])
     throw new HttpError(422, `${field} is longer than ${LIMITS[field]} characters`)
   if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))
     throw new HttpError(422, "enter an email address like name@umd.edu, or leave it empty")
-  if (field === "profile" && !/^https?:\/\/\S+$/.test(text))
+  if (field === "profile" && !/^https:\/\/\S+$/.test(text))
     throw new HttpError(422, "the website link must start with https://")
   return text
 }

@@ -3570,7 +3570,8 @@ a.gpt-cite:hover {
 .gpt-fab-icon {
   font-size: 1.1rem;
 }
-html.gpt-modal-open .gpt-fab {
+html.gpt-modal-open .gpt-fab,
+.gpt-fab[hidden] {
   display: none;
 }
 // No button over an open Scratchpad lab, whose toasts sit in the same corner, whether or not its

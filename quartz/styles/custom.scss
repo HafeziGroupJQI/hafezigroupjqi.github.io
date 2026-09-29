@@ -1001,6 +1001,18 @@ article.popover-hint > *:first-child {
 .public-breadcrumbs a {
   color: #222;
 }
+// Narrow screens: the crumbs wrap, and the page's own name takes a full line under them rather
+// than a sliver of the first (a long notebook name stood ~14 lines tall at 390px).
+@media (max-width: 999px) {
+  .public-breadcrumbs {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .public-breadcrumbs > span:last-child {
+    flex-basis: 100%;
+    overflow-wrap: anywhere;
+  }
+}
 .site-public:not(.site-handbook) .page-content__aside {
   display: none !important;
 }

@@ -86,7 +86,7 @@ jobs:
 
   deploy:
     needs: notebooks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout the website (layout, build tools, worker)
         uses: actions/checkout@v5

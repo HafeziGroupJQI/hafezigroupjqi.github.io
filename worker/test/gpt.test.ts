@@ -612,7 +612,7 @@ describe("Claude turns (scripted API)", () => {
     })
   })
 
-  it("talks plain text to the claude-bridge: no tools, betas or thinking; pages inlined", async () => {
+  it("talks to the claude-bridge with the site's tools but no betas or thinking; pages inlined", async () => {
     const alice = await as("alice-bridge")
     const chat = await newChat(alice, { origin_slug: "equipment/santec-tsl" })
     anthropicScript.push({
@@ -629,11 +629,11 @@ describe("Claude turns (scripted API)", () => {
     expect(events.at(-1)!.name).toBe("done")
     const request = anthropicCalls.find((c) => c.body.stream)!
     expect(request.url).toContain("bridge-example.trycloudflare.com")
-    expect(request.body.tools).toBeUndefined()
+    // The bridge emulates tool calls, so the site's tools go along (search_site, read_page, ...).
+    expect(request.body.tools.map((t: any) => t.name)).toContain("search_site")
     expect(request.body.thinking).toBeUndefined()
     expect(request.body.context_management).toBeUndefined()
-    // The prompt's tool instructions are countermanded, or the model writes tool calls as text.
-    expect(request.body.system.at(-1).text).toMatch(/no tools are available/)
+    expect(JSON.stringify(request.body.system)).not.toMatch(/no tools are available/)
     const content = request.body.messages[0].content
     expect(content.every((b: any) => b.type === "text")).toBe(true)
     expect(content[1].text).toContain('<document title="Santec TSL tunable laser"')

@@ -89,12 +89,10 @@ function readContext(value: unknown): ScratchpadContext | null {
   return { label: label.trim().slice(0, 200) || "Scratchpad", text }
 }
 
-// The system prompt tells the model to search, read pages and use skills; through the bridge
-// there are no tools, and without this it writes the tool call out as its answer.
-const BRIDGE_NO_TOOLS =
-  "In this session no tools are available: search_site, list_pages, read_page and use_skill cannot be called. Answer from this conversation, the project knowledge above and general knowledge, say when the lab's own material would be needed, and never write out a tool call."
-
-/** The claude-bridge: text in, text out, no tools/thinking/betas. */
+/**
+ * The claude-bridge: text in and out, no thinking or betas. It runs the site's tools by
+ * emulation (the model lists its calls in a structured answer), so they are sent as usual.
+ */
 const flattenForBridge = (message: MessageParam): MessageParam => {
   if (typeof message.content === "string") return message
   // The bridge keeps text blocks only, so inline text documents as tagged text.
@@ -381,8 +379,9 @@ async function converse(t: TurnContext): Promise<TurnResult> {
       ? {
           model: m.id,
           max_tokens: MAX_OUTPUT_TOKENS,
-          system: [...system, { type: "text", text: BRIDGE_NO_TOOLS }],
+          system,
           messages: messages.map(flattenForBridge),
+          tools: TOOLS,
           stream: true,
         }
       : {

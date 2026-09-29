@@ -38,9 +38,11 @@
     { "tag": "v1", "new_sqlite_classes": ["DeviceHub"] },
     { "tag": "v2", "new_sqlite_classes": ["ComputeRelay"] },
   ],
-  // Coarse edge limit on Wolfram runs (optional; the relay enforces 1 concurrent + 30 / 10 min).
+  // Coarse edge limits (optional): Wolfram runs (the relay enforces 1 concurrent + 30 / 10 min)
+  // and the lab's coding agent, and the lab's ghost-text completions, which come far more often.
   "ratelimits": [
     { "name": "COMPUTE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "COMPLETE_LIMIT", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } },
   ],
   "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
   // Daily audit-log retention sweep (src/audit.ts pruneAudit), and the hourly publish of members'

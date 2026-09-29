@@ -152,8 +152,13 @@ export async function labAgent(
       402,
       "you've used this month's Hafezi GPT budget; ask a group admin to raise it",
     )
-  if (env.COMPUTE_LIMIT) {
-    const { success } = await env.COMPUTE_LIMIT.limit({ key: `agent:${session.login}` })
+  // Ghost-text completions (a prompt, no tools, not streamed) come each time the member pauses
+  // while typing: they have their own allowance, so they never use up the agent's.
+  const completion = !sent.tools && !sent.stream
+  const limiter = completion ? env.COMPLETE_LIMIT : env.COMPUTE_LIMIT
+  if (limiter) {
+    const key = `${completion ? "complete" : "agent"}:${session.login}`
+    const { success } = await limiter.limit({ key })
     if (!success) throw new HttpError(429, "too many requests; wait a moment")
   }
   const base = (env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com").replace(/\/+$/, "")

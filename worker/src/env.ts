@@ -38,6 +38,8 @@ export interface Env {
   COMPUTE_HOST_KEY_HASH?: string
   /** Optional coarse rate limit for Wolfram runs; the relay enforces the real per-login budget. */
   COMPUTE_LIMIT?: RateLimit
+  /** Optional rate limit for the lab's ghost-text completions (src/gpt/lab-agent.ts). */
+  COMPLETE_LIMIT?: RateLimit
   /** "true" lets owners open any member's server (every such request is logged). */
   COMPUTE_OWNER_ACCESS?: string
 }

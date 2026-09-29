@@ -207,6 +207,31 @@ describe("the lab's coding agent endpoint", () => {
     expect(anthropicCalls).toHaveLength(0)
   })
 
+  it("limits ghost-text completions on their own, so they never use up the agent's allowance", async () => {
+    const keys: string[] = []
+    const limiter = (success: boolean) => ({
+      limit: async ({ key }: { key: string }) => (keys.push(key), { success }),
+    })
+    const overrides = { COMPUTE_LIMIT: limiter(false), COMPLETE_LIMIT: limiter(true) }
+    // What jupyterlite-ai's completer sends: a prompt to Haiku, no tools, not streamed.
+    const completion = {
+      model: "claude-haiku-4-5",
+      max_tokens: 64_000,
+      temperature: 0.3,
+      system: [{ type: "text", text: "You are an AI code completion assistant." }],
+      messages: [{ role: "user", content: [{ type: "text", text: "x = np." }] }],
+    }
+    expect((await agent(own, completion, { overrides })).status).toBe(200)
+    expect(anthropicCalls[0].body.max_tokens).toBe(16_000)
+    const tools = [{ name: "add_cell", input_schema: { type: "object" } }]
+    expect((await agent(own, { ...ask, messages: hello, tools }, { overrides })).status).toBe(429)
+    expect(
+      (await agent(own, { ...ask, messages: hello, stream: true }, { overrides })).status,
+    ).toBe(429)
+    expect(keys).toEqual(["complete:agnes", "agent:agnes", "agent:agnes"])
+    expect(anthropicCalls).toHaveLength(1)
+  })
+
   it("offers only the site's models, and no sampling knobs where the model refuses them", () => {
     expect(() => upstreamBody({ model: "claude-3-opus", messages: hello })).toThrow(/not available/)
     expect(() => upstreamBody({ model: "claude-sonnet-5", messages: [] })).toThrow(/non-empty/)

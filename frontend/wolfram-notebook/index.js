@@ -4,7 +4,7 @@
 // <pre class="wl-code"><code>. member-tools.js mounts this on [data-wolfram-notebook].
 
 import { h } from "../dashboard/dom.js"
-import { openInScratchpad } from "../notebook-page/index.js"
+import { openInScratchpad, placePageActions } from "../notebook-page/index.js"
 import {
   failureMessage,
   messageParts,
@@ -57,17 +57,16 @@ export function mountWolframNotebook(root) {
 
   if (source) {
     const status = h("span", { class: "wl-status", role: "status" })
-    root.prepend(
-      h(
-        "div",
-        { class: "wl-page-actions" },
+    placePageActions(
+      [
         h("button", {
           type: "button",
           text: "Open notebook in Scratchpad",
           onclick: () => fork(status),
         }),
         status,
-      ),
+      ],
+      (row) => root.prepend(row),
     )
   }
 

@@ -1,11 +1,12 @@
 // The Export menu under a page's title, on every content page of both editions (JqiFrame's
 // [data-page-tools], whose data-source is the page's Markdown source; static/page-export.js): the
-// page as Markdown or Quarto, the file a notebook or Quarto page was rendered from, and a PDF from
-// the print dialog. Which items a page gets: menu.js; the Quarto conversion: quarto.js; printing:
-// print.js. A disclosure menu: Enter or Space opens it, the arrow keys move through it, Escape
-// closes it.
+// page as Markdown or Quarto, the file a notebook or Quarto page was rendered from (a Jupyter
+// notebook also as Quarto or Markdown, notebook-page/exporting.js), and a PDF from the print dialog.
+// Which items a page gets: menu.js; the Quarto conversion: quarto.js; printing: print.js. A
+// disclosure menu: Enter or Space opens it, the arrow keys move through it, Escape closes it.
 
 import { h } from "../dashboard/dom.js"
+import { convertNotebook } from "../notebook-page/exporting.js"
 import { exportItems, pageStem } from "./menu.js"
 import { preparePrint } from "./print.js"
 import { markdownToQmd } from "./quarto.js"
@@ -114,6 +115,9 @@ export function mountPageExport(tools) {
     document.querySelector(".page-content__header h1")?.textContent.trim() ||
     document.title.replace(/ \| Hafezi Group$/, "")
   const pageSource = async () => (await fetchOk(source, "the page's source")).text()
+  const fetchRendered = () => fetchOk(rendered.url, rendered.name)
+  const notebookAs = (format) => async () =>
+    save(convertNotebook(await (await fetchRendered()).text(), format, rendered.name))
   const actions = {
     source: async () => save({ name: `${stem}.md`, type: MARKDOWN, text: await pageSource() }),
     quarto: async () => {
@@ -125,11 +129,9 @@ export function mountPageExport(tools) {
       })
       save({ name: `${stem}.qmd`, type: MARKDOWN, text })
     },
-    rendered: async () =>
-      save({
-        name: rendered.name,
-        text: await (await fetchOk(rendered.url, rendered.name)).blob(),
-      }),
+    rendered: async () => save({ name: rendered.name, text: await (await fetchRendered()).blob() }),
+    "notebook-qmd": notebookAs("qmd"),
+    "notebook-md": notebookAs("md"),
     // The browser's print dialog, whose destination "Save as PDF" makes the file.
     pdf: async () => print(),
   }

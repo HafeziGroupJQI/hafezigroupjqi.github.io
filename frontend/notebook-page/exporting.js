@@ -1,5 +1,5 @@
-// A Jupyter notebook as Quarto or Markdown, for a notebook page's "Download as". Pure (nbformat
-// JSON in, text out), so node:test covers it.
+// A Jupyter notebook as Quarto or Markdown, for a notebook page's Export menu (page-export/). Pure
+// (nbformat JSON in, text out), so node:test covers it.
 //
 // From compute's labextensions/src/lib/exporting.ts (the lab's Export menu): notebookToQmd,
 // notebookToMarkdown and the helpers they use, with the logic unchanged. Keep the two in step.
@@ -167,7 +167,7 @@ export function notebookToQmd(nb, title) {
 
 // ---- the site's downloads ----
 
-/** "Download as" on a notebook page, by its raw file's name; the first is the raw file itself. */
+/** A notebook page's downloads (its Export menu), by its raw file's name; the first is the file. */
 export function downloadFormats(fileName) {
   if (!/\.ipynb$/i.test(fileName)) return []
   return [

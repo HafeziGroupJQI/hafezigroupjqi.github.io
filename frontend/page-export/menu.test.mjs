@@ -25,6 +25,15 @@ test("a Quarto page's Quarto is its own source; a Wolfram page's download is the
   assert.deepEqual(ids(exportItems({ source: null })), [["Download", ["pdf"]]])
 })
 
+test("a Jupyter notebook's page downloads as the notebook, or as Quarto or Markdown made from it", () => {
+  const groups = exportItems({ source: "/resources/code/01_ring.md", rendered: "01_ring.ipynb" })
+  assert.deepEqual(ids(groups), [["Download", ["rendered", "notebook-qmd", "notebook-md", "pdf"]]])
+  assert.deepEqual(
+    groups[0].items.map((item) => item.label),
+    ["Notebook (.ipynb)", "Quarto (.qmd)", "Markdown with figures (.md)", "Save as PDF…"],
+  )
+})
+
 test("downloads are named after the page's file, or its folder for an index page", () => {
   assert.equal(pageStem("/resources/onboarding/git.md"), "git")
   assert.equal(pageStem("/resources/code/index.md"), "code")

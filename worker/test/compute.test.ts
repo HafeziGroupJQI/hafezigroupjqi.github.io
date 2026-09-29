@@ -152,6 +152,20 @@ describe("compute path policy", () => {
     expect(deny("jupyter/user/alice/")).toBe(400)
   })
 
+  it("lets a file in a folder open through the collaboration session endpoint, and judges it decoded", () => {
+    const session = "/jupyter/user/alice/api/collaboration/session/"
+    expect(authorizeTarget(`${session}profiles%2Fbase.py`, alice, workerEnv).target).toBe(
+      `${session}profiles%2Fbase.py`,
+    )
+    expect(deny(`${session}forks%2Fpublished%2Fa.ipynb`)).toBe(200)
+    expect(deny(`${session}..%2F..%2Fbob%2Fx.ipynb`)).toBe(400)
+    expect(deny(`${session}a%5Cb.py`)).toBe(400)
+    expect(deny(`${session}a%00b.py`)).toBe(400)
+    expect(deny("/jupyter/user/alice/api/collaboration%2Fsession/a%2Fb.py")).toBe(400)
+    expect(deny("/jupyter/user/alice/api/collaboration/room/a%2Fb")).toBe(400)
+    expect(deny("/jupyter/user/bob/api/collaboration/session/a%2Fb.py")).toBe(403)
+  })
+
   it("lets an owner in only when COMPUTE_OWNER_ACCESS is on", () => {
     expect(deny("/jupyter/user/alice/lab", owner)).toBe(403)
     expect(deny("/jupyter/user/alice/lab", owner, { COMPUTE_OWNER_ACCESS: "true" })).toBe(200)

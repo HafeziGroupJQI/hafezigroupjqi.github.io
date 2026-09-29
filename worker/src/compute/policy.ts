@@ -9,6 +9,10 @@ import { HttpError } from "../http"
 const USER_PATH = /^\/jupyter\/user\/([a-z0-9-]+)\//
 // Encoded separators would let one path mean two things to the Worker and to Tornado.
 const ENCODED_SEPARATOR = /%2f|%5c/i
+// Except where they are the path's own: jupyter-collaboration's session endpoint takes a whole
+// file path as one encoded segment (…/api/collaboration/session/profiles%2Fbase.py), so any file
+// in a folder opens through it. The decoded path is still judged below like every other.
+const COLLAB_SESSION = /^\/jupyter\/user\/[a-z0-9-]+\/api\/collaboration\/session\//
 
 export interface Authorized {
   /** What goes into OPEN_HTTP / OPEN_WS: the path exactly as the browser sent it, plus the query. */
@@ -28,7 +32,9 @@ export function authorizeTarget(
   const cut = raw.indexOf("?")
   const path = cut === -1 ? raw : raw.slice(0, cut)
   const query = cut === -1 ? "" : raw.slice(cut)
-  if (ENCODED_SEPARATOR.test(path)) throw new HttpError(400, "encoded path separators are refused")
+  const session = path.match(COLLAB_SESSION)
+  if (ENCODED_SEPARATOR.test(session ? session[0] : path))
+    throw new HttpError(400, "encoded path separators are refused")
 
   // Decode exactly once, then judge the decoded path.
   let decoded: string

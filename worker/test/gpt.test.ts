@@ -704,9 +704,12 @@ describe("Claude turns (scripted API)", () => {
     })
   })
 
-  it("talks to the claude-bridge with the site's tools, pages and images but no betas or thinking", async () => {
+  it("talks to the claude-bridge with the site's tools, pages, images and thinking, but no betas", async () => {
     const alice = await as("alice-bridge")
-    const chat = await newChat(alice, { origin_slug: "equipment/santec-tsl" })
+    const chat = await newChat(alice, {
+      origin_slug: "equipment/santec-tsl",
+      model: "claude-opus-5-5",
+    })
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
     const upload = await uploadTo(
       alice,
@@ -732,7 +735,8 @@ describe("Claude turns (scripted API)", () => {
     expect(request.url).toContain("bridge-example.trycloudflare.com")
     // The bridge emulates tool calls, so the site's tools go along (search_site, read_page, ...).
     expect(request.body.tools.map((t: any) => t.name)).toContain("search_site")
-    expect(request.body.thinking).toBeUndefined()
+    expect(request.body.thinking).toEqual({ type: "adaptive", display: "summarized" })
+    expect(request.body.output_config).toEqual({ effort: "high" })
     expect(request.body.context_management).toBeUndefined()
     expect(JSON.stringify(request.body.system)).not.toMatch(/no tools are available/)
     // The bridge passes images and PDFs to the model, and writes documents into its prompt.

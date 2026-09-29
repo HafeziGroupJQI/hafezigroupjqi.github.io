@@ -357,8 +357,9 @@ async function converse(t: TurnContext): Promise<TurnResult> {
   const opened = new Map<string, ResolvedRef["label"]>()
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-    // The claude-bridge has no betas. It takes images, PDFs and documents as they are, and runs
-    // the site's tools by emulation (the model lists its calls in a structured answer).
+    // The claude-bridge has no betas. It takes images, PDFs and documents as they are, runs the
+    // site's tools by emulation (the model lists its calls in a structured answer), and, like the
+    // API, thinks only when asked to.
     const params: Anthropic.Beta.MessageCreateParamsStreaming = bridge
       ? {
           model: m.id,
@@ -366,6 +367,8 @@ async function converse(t: TurnContext): Promise<TurnResult> {
           system,
           messages,
           tools: TOOLS,
+          thinking: { type: "adaptive", display: "summarized" },
+          ...(m.effort ? { output_config: { effort: m.effort } } : {}),
           stream: true,
         }
       : {

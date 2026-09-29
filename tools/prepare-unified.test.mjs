@@ -82,6 +82,9 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     assert.match(read("scratchpad.md"), /data-scratchpad/)
     // A member's own settings page.
     assert.match(read("settings.md"), /data-settings/)
+    // Uploads to the private vault.
+    assert.match(read("uploads.md"), /data-uploads/)
+    assert.match(read("uploads.md"), /layout: dashboard/)
     assert.ok(!fs.existsSync(path.join(built.output, "resources/.git")))
     fs.mkdirSync(path.join(publicRoot, "resources"))
     assert.throws(() => prepareUnified(publicRoot, privateRoot, yaml), /collides/)

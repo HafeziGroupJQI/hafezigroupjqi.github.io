@@ -85,6 +85,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "admin",
       "scratchpad",
       "settings",
+      "uploads",
       "recent",
       // The Scratchpad's JupyterLab: the service worker answers /jupyter/* from the compute relay.
       "jupyter",
@@ -413,6 +414,14 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "settings",
       "Settings",
       '<div class="member-tools dashboard" data-settings><h1 class="dash-title">Settings</h1><p class="muted">Loading…</p></div>',
+      [],
+      { layout: "dashboard" },
+    )
+    // A member's uploads to the private vault (frontend/uploads/): drafts, sent as pull requests.
+    page(
+      "uploads",
+      "Uploads",
+      '<div class="member-tools dashboard" data-uploads><h1 class="dash-title">Uploads</h1><p class="muted">Loading…</p></div>',
       [],
       { layout: "dashboard" },
     )

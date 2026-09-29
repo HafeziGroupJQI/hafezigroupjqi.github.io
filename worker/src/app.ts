@@ -53,6 +53,7 @@ export const MEMBER_PAGES = [
   "/admin",
   "/scratchpad",
   "/settings",
+  "/uploads",
   "/recent",
 ]
 

@@ -59,6 +59,8 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
             { label: "Scratchpad", href: "/scratchpad" },
             // The devices dashboard: its experiments and experiment builder are tabs of the page.
             { label: "Command Center", href: "/devices" },
+            // Files added to, replaced in, moved in or deleted from the private vault.
+            { label: "Uploads", href: "/uploads" },
             // The member's own People page, photo and Wolfram Engine license.
             { label: "Settings", href: "/settings" },
             { label: "Admin", href: "/admin", admin: true },

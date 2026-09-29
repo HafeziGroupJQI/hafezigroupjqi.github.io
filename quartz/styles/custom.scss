@@ -2699,6 +2699,106 @@ a.device-card:hover {
   }
 }
 
+// ---- Uploads (/uploads): a member's drafts of changes to the private vault ----
+.uploads-page {
+  max-width: 860px;
+}
+.uploads-page .uploads-status:empty {
+  display: none;
+}
+.uploads-page .uploads-current {
+  border-left: 4px solid var(--jqi-red, #e21833);
+}
+.uploads-page button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.uploads-page button.link:hover {
+  text-decoration: underline;
+}
+.uploads-page a {
+  color: var(--jqi-red, #e21833);
+}
+.uploads-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0;
+}
+.uploads-note textarea {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 4px;
+  font: inherit;
+}
+.uploads-changes,
+.uploads-files {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  margin: 8px 0 16px;
+  list-style: none;
+}
+.uploads-changes li,
+.uploads-files li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  overflow-wrap: anywhere;
+}
+.uploads-files li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--jqi-rule);
+}
+.uploads-review {
+  color: #b3261e;
+  font-size: 0.85rem;
+}
+.uploads-crumbs {
+  margin: 8px 0;
+}
+// A file input inside a label that looks like a button; the input keeps the keyboard focus.
+.uploads-pick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 4px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.uploads-pick input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.uploads-pick:focus-within {
+  outline: 2px solid var(--viz-1);
+  outline-offset: 2px;
+}
+.uploads-drop {
+  margin: 12px 0;
+  padding: 20px;
+  border: 2px dashed var(--jqi-rule);
+  border-radius: 6px;
+  text-align: center;
+}
+.uploads-drop.dragging {
+  border-color: var(--jqi-red, #e21833);
+  background: #fdf1f2;
+}
+.uploads-drop p {
+  margin: 6px 0 0;
+}
+
 // ---- Hafezi GPT (/gpt, and the "Ask Hafezi GPT" modal on every member page) ----
 .gpt-app,
 .gpt-modal,

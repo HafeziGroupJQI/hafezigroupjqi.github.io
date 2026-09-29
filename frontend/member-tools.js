@@ -306,6 +306,12 @@ if (session.user) {
       .then(({ mountSettings }) => mountSettings(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
+  // Uploads to the private vault: drafts that become pull requests merged hourly (src/uploads/).
+  mount("data-uploads", (root) =>
+    import("./uploads/index.js")
+      .then(({ mountUploads }) => mountUploads(root, { api, session }))
+      .catch((error) => showError(root, error)),
+  )
   // Wolfram notebook pages (tools/notebooks/, frontend/wolfram-notebook/): Run / Edit / Copy /
   // Open in Scratchpad on every code cell.
   mount("data-wolfram-notebook", (root) =>

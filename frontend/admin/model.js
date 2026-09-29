@@ -113,6 +113,14 @@ export function parseBudget(text) {
   return Math.round(Number(m[1]) * (m[2] === "m" ? 1e6 : m[2] === "k" ? 1e3 : 1))
 }
 
+/** The page URL for a tab: a Conversations deep link (member, c) is dropped on leaving that tab. */
+export function tabUrl(href, tab) {
+  const url = new URL(href)
+  url.searchParams.set("tab", tab)
+  if (tab !== "conversations") for (const key of ["member", "c"]) url.searchParams.delete(key)
+  return url.toString()
+}
+
 /** The tab a key moves to in a tab list (Left/Right wrap, Home/End), or null for other keys. */
 export function nextTab(index, key, count) {
   if (key === "ArrowRight") return (index + 1) % count

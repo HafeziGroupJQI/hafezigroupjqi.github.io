@@ -1,6 +1,24 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { nextTab, auditParams, budgetUsed, describe, formatTokens, parseBudget } from "./model.js"
+import {
+  nextTab,
+  auditParams,
+  budgetUsed,
+  describe,
+  formatTokens,
+  parseBudget,
+  tabUrl,
+} from "./model.js"
+
+test("a tab's URL keeps a conversations deep link only on that tab", () => {
+  const deep = "https://site.example/admin?tab=conversations&member=ada&c=c_1"
+  assert.equal(tabUrl(deep, "conversations"), deep)
+  assert.equal(tabUrl(deep, "usage"), "https://site.example/admin?tab=usage")
+  assert.equal(
+    tabUrl("https://site.example/admin", "claims"),
+    "https://site.example/admin?tab=claims",
+  )
+})
 
 test("audit filters become query parameters", () => {
   const p = auditParams(

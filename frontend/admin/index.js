@@ -13,6 +13,7 @@ import {
   formatWhen,
   nextTab,
   parseBudget,
+  tabUrl,
 } from "./model.js"
 
 const TABS = [
@@ -98,9 +99,7 @@ export function mountAdmin(root, { api, session }) {
       button.setAttribute("aria-selected", String(button.dataset.tab === id))
       button.tabIndex = button.dataset.tab === id ? 0 : -1
     }
-    const url = new URL(location.href)
-    url.searchParams.set("tab", id)
-    history.replaceState(history.state, "", url)
+    history.replaceState(history.state, "", tabUrl(location.href, id))
     panel.replaceChildren()
     ;({
       audit: auditTab,

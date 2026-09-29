@@ -220,6 +220,7 @@ export function mountScratchpad(root, { api, session }) {
       open(launchUrl(status.lab, id, profile.value, pending ?? ""))
       pending = null
       await refresh()
+      refreshServers()
     } catch (error) {
       progress.hidden = true
       showError(error)
@@ -245,6 +246,7 @@ export function mountScratchpad(root, { api, session }) {
       frame.removeAttribute("src")
       root.classList.remove("scratch-open")
       await refresh()
+      refreshServers()
     } catch (error) {
       showStatus(describeStatus(status))
       showError(error)
@@ -261,6 +263,7 @@ export function mountScratchpad(root, { api, session }) {
       await ensureServer(profile.value)
       open(current)
       await refresh()
+      refreshServers()
     } catch (error) {
       progress.hidden = true
       showError(error)
@@ -270,6 +273,11 @@ export function mountScratchpad(root, { api, session }) {
   }
 
   // ---- owner: every member's server, with CPU/memory, open and stop ----
+  // The table lists the owner's own server too: it follows their Start, Restart and Stop.
+  function refreshServers() {
+    if (isOwner && status?.host?.online) loadServers()
+  }
+
   async function loadServers() {
     let data
     try {
@@ -404,6 +412,7 @@ export function mountScratchpad(root, { api, session }) {
       history.replaceState(history.state, "", url)
       open(launchUrl(status.lab, null, profile.value, data.path))
       await refresh()
+      refreshServers()
     } catch (error) {
       progress.hidden = true
       showError(error)
@@ -454,7 +463,7 @@ export function mountScratchpad(root, { api, session }) {
       open(pending ? launchUrl(status.lab, null, profile.value, pending) : `${status.lab}lab`)
       pending = null
     } else if (pending) showError(new Error(`Start your server to open ${pending}.`))
-    if (isOwner && status?.host?.online) loadServers()
+    refreshServers()
   })
   setInterval(() => {
     if (document.visibilityState === "visible" && !busy) refresh()

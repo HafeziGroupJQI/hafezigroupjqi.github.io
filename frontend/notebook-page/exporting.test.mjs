@@ -4,6 +4,7 @@ import {
   convertNotebook,
   downloadFormats,
   inlineFigures,
+  notebookHeading,
   notebookToMarkdown,
   notebookToQmd,
   stripAnsi,
@@ -147,14 +148,49 @@ test("a notebook page downloads as its raw file, Quarto or Markdown; other pages
   const qmd = convertNotebook(text, "qmd", "01_ring.ipynb")
   assert.equal(qmd.name, "01_ring.qmd")
   assert.equal(qmd.type, "text/markdown;charset=utf-8")
-  assert.match(qmd.text, /^---\ntitle: "01_ring"\n/)
+  assert.match(qmd.text, /^---\ntitle: "Ring sweep"\n/)
   const md = convertNotebook(text, "md", "01_ring.ipynb")
   assert.equal(md.name, "01_ring.md")
-  assert.match(md.text, /^# 01_ring\n/)
+  assert.match(md.text, /^# Ring sweep\nNotes\.\n/, "the notebook's own heading is the one title")
+  assert.doesNotMatch(md.text, /01_ring/)
   assert.match(md.text, /!\[Figure 1\]\(data:image\/png;base64,iVBOR/)
   assert.doesNotMatch(md.text, /figures\//)
 
   assert.throws(() => convertNotebook("{}", "md", "x.ipynb"), /not a Jupyter notebook/)
   assert.throws(() => convertNotebook("<html>", "md", "x.ipynb"), SyntaxError)
   assert.throws(() => convertNotebook(text, "nb", "x.ipynb"), /no conversion to \.nb/)
+})
+
+test("the title is the notebook's first heading, else the file's stem", () => {
+  const cells = (...sources) => ({
+    metadata: {},
+    cells: sources.map(([cell_type, source]) => ({ cell_type, source, outputs: [] })),
+  })
+  const opening = cells(
+    ["raw", "---\nformat: html\n---"],
+    ["code", ""],
+    ["markdown", ["\n", "## Ring sweep ##\r\n", "Notes."]],
+  )
+  assert.deepEqual(notebookHeading(opening), { text: "Ring sweep", leading: true })
+
+  // Code first: Markdown keeps the stem heading, Quarto takes the later heading as its title.
+  const later = cells(["code", "x = 1"], ["markdown", "# Results"])
+  assert.deepEqual(notebookHeading(later), { text: "Results", leading: false })
+  assert.match(
+    convertNotebook(JSON.stringify(later), "md", "run.ipynb").text,
+    /^# run\n\n```python/,
+  )
+  assert.match(
+    convertNotebook(JSON.stringify(later), "qmd", "run.ipynb").text,
+    /^---\ntitle: "Results"\n/,
+  )
+
+  // A comment in a fenced block and a #tag are not headings; with none, the stem titles both.
+  const none = cells(["markdown", "```bash\n# install\n```\n#tag"], ["code", "print(1)"])
+  assert.equal(notebookHeading(none), null)
+  assert.match(convertNotebook(JSON.stringify(none), "md", "run.ipynb").text, /^# run\n\n```bash/)
+  assert.match(
+    convertNotebook(JSON.stringify(none), "qmd", "run.ipynb").text,
+    /^---\ntitle: "run"\n/,
+  )
 })

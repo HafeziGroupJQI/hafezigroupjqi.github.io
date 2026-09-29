@@ -196,19 +196,52 @@ export function inlineFigures(markdown, files) {
   }, markdown)
 }
 
+const HEADING = /^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/
+const FENCE = /^ {0,3}(```|~~~)/
+
 /**
- * A notebook's raw JSON text as a download in `format` (qmd or md), named after `fileName` and
- * titled with its stem, as the lab's Export names its files: {name, type, text}.
+ * The notebook's first Markdown heading, outside code fences: {text, leading}, where leading
+ * means the notebook opens with it (nothing but blank cells and lines before, and raw cells,
+ * which the Markdown export drops). null without one.
+ */
+export function notebookHeading(nb) {
+  let leading = true
+  for (const cell of nb.cells) {
+    const src = join(cell.source)
+    if (!src.trim() || cell.cell_type === "raw") continue
+    if (cell.cell_type !== "markdown") {
+      leading = false
+      continue
+    }
+    let fenced = false
+    for (const line of src.split(/\r?\n/)) {
+      if (FENCE.test(line)) fenced = !fenced
+      const text = fenced ? null : line.match(HEADING)?.[1]
+      if (text) return { text, leading }
+      if (line.trim()) leading = false
+    }
+  }
+  return null
+}
+
+/**
+ * A notebook's raw JSON text as a download in `format` (qmd or md), named after `fileName` as the
+ * lab's Export names its files: {name, type, text}. The title is the notebook's first heading,
+ * else the file's stem; the Markdown adds the stem as its heading only when the notebook doesn't
+ * open with one of its own.
  */
 export function convertNotebook(text, format, fileName) {
   const nb = JSON.parse(text)
   if (!Array.isArray(nb?.cells)) throw new Error("this is not a Jupyter notebook")
-  const title = fileName.replace(/\.[^./]+$/, "")
+  const stem = fileName.replace(/\.[^./]+$/, "")
+  const heading = notebookHeading(nb)
   const type = "text/markdown;charset=utf-8"
-  if (format === "qmd") return { name: `${title}.qmd`, type, text: notebookToQmd(nb, title) }
+  if (format === "qmd")
+    return { name: `${stem}.qmd`, type, text: notebookToQmd(nb, heading?.text ?? stem) }
   if (format === "md") {
-    const { markdown, files } = notebookToMarkdown(nb, { baseName: title, title })
-    return { name: `${title}.md`, type, text: inlineFigures(markdown, files) }
+    const title = heading?.leading ? undefined : stem
+    const { markdown, files } = notebookToMarkdown(nb, { baseName: stem, title })
+    return { name: `${stem}.md`, type, text: inlineFigures(markdown, files) }
   }
   throw new Error(`no conversion to .${format}`)
 }

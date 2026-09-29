@@ -58,13 +58,14 @@ const escapeHtml = (text) =>
   )
 
 // The "Rendered from" line of a page Quarto made from a private .qmd (render-qmd.mjs marks it
-// with rendered_from), as notebook pages have (tools/notebooks/): its link downloads the source,
-// which the Worker serves to members from the document store (docs-manifest.mjs).
+// with rendered_from, its path in the vault), as notebook pages have (tools/notebooks/): its link
+// downloads the source, which the Worker serves to members from the document store
+// (docs-manifest.mjs), and data-source is that path for Open in Scratchpad.
 function qmdSourceBar(fm, privateRoot) {
   const source = fm.rendered_from
   if (typeof source !== "string" || !source.endsWith(".qmd")) return ""
   if (!fs.existsSync(path.join(privateRoot, source))) return ""
-  return `<p class="wl-source">Rendered from <a class="internal" href="/${escapeHtml(documentKey(source))}">${escapeHtml(path.posix.basename(source))}</a></p>`
+  return `<p class="wl-source" data-source="${escapeHtml(source)}">Rendered from <a class="internal" href="/${escapeHtml(documentKey(source))}">${escapeHtml(path.posix.basename(source))}</a></p>`
 }
 
 export function prepareUnified(publicSource, privateSource, yaml) {

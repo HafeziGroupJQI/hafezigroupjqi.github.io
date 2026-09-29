@@ -4,6 +4,7 @@
 // <pre class="wl-code"><code>. member-tools.js mounts this on [data-wolfram-notebook].
 
 import { h } from "../dashboard/dom.js"
+import { openInScratchpad } from "../notebook-page/index.js"
 import {
   failureMessage,
   messageParts,
@@ -52,12 +53,7 @@ export function mountWolframNotebook(root) {
           .catch(() => [])
       : Promise.resolve([]))
 
-  // Open the notebook in the Scratchpad: the page there starts the member's server (the host only
-  // knows members who have started one), copies the notebook into their storage and opens it.
-  const fork = (status) => {
-    status.textContent = "Opening the Scratchpad…"
-    location.assign(`/scratchpad?fork=${encodeURIComponent(source)}`)
-  }
+  const fork = (status) => openInScratchpad(source, status)
 
   if (source) {
     const status = h("span", { class: "wl-status", role: "status" })

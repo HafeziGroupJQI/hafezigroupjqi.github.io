@@ -32,7 +32,13 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import yaml from "yaml"
-import { documentHref, fileSha, writeWolframPages } from "./wolfram-pages.mjs"
+import {
+  documentHref,
+  escapeHtml,
+  fileSha,
+  forkSource,
+  writeWolframPages,
+} from "./wolfram-pages.mjs"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const posix = (value) => value.split(path.sep).join("/")
@@ -237,11 +243,19 @@ const quartoVersion = (quarto) => {
   return quartoVersions.get(quarto)
 }
 
-export function renderIpynb(file, contentDir, { quarto = "quarto", cache = null } = {}) {
+export function renderIpynb(
+  file,
+  contentDir,
+  { quarto = "quarto", cache = null, forkPrefix = null } = {},
+) {
   const rel = posix(path.relative(contentDir, file))
   const md = file.replace(/\.ipynb$/, ".md")
   if (fs.existsSync(md)) return { source: rel, conflict: posix(path.relative(contentDir, md)) }
   const sourceSha = fileSha(file)
+  // The page links its raw notebook (documentHref, wolfram-pages.mjs) and, for a notebook of the
+  // private vault, names it there for Open in Scratchpad (data-source, as Wolfram pages do).
+  const fork = forkSource(rel, forkPrefix)
+  const bar = `<p class="wl-source"${fork ? ` data-source="${escapeHtml(fork)}"` : ""}>Rendered from <a class="internal" href="${documentHref(rel)}">${path.basename(file)}</a></p>`
   let kernel = null
   try {
     kernel = JSON.parse(fs.readFileSync(file, "utf8")).metadata?.kernelspec?.name ?? null
@@ -254,11 +268,11 @@ export function renderIpynb(file, contentDir, { quarto = "quarto", cache = null 
         cache,
         "ipynb",
         sha256(
-          // The page links its raw notebook at documentHref (wolfram-pages.mjs): that too.
+          // The page starts with that line, made partly by wolfram-pages.mjs: that too.
           JSON.stringify([
             sourceSha,
             rel,
-            documentHref(rel),
+            bar,
             quartoVersion(quarto),
             sha256(quartoConfig(file)),
             SELF,
@@ -316,7 +330,7 @@ export function renderIpynb(file, contentDir, { quarto = "quarto", cache = null 
   fm.tags = [...new Set(["internal", "notebook", "notebook/jupyter", ...tags])]
   fm.rendered_from = rel
   fm.notebook = { kind: "jupyter", source_sha: sourceSha, kernel }
-  body = `<p class="wl-source">Rendered from <a class="internal" href="${documentHref(rel)}">${path.basename(file)}</a></p>\n\n${body.trimStart()}`
+  body = `${bar}\n\n${body.trimStart()}`
   fs.writeFileSync(md, "---\n" + yaml.stringify(fm).trimEnd() + "\n---\n\n" + body)
   if (entry) {
     // Written whole, then renamed into place: a half-written entry is never a hit.
@@ -396,7 +410,11 @@ export async function renderContent({
     })
   }
   for (const file of ipynbs) {
-    const result = renderIpynb(file, contentDir, { quarto, cache: force ? null : cache })
+    const result = renderIpynb(file, contentDir, {
+      quarto,
+      cache: force ? null : cache,
+      forkPrefix,
+    })
     if (result.conflict) report.jupyter.conflicts.push(result)
     else if (result.error) report.jupyter.errors.push(result)
     else report.jupyter.pages.push(result)

@@ -256,7 +256,7 @@ test(
     assert.match(page, /saved output/)
     assert.match(
       page,
-      /Rendered from <a class="internal" href="\/code\/sweep.ipynb">sweep.ipynb<\/a>/,
+      /<p class="wl-source">Rendered from <a class="internal" href="\/code\/sweep.ipynb">sweep.ipynb<\/a>/,
     )
     assert.ok(result.figures >= 1, "the saved figure is written next to the page")
     // A second render refuses to overwrite the page it made (or a hand-written one).
@@ -287,6 +287,18 @@ test(
     assert.equal(again.cache, "hit")
     assert.deepEqual(fs.readFileSync(path.join(content, "code", "sweep.md")), made)
     assert.ok(again.figures >= 1)
+    clear()
+    // Under the private vault's prefix, the page names the notebook's path there for Open in
+    // Scratchpad; that is in the cache key, so the page cached without it is not reused.
+    assert.match(
+      renderIpynb(file, content, { quarto: noRender, cache, forkPrefix: "code/" }).error ?? "",
+      /./,
+    )
+    assert.equal(renderIpynb(file, content, { quarto, cache, forkPrefix: "code/" }).cache, "miss")
+    assert.match(
+      fs.readFileSync(path.join(content, "code", "sweep.md"), "utf8"),
+      /<p class="wl-source" data-source="sweep.ipynb">Rendered from <a class="internal" href="\/code\/sweep.ipynb">/,
+    )
     clear()
     notebook.cells[0].source = ["# Ring sweep, revised\n"]
     fs.writeFileSync(file, JSON.stringify(notebook))

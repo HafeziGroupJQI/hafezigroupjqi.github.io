@@ -8,6 +8,7 @@ import {
   kernelFor,
   launchUrl,
   ownProfiles,
+  forkUrl,
   requestedFork,
   requestedPath,
 } from "./launch.js"
@@ -94,6 +95,10 @@ test("?fork= names a vault notebook to copy in; unsafe paths are ignored", () =>
   assert.equal(requestedFork("?fork=%2Fetc%2Fpasswd"), null)
   assert.equal(requestedFork("?fork=a/../../x"), null)
   assert.equal(requestedFork("?open=x.nb"), null)
+  // A notebook page's Open in Scratchpad links there.
+  const url = new URL(forkUrl("code/jumpstart/01 ring & bus.ipynb"), "https://site.test")
+  assert.equal(url.pathname, "/scratchpad")
+  assert.equal(requestedFork(url.search), "code/jumpstart/01 ring & bus.ipynb")
 })
 
 test("server memory reads in MiB or GiB, with the limit when known", () => {

@@ -117,6 +117,9 @@ export function requestedFork(search) {
   return path && !path.startsWith("/") && !path.split("/").includes("..") ? path : null
 }
 
+/** The Scratchpad page that forks <path in the private vault> and opens it (requestedFork). */
+export const forkUrl = (path) => `/scratchpad?fork=${encodeURIComponent(path)}`
+
 /** "1.2 GiB of 4 GiB" for a server's memory (bytes; the limit may be unknown). */
 export function formatMemory(bytes, max = null) {
   if (typeof bytes !== "number") return "—"

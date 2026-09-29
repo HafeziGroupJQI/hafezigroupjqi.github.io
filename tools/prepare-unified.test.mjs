@@ -126,10 +126,11 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
     assert.match(note, /<a href="\/resources\/code\/analysis\.md">here<\/a>/)
     assert.match(note, /<img src="\/resources\/code\/analysis\.ipynb">/)
     // A Quarto page links its source like a notebook page; members download it from the document
-    // store at its manifest key, so the source itself is not staged.
+    // store at its manifest key, so the source itself is not staged. data-source is its path in
+    // the vault, for Open in Scratchpad.
     assert.match(
       read("resources/code/Sweep & fit.md"),
-      /---\n\n<p class="wl-source">Rendered from <a class="internal" href="\/resources\/code\/sweep--and--fit\.qmd">Sweep &amp; fit\.qmd<\/a><\/p>\n\nThe sweep\.\n$/,
+      /---\n\n<p class="wl-source" data-source="code\/Sweep &amp; fit\.qmd">Rendered from <a class="internal" href="\/resources\/code\/sweep--and--fit\.qmd">Sweep &amp; fit\.qmd<\/a><\/p>\n\nThe sweep\.\n$/,
     )
     assert.ok(!fs.existsSync(path.join(built.output, "resources/code/Sweep & fit.qmd")))
     assert.doesNotMatch(note, /wl-source/)

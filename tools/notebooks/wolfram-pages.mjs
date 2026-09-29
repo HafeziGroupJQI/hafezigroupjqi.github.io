@@ -589,6 +589,13 @@ export function uniqueTitles(entries) {
 }
 
 /**
+ * A staged notebook's path in the private vault, when it is under `forkPrefix` (where the build
+ * stages that vault): "Open in Scratchpad" forks it from there as published:<path>. Else null.
+ */
+export const forkSource = (rel, forkPrefix) =>
+  forkPrefix && rel.startsWith(forkPrefix) ? rel.slice(forkPrefix.length) : null
+
+/**
  * Write a page next to every .nb under `contentDir` from the stage-1 renders in `renderDirs`.
  * `forkPrefix`: staged paths under it are forkable into the Scratchpad as published:<rest>.
  * Returns {pages, missing, conflicts, assets, stats}; the caller fails the build on missing or
@@ -629,8 +636,7 @@ export async function writeWolframPages({
   for (const entry of uniqueTitles(entries)) {
     store.sourceDir = entry.render.assetsDir
     const notebook = { ...entry.render, page: entry.rel.replace(/\.nb$/, "") }
-    const source =
-      forkPrefix && entry.rel.startsWith(forkPrefix) ? entry.rel.slice(forkPrefix.length) : null
+    const source = forkSource(entry.rel, forkPrefix)
     const body = resolveNotebookLinks(
       await pageBody(notebook, {
         store,

@@ -293,6 +293,13 @@ if (session.user) {
     link.href = url.pathname + url.search
     link.setAttribute("download", "")
   }
+  // The page's own tools above that line (frontend/notebook-page/): Open in Scratchpad for a file
+  // of the private vault.
+  const sourceBar = document.querySelector("p.wl-source")
+  if (sourceBar)
+    import("./notebook-page/index.js")
+      .then(({ mountNotebookPage }) => mountNotebookPage(sourceBar))
+      .catch((error) => showError(sourceBar.parentElement, error))
   // A member's own settings: their People page, photo and Wolfram Engine license.
   mount("data-settings", (root) =>
     import("./settings/index.js")

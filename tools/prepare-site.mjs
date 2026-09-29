@@ -9,9 +9,11 @@ import {
   peoplePage,
   placesPage,
   publicationList,
+  recentPage,
   rewriteLinks,
   profileContact,
 } from "./site-model.mjs"
+import { recentChanges } from "./recent-changes.mjs"
 import { writeTagPages } from "./tag-pages.mjs"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
@@ -132,6 +134,15 @@ export function prepareSite(source, yaml) {
     ].join("\n\n"),
     { site_home: true, tags: home.fm.tags, description: home.fm.description },
   )
+  // Public pages newest-changed first, from the vault's history (the real vault, not this copy).
+  page(
+    "recent",
+    "Recently modified",
+    [
+      "The site's pages, most recently changed first, and who changed them. It is updated with every site update.",
+      recentPage(recentChanges(input, records)),
+    ].join("\n\n"),
+  )
   // Preserve individual records and resources, adding only presentation metadata.
   for (const record of records) {
     if (
@@ -143,6 +154,7 @@ export function prepareSite(source, yaml) {
         "research/index",
         "news/index",
         "publications/index",
+        "recent",
       ].includes(record.slug)
     )
       continue

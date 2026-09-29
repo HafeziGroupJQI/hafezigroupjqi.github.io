@@ -100,6 +100,8 @@ jobs:
           repository: HafeziGroupJQI/vault
           ref: ${{ needs.notebooks.outputs.vault }}
           path: vault
+          # The whole history: the "Recently modified" page reads it (tools/recent-changes.mjs).
+          fetch-depth: 0
       - name: checkout the private vault
         uses: actions/checkout@v5
         with:

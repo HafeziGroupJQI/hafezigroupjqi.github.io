@@ -276,6 +276,28 @@ body {
   }
 }
 
+// "Recently modified" (tools/recent-changes.mjs): newest-changed pages, who changed them and when.
+.recent-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.recent-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--jqi-rule);
+}
+.recent-section {
+  margin-left: 8px;
+  font-size: 0.8rem;
+  color: var(--jqi-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.recent-meta {
+  font-size: 0.85rem;
+  color: var(--jqi-muted);
+}
+
 // Folder / tag listing pages.
 .page-listing ul.section-ul {
   list-style: none;

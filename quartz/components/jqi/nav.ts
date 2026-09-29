@@ -21,6 +21,8 @@ export const publicNav: NavItem[] = [
   { label: "Publications", slug: "publications" },
   { label: "Lab Facilities", slug: "lab-facilities" },
   { label: "Theses", slug: "theses" },
+  // Generated at build time from the vault's history (tools/recent-changes.mjs).
+  { label: "Recently modified", slug: "recent" },
 ]
 
 export const resourceNav: NavItem[] = [

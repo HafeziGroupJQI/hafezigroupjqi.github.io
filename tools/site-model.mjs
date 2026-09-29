@@ -124,6 +124,41 @@ export function alumniPage(records) {
   )
 }
 
+// A page's section, for the "Recently modified" list: its first path segment, as the navbar names it.
+const sectionNames = {
+  people: "People",
+  research: "Research",
+  news: "News",
+  publications: "Publications",
+  places: "Places",
+  equipment: "Equipment",
+  setups: "Setups",
+  materials: "Materials",
+}
+
+/** The "Recently modified" page body: each page, where it is, who changed it and when. */
+export function recentPage(entries, from = "recent") {
+  if (!entries.length) return "<p>No changes to list yet.</p>"
+  return (
+    '<ol class="recent-list">' +
+    entries
+      .map(({ slug, title, by, at }) => {
+        const href = escapeHtml(
+          slug === "index" ? relativeUrl(from, "") || "./" : relativeUrl(from, slug),
+        )
+        const section = sectionNames[slug.split("/")[0]] ?? (slug.includes("/") ? "" : "Pages")
+        const day = String(at).slice(0, 10)
+        return (
+          `<li><a class="internal" href="${href}">${escapeHtml(title)}</a>` +
+          (section ? ` <span class="recent-section">${escapeHtml(section)}</span>` : "") +
+          `<div class="recent-meta">by ${escapeHtml(by)} · <time datetime="${escapeHtml(at)}">${escapeHtml(day)}</time></div></li>`
+        )
+      })
+      .join("\n") +
+    "</ol>"
+  )
+}
+
 export function placesPage(data, records) {
   const places = data?.places ?? []
   const byId = new Map(places.map((place) => [place.id, place]))

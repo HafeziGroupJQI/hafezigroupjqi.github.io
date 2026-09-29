@@ -939,24 +939,22 @@ article.popover-hint > *:first-child {
 .section-nav a:hover {
   color: #e21833;
 }
-.section-nav > ul > li > a {
+.section-nav > ul > li > :is(a, .section-nav__label) {
   font-weight: 700;
+}
+.section-nav__label {
+  color: #222;
+}
+// The member menus (Resources, Tools) follow the public entries, set apart by a rule.
+.section-nav__members {
+  border-top: 1px solid #ddd;
+  margin-top: 28px !important;
+  padding-top: 18px !important;
 }
 .section-nav ul ul {
   margin: 8px 0 16px 6px;
   padding-left: 18px;
   border-left: 1px solid #d0d0d0;
-}
-.handbook-links {
-  border-top: 1px solid #ddd;
-  margin-top: 28px;
-  padding-top: 20px;
-}
-.handbook-links h2 {
-  font:
-    700 16px/1.5 Roboto,
-    sans-serif;
-  margin: 0 0 10px;
 }
 .public-breadcrumbs {
   display: flex;

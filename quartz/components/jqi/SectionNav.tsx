@@ -1,6 +1,13 @@
 import { QuartzComponentProps } from "../types"
 import { FullSlug, resolveRelative } from "../../util/path"
-import { publicNav, resourceNav } from "./nav"
+import { type NavItem, navigation, publicNav } from "./nav"
+
+// Group resources the navbar doesn't list, kept under Resources here.
+const extraResources: NavItem[] = [
+  { label: "Places", slug: "places/index" },
+  { label: "Lab equipment", slug: "equipment/index" },
+  { label: "Photonic materials", slug: "materials/index" },
+]
 
 export default function SectionNav({ fileData, allFiles }: QuartzComponentProps) {
   const slug = fileData.slug!
@@ -13,6 +20,8 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
         (section === "research" ? f.frontmatter?.type === "research" : false),
     )
     .sort((a, b) => String(a.frontmatter?.title).localeCompare(String(b.frontmatter?.title)))
+  // The navbar's member menus (Resources, Tools), in the member build only.
+  const members = navigation().filter((item) => item.member && item.children)
   const link = (target: string, label: string) => (
     <a
       href={resolveRelative(slug, target as FullSlug)}
@@ -43,22 +52,38 @@ export default function SectionNav({ fileData, allFiles }: QuartzComponentProps)
           </li>
         ))}
       </ul>
-      {process.env.SITE_MODE === "internal" && (
-        // Group resources are for members only: rendered only in the member build, and hidden
-        // until signed in (the session script reveals [data-member]). The public build has none.
-        <div class="handbook-links" data-member="" hidden>
-          <h2>Group resources</h2>
-          <ul>
-            {resourceNav.map((item) => (
-              <li>
-                <a href={item.href}>{item.label}</a>
-              </li>
-            ))}
-            <li>{link("places/index", "Places")}</li>
-            <li>{link("equipment/index", "Lab equipment")}</li>
-            <li>{link("materials/index", "Photonic materials")}</li>
-          </ul>
-        </div>
+      {members.length > 0 && (
+        // The navbar's member menus, laid out like Research and its pages. Rendered only in the
+        // member build and hidden until signed in (the session script reveals [data-member] and,
+        // for admins, [data-admin-only]). The public build has none.
+        <ul class="section-nav__members" data-member="" hidden>
+          {members.map((menu) => (
+            <li>
+              {menu.menu === "resources" ? (
+                link("resources/index", menu.label)
+              ) : (
+                <span class="section-nav__label">{menu.label}</span>
+              )}
+              <ul>
+                {[
+                  ...(menu.children ?? []),
+                  ...(menu.menu === "resources" ? extraResources : []),
+                ].map((child) => (
+                  <li
+                    data-admin-only={child.admin ? "" : undefined}
+                    hidden={child.admin ? true : undefined}
+                  >
+                    {child.href ? (
+                      <a href={child.href}>{child.label}</a>
+                    ) : (
+                      link(child.slug!, child.label)
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
       )}
     </nav>
   )

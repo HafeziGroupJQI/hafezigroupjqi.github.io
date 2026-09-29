@@ -34,6 +34,10 @@ test("opening a raw notebook shows its rendered page; its download link still ge
   assert.equal(go("/resources/code/jumpstart/01_ring.ipynb"), "notebook")
   assert.equal(go("/resources/code/wolfram-guide/eiwl3-01.NB"), "notebook")
   assert.equal(
+    notebookPage("/resources/code/bend-optimization.qmd"),
+    "/resources/code/bend-optimization",
+  )
+  assert.equal(
     notebookPage("/resources/code/jumpstart/01_ring.ipynb"),
     "/resources/code/jumpstart/01_ring",
   )

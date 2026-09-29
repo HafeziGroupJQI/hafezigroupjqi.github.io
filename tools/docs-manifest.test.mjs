@@ -26,6 +26,7 @@ const repository = () => {
   write("files/equipment/Big Laser/Manual (Rev 2).PDF", "%PDF-1.4 laser")
   write("files/equipment/scope/scope.pdf", "%PDF-1.4 scope")
   write("notes/meeting.md", "---\ntitle: Meeting\n---\n")
+  write("code/Sweep.qmd", "---\ntitle: Sweep\n---\n")
   write("assets/photo.png", "png")
   write("files/scripts/run.py", "print(1)\n")
   write("node_modules/dep/index.js", "module.exports = 1")
@@ -39,7 +40,9 @@ test("manifest keys documents by their slugified site path with git blob shas", 
   const root = repository()
   try {
     const manifest = docsManifest(root, { excluded: new Set(["node_modules"]) })
+    // A Quarto document is a page, but its source is listed too (members download it).
     assert.deepEqual(Object.keys(manifest), [
+      "resources/code/sweep.qmd",
       "resources/files/equipment/big-laser/manual-(rev-2).PDF",
       "resources/files/equipment/scope/index.pdf",
       "resources/files/scripts/run.py",
@@ -55,7 +58,8 @@ test("manifest keys documents by their slugified site path with git blob shas", 
       manifest["resources/files/scripts/run.py"].contentType,
       "text/x-python; charset=utf-8",
     )
-    assert.deepEqual(documentExtensions(manifest).sort(), [".PDF", ".pdf", ".py"])
+    assert.equal(manifest["resources/code/sweep.qmd"].contentType, "text/markdown; charset=utf-8")
+    assert.deepEqual(documentExtensions(manifest).sort(), [".PDF", ".pdf", ".py", ".qmd"])
     const file = path.join(root, "out", "manifest.json")
     writeDocsManifest(manifest, file)
     assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).documents, manifest)

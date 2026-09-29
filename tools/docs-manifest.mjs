@@ -9,6 +9,9 @@ import { slugifyFilePath } from "@quartz-community/utils"
 export const pagePattern = /\.(?:md|qmd|base)$/i
 export const imagePattern = /\.(?:avif|gif|jpe?g|png|svg|webp)$/i
 export const isDocument = (file) => !pagePattern.test(file) && !imagePattern.test(file)
+// A Quarto document is a page, and members can also download its source, as they can a
+// notebook's: the manifest lists it too (the page links it, tools/prepare-unified.mjs).
+export const isPageSource = (file) => /\.qmd$/i.test(file)
 export const MAX_ASSET_BYTES = 25 * 1024 * 1024
 export const MAX_ASSET_FILES = 20000
 
@@ -24,6 +27,7 @@ const contentTypes = {
   txt: "text/plain; charset=utf-8",
   py: "text/x-python; charset=utf-8",
   ipynb: "application/x-ipynb+json",
+  qmd: "text/markdown; charset=utf-8",
   nb: "application/vnd.wolfram.mathematica",
   json: "application/json",
   yml: "application/yaml",
@@ -68,7 +72,7 @@ export function listTrackedDocuments(privateRoot, excluded = new Set()) {
     if (type !== "blob") continue
     const segments = file.split("/")
     if (segments.some((segment) => segment.startsWith(".") || excluded.has(segment))) continue
-    if (!isDocument(file)) continue
+    if (!isDocument(file) && !isPageSource(file)) continue
     documents.push({ path: file, sha, size: Number(size) })
   }
   return documents

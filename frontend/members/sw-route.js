@@ -14,8 +14,8 @@ export const alwaysPass = (path) => ALWAYS_PASS.some((pattern) => pattern.test(p
 
 export const isCompute = (path) => path === "/jupyter" || path.startsWith("/jupyter/")
 
-/** A raw notebook's path: its rendered page is the same path without the extension. */
-export const notebookPage = (path) => path.replace(/\.(ipynb|nb)$/i, "")
+/** A raw notebook's or .qmd's path: its rendered page is the same path without the extension. */
+export const notebookPage = (path) => path.replace(/\.(ipynb|nb|qmd)$/i, "")
 
 /**
  * @param {{method: string, path: string, mode?: string, search?: string}} request  a same-origin request

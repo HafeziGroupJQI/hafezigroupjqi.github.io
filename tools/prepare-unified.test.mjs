@@ -106,6 +106,12 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
       "Notebook[{}]",
     )
     fs.writeFileSync(path.join(privateRoot, "code", "analysis.ipynb"), '{"cells": []}')
+    // A Quarto document as render-qmd.mjs leaves it: the source and the page made from it.
+    fs.writeFileSync(path.join(privateRoot, "code", "Sweep & fit.qmd"), "---\ntitle: Sweep\n---\n")
+    fs.writeFileSync(
+      path.join(privateRoot, "code", "Sweep & fit.md"),
+      "---\ntitle: Sweep\nrendered_from: code/Sweep & fit.qmd\n---\n\nThe sweep.\n",
+    )
     fs.writeFileSync(
       path.join(privateRoot, "code", "note.md"),
       "---\ntitle: Note\n---\nText [the analysis](analysis.ipynb), [[wolfram-guide/01-starting-out.nb|guide]]," +
@@ -119,6 +125,14 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
     assert.match(note, /\[\[resources\/code\/wolfram-guide\/01-starting-out\.md\|guide\]\]/)
     assert.match(note, /<a href="\/resources\/code\/analysis\.md">here<\/a>/)
     assert.match(note, /<img src="\/resources\/code\/analysis\.ipynb">/)
+    // A Quarto page links its source like a notebook page; members download it from the document
+    // store at its manifest key, so the source itself is not staged.
+    assert.match(
+      read("resources/code/Sweep & fit.md"),
+      /---\n\n<p class="wl-source">Rendered from <a class="internal" href="\/resources\/code\/sweep--and--fit\.qmd">Sweep &amp; fit\.qmd<\/a><\/p>\n\nThe sweep\.\n$/,
+    )
+    assert.ok(!fs.existsSync(path.join(built.output, "resources/code/Sweep & fit.qmd")))
+    assert.doesNotMatch(note, /wl-source/)
     // The notebooks themselves are staged; their pages are made later in the build.
     assert.ok(
       fs.existsSync(path.join(built.output, "resources/code/wolfram-guide/01-starting-out.nb")),

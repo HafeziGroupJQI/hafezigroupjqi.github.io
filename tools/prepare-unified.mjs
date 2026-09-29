@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { documentKey } from "./docs-manifest.mjs"
 import { prepareSite } from "./prepare-site.mjs"
 import { recentChanges } from "./recent-changes.mjs"
 import { recentPage } from "./site-model.mjs"
@@ -48,6 +49,22 @@ export function privateLink(raw, filename, privateRoot, { page = false } = {}) {
       .replace(page ? /\.(qmd|ipynb|nb)$/ : /\.qmd$/, ".md") +
     suffix.join("")
   )
+}
+
+const escapeHtml = (text) =>
+  String(text).replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+  )
+
+// The "Rendered from" line of a page Quarto made from a private .qmd (render-qmd.mjs marks it
+// with rendered_from), as notebook pages have (tools/notebooks/): its link downloads the source,
+// which the Worker serves to members from the document store (docs-manifest.mjs).
+function qmdSourceBar(fm, privateRoot) {
+  const source = fm.rendered_from
+  if (typeof source !== "string" || !source.endsWith(".qmd")) return ""
+  if (!fs.existsSync(path.join(privateRoot, source))) return ""
+  return `<p class="wl-source">Rendered from <a class="internal" href="/${escapeHtml(documentKey(source))}">${escapeHtml(path.posix.basename(source))}</a></p>`
 }
 
 export function prepareUnified(publicSource, privateSource, yaml) {
@@ -109,7 +126,11 @@ export function prepareUnified(publicSource, privateSource, yaml) {
           )
         for (const key of ["photo", "image", "manual"])
           if (typeof fm[key] === "string") fm[key] = privateLink(fm[key], sourceFile, root)
-        text = `---\n${yaml.stringify(fm)}---\n` + text.slice(match[0].length)
+        const bar = qmdSourceBar(fm, root)
+        text =
+          `---\n${yaml.stringify(fm)}---\n` +
+          (bar ? `\n${bar}\n` : "") +
+          text.slice(match[0].length)
       }
       text = text
         .replace(

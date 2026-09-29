@@ -55,7 +55,7 @@ jobs:
         env:
           # the members API the site signs in with (service worker + /auth pages)
           MEMBERS_API_ORIGIN: ${{ vars.MEMBERS_API_ORIGIN }}
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: public
 

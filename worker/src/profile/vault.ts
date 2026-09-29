@@ -104,16 +104,17 @@ export class Vault {
   /**
    * One commit on main with every file in `files`. `build` reads what it needs at the current tip
    * and returns the files and message, so a concurrent push (the ref moved) is retried on top of
-   * it, once. With `skipEmpty`, a build with no files commits nothing and returns null.
+   * it, once. With `skipEmpty`, a build with no files commits nothing and returns null. The build
+   * may name the commit's author (say, once it knows whose edits it holds); else `author` is.
    */
   async commit(
     author: Author,
-    build: () => Promise<{ files: VaultFile[]; message: string }>,
+    build: () => Promise<{ files: VaultFile[]; message: string; author?: Author }>,
     { skipEmpty = false } = {},
   ): Promise<string | null> {
     for (let attempt = 0; ; attempt++) {
       const tip = await this.head()
-      const { files, message } = await build()
+      const { files, message, author: by = author } = await build()
       if (!files.length) {
         if (skipEmpty) return null
         throw new Error("a vault commit needs at least one file")
@@ -133,7 +134,7 @@ export class Vault {
         message,
         tree: tree.sha,
         parents: [tip.commit],
-        author: { ...author, date: new Date().toISOString() },
+        author: { ...by, date: new Date().toISOString() },
       })
       try {
         await this.call("PATCH", `/git/refs/heads/${BRANCH}`, { sha: commit.sha, force: false })

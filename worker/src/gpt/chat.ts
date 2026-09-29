@@ -16,7 +16,7 @@ import { type Knowledge, loadKnowledge } from "./knowledge"
 import { type GptModel, addUsage, emptyUsage, model as pickModel } from "./models"
 import { type SkillsManifest, allSkills } from "./skills"
 import { type Conversation, GptStore, type StoredMessage } from "./store"
-import { TOOLS, describeCall, runTool, skillText } from "./tools"
+import { TOOLS, describeCall, readKey, runTool, skillText } from "./tools"
 
 // POST /api/gpt/conversations/:id/messages — one member turn, streamed back as Server-Sent Events.
 // The browser reads this stream straight from the Worker (the members service worker cannot hold
@@ -355,6 +355,15 @@ async function converse(t: TurnContext): Promise<TurnResult> {
   )
   const result: TurnResult = { rows: [], usage: emptyUsage(), tools: [], stopped: false }
   const opened = new Map<string, ResolvedRef["label"]>()
+  // What this turn already holds: the pages, documents and files in the member's message, then
+  // what the tools read, so a second read_page of a manual doesn't send all of it again.
+  const meta = t.prompt.meta as { mentions: ResolvedRef["label"][]; files: Array<{ id: string }> }
+  const read = new Set<string>([
+    ...meta.mentions
+      .map((m) => readKey(m.ref, 0, t.knowledge))
+      .filter((k): k is string => k !== null),
+    ...meta.files.map((f) => `file:${f.id}`),
+  ])
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
     // The claude-bridge has no betas. It takes images, PDFs and documents as they are, runs the
@@ -417,6 +426,8 @@ async function converse(t: TurnContext): Promise<TurnResult> {
     }
     const message = await stream.finalMessage()
     addUsage(result.usage, m, message.usage)
+    // Compaction summarized what was read so far: it is no longer above as it was.
+    if (message.content.some((b) => b.type === "compaction")) read.clear()
     const toolUses = message.content.filter(
       (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
     )
@@ -484,6 +495,7 @@ async function converse(t: TurnContext): Promise<TurnResult> {
           conversation: t.conversation,
           upstream: deps.upstream,
           opened,
+          read,
         }),
       ),
     )

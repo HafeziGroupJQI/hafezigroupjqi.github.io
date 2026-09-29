@@ -704,6 +704,84 @@ describe("Claude turns (scripted API)", () => {
     })
   })
 
+  it("reads a page or document once a turn, however it's named, and notes a second read", async () => {
+    const alice = await as("alice-reread")
+    const chat = await newChat(alice)
+    const manual = "resources/files/equipment/laser/manual.pdf"
+    const read = (id: string, page: string) => ({
+      type: "tool_use",
+      id,
+      name: "read_page",
+      input: { page },
+    })
+    const results = (body: any) => body.messages.at(-1).content
+    const text = (result: any) => result.content.map((b: any) => b.text ?? b.type).join("")
+    anthropicScript.push(
+      {
+        // The manual twice in one round, and the page the member mentioned.
+        content: [
+          read("tu_1", manual),
+          read("tu_2", `https://public.example/${manual}`),
+          read("tu_3", "equipment/santec-tsl"),
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      },
+      (body: any) => {
+        const [first, second, mentioned] = results(body)
+        expect(first.content[0]).toMatchObject({ type: "document", title: "manual.pdf" })
+        expect(text(second)).toMatch(/already above, read or attached earlier in this turn/)
+        expect(text(mentioned)).toMatch(/already above/)
+        return {
+          content: [read("tu_4", `/${manual}`)],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 10, output_tokens: 5 },
+        }
+      },
+      (body: any) => {
+        expect(text(results(body)[0])).toMatch(/already above/)
+        return {
+          content: [{ type: "text", text: "It sweeps." }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 2 },
+        }
+      },
+    )
+    const { events } = await keyed(alice, `/api/gpt/conversations/${chat.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        text: "What does the manual say?",
+        mentions: ["equipment/santec-tsl"],
+      }),
+    })
+    expect(events.at(-1)!.name).toBe("done")
+    expect(
+      events.filter((e) => e.name === "tool_result").map((e) => e.data.summary.split(" ")[0]),
+    ).toEqual(["Read", "Already", "Already", "Already"])
+    // A new turn starts afresh.
+    anthropicScript.push(
+      {
+        content: [read("tu_5", manual)],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      },
+      (body: any) => {
+        expect(results(body)[0].content[0]).toMatchObject({ type: "document" })
+        return {
+          content: [{ type: "text", text: "Still sweeps." }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 2 },
+        }
+      },
+    )
+    const again = await keyed(alice, `/api/gpt/conversations/${chat.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text: "And again?" }),
+    })
+    expect(again.events.at(-1)!.name).toBe("done")
+    expect(anthropicScript).toHaveLength(0)
+  })
+
   it("talks to the claude-bridge with the site's tools, pages, images and thinking, but no betas", async () => {
     const alice = await as("alice-bridge")
     const chat = await newChat(alice, {

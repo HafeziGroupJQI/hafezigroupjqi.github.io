@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk"
 import type { Upstream } from "../docs"
 import type { Env } from "../env"
 import { HttpError } from "../http"
-import { type ResolvedRef, fileContent, refContent } from "./context"
+import { type ResolvedRef, fileContent, refContent, uploadKind } from "./context"
 import type { Knowledge } from "./knowledge"
 import type { Skill } from "./skills"
 import type { Conversation, GptStore } from "./store"
@@ -105,6 +105,11 @@ export interface ToolContext {
   upstream: Upstream
   /** Pages/documents the model opened this turn, for the UI's source list. */
   opened: Map<string, ResolvedRef["label"]>
+  /**
+   * What is already in this turn (readKey, `file:<id>`): read by a tool or attached to the
+   * member's message. Reading it again gets a note instead of the whole of it once more.
+   */
+  read?: Set<string>
 }
 
 export interface ToolOutcome {
@@ -179,16 +184,60 @@ function searchSite(input: Record<string, unknown>, ctx: ToolContext): ToolOutco
   }
 }
 
+/**
+ * What read_page reads, however it was named: a page's slug or a document's path, with where in
+ * it (only pages and text documents are read in parts; a PDF or picture comes whole).
+ */
+export function readKey(ref: string, offset: number, knowledge: Knowledge): string | null {
+  const hit = knowledge.resolve(ref)
+  if (!hit) return null
+  if (hit.kind === "page") return `${hit.page.slug}@${offset}`
+  return `${hit.path}@${uploadKind(hit.entry.contentType, hit.path) === "text" ? offset : 0}`
+}
+
+/** Read something once a turn: a model that asks again gets a note, not the content again. */
+async function once(
+  ctx: ToolContext,
+  key: string | null,
+  title: string,
+  read: () => Promise<ToolOutcome>,
+): Promise<ToolOutcome> {
+  if (!key || !ctx.read) return read()
+  if (ctx.read.has(key))
+    return {
+      content: [
+        {
+          type: "text",
+          text: `${title} is already above, read or attached earlier in this turn: use that copy.`,
+        },
+      ],
+      summary: `Already read ${title}`,
+    }
+  // Taken before the read, so two calls for it in one round send it once.
+  ctx.read.add(key)
+  try {
+    return await read()
+  } catch (error) {
+    ctx.read.delete(key)
+    throw error
+  }
+}
+
 async function readPage(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
   const ref = str(input.page).trim()
   if (!ref) throw new HttpError(422, "page is required")
   const offset = Math.max(0, Number(input.offset) || 0)
-  const resolved = await refContent(ref, ctx.knowledge, ctx.env, ctx.upstream, {
-    offset,
-    maxChars: 60_000,
+  return once(ctx, readKey(ref, offset, ctx.knowledge), ref, async () => {
+    const resolved = await refContent(ref, ctx.knowledge, ctx.env, ctx.upstream, {
+      offset,
+      maxChars: 60_000,
+    })
+    ctx.opened.set(resolved.label.ref, resolved.label)
+    return {
+      content: resolved.blocks as ToolResultContent,
+      summary: `Read ${resolved.label.title}`,
+    }
   })
-  ctx.opened.set(resolved.label.ref, resolved.label)
-  return { content: resolved.blocks as ToolResultContent, summary: `Read ${resolved.label.title}` }
 }
 
 function listPages(input: Record<string, unknown>, ctx: ToolContext): ToolOutcome {
@@ -236,10 +285,10 @@ async function readFile(input: Record<string, unknown>, ctx: ToolContext): Promi
     url: "",
     kind: "file",
   })
-  return {
+  return once(ctx, `file:${file.id}`, file.name, async () => ({
     content: (await fileContent(file, ctx.env)) as ToolResultContent,
     summary: `Read ${file.name}`,
-  }
+  }))
 }
 
 function useSkill(input: Record<string, unknown>, ctx: ToolContext): ToolOutcome {

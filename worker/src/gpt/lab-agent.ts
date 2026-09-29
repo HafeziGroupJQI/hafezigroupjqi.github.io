@@ -2,6 +2,7 @@ import type { Env } from "../env"
 import { HttpError, withPrivateHeaders } from "../http"
 import type { AnthropicFetch } from "./chat"
 import { labSession } from "./lab"
+import { withLabPrompt } from "./lab-prompt"
 import { type GptModel, MODELS, addUsage, emptyUsage } from "./models"
 import { GptStore } from "./store"
 
@@ -10,7 +11,8 @@ import { GptStore } from "./store"
 // credential: the member's own lab only, as for the lab's Hafezi GPT panel (lab.ts). The request
 // is rebuilt from an allowlist and sent on with the Worker's own key to the Worker's model
 // endpoint: the claude-bridge today (which emulates tool calls), Anthropic's API once there is a
-// key. Usage counts against the member's monthly Hafezi GPT budget.
+// key, with the lab's section added to its system prompt (lab-prompt.ts). Usage counts against
+// the member's monthly Hafezi GPT budget.
 
 const LAB_AGENT = /^\/lab\/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\/hafezi-gpt\/anthropic\/v1\/messages$/
 
@@ -37,7 +39,10 @@ const NO_SAMPLING = new Set(["claude-sonnet-5", "claude-opus-5-5"])
 const MAX_BODY = 4 * 1024 * 1024
 const MAX_TOKENS = 16_000
 
-/** The request sent on: only what the agent needs, never server tools, MCP or betas. */
+/**
+ * The request sent on: only what the agent needs, never server tools, MCP or betas, with the
+ * lab's section after its system prompt.
+ */
 export function upstreamBody(body: Record<string, unknown>): Record<string, unknown> {
   const model = typeof body.model === "string" ? body.model : ""
   if (!AGENT_MODELS[model]) throw new HttpError(422, `model ${model || "(none)"} is not available`)
@@ -47,8 +52,9 @@ export function upstreamBody(body: Record<string, unknown>): Record<string, unkn
     model,
     messages: body.messages,
     max_tokens: Math.min(Number(body.max_tokens) || 4096, MAX_TOKENS),
+    system: withLabPrompt(body.system),
   }
-  for (const key of ["system", "stream", "stop_sequences", "tool_choice"] as const)
+  for (const key of ["stream", "stop_sequences", "tool_choice"] as const)
     if (body[key] !== undefined) out[key] = body[key]
   if (Array.isArray(body.tools)) {
     // The agent's own tools, which run in the member's browser; a provider-hosted tool (web

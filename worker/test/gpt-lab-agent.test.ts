@@ -2,6 +2,8 @@ import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:
 import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { issueLabTicket } from "../src/compute/tokens"
 import { upstreamBody } from "../src/gpt/lab-agent"
+import { LAB_PROMPT } from "../src/gpt/lab-prompt"
+import { VAULT_TOOLS } from "../src/gpt/lab-tools"
 import { ORIGIN } from "./helpers"
 import worker, { anthropicCalls, anthropicScript } from "./worker"
 
@@ -65,7 +67,13 @@ describe("the lab's coding agent endpoint", () => {
     const [call] = anthropicCalls
     expect(call.url).toBe("https://api.anthropic.com/v1/messages")
     expect(call.headers["x-api-key"]).toBe("test-key")
-    expect(Object.keys(call.body).sort()).toEqual(["max_tokens", "messages", "model", "tools"])
+    expect(Object.keys(call.body).sort()).toEqual([
+      "max_tokens",
+      "messages",
+      "model",
+      "system",
+      "tools",
+    ])
     expect(call.body.tools.map((t: any) => t.name)).toEqual(["add_cell"])
     expect(await usageOf("agnes")).toEqual({ input: 10, output: 3 })
   })
@@ -133,7 +141,31 @@ describe("the lab's coding agent endpoint", () => {
       model: "claude-haiku-4-5",
       messages: hello,
       max_tokens: 16_000,
+      system: LAB_PROMPT,
       temperature: 0.1,
     })
+  })
+
+  it("adds the lab's section after the agent's own system prompt, in the form it came", () => {
+    const system = (sent: unknown) => upstreamBody({ ...ask, messages: hello, system: sent }).system
+    expect(system("You are Jupyternaut.")).toBe(`You are Jupyternaut.\n\n${LAB_PROMPT}`)
+    const blocks = [
+      { type: "text", text: "You are Jupyternaut." },
+      { type: "text", text: "Skills: none.", cache_control: { type: "ephemeral" } },
+    ]
+    expect(system(blocks)).toEqual([...blocks, { type: "text", text: LAB_PROMPT }])
+    expect(system(undefined)).toBe(LAB_PROMPT)
+    expect(() => system({ text: "not a prompt" })).toThrow(/system must be/)
+    // It names the site tools as the lab registers them (hafezi_<name>).
+    for (const name of VAULT_TOOLS) expect(LAB_PROMPT).toContain(`hafezi_${name}`)
+  })
+
+  it("sends the lab's section upstream with the agent's request", async () => {
+    const system = [
+      { type: "text", text: "You are Jupyternaut.", cache_control: { type: "ephemeral" } },
+    ]
+    const reply = await agent(own, { ...ask, messages: hello, system })
+    expect(reply.status).toBe(200)
+    expect(anthropicCalls[0].body.system).toEqual([...system, { type: "text", text: LAB_PROMPT }])
   })
 })

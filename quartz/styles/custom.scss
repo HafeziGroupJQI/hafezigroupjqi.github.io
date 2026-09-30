@@ -443,6 +443,18 @@ body {
   margin: 0;
   font-size: 1.2rem;
 }
+.folder-listing__description {
+  margin: 2px 0 0;
+  color: var(--jqi-muted);
+}
+@media (max-width: 600px) {
+  .folder-listing .section {
+    grid-template-columns: 1fr;
+  }
+  .folder-listing .section .tags {
+    grid-column: 1;
+  }
+}
 
 // Bases (directory, inventory) tables use the same table styling as content.
 .bases-table,
@@ -1118,8 +1130,9 @@ article.popover-hint > *:first-child {
 .site-public .page-content__main {
   max-width: 1090px;
 }
-// Section pages build their own card lists; tag pages rely on the automatic listing.
-.site-public:not(.site-tag) .page-listing {
+// Section pages build their own card lists; tag pages rely on the automatic listing, and so do
+// folders without an index of their own (quartz/plugins/local/folder-index/).
+.site-public:not(.site-tag) .page-listing:not(.folder-listing) {
   display: none;
 }
 .site-home .page-content__sidebar,

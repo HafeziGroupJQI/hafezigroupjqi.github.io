@@ -146,7 +146,9 @@ plugins:
     enabled: false
   - source: "@quartz-community/content-page"
     enabled: true
-  - source: "@quartz-community/folder-page"
+  # Quartz's folder pages (@quartz-community/folder-page) with readable titles and a visible listing
+  # on folders that have no index of their own.
+  - source: "./quartz/plugins/local/folder-index"
     enabled: true
   - source: "@quartz-community/tag-page"
     enabled: true

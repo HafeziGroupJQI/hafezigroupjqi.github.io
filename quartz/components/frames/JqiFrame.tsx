@@ -8,6 +8,7 @@ import { publicNav, resourceNav } from "../jqi/nav"
 import { FullSlug, resolveRelative } from "../../util/path"
 import { PrintMeta } from "./printMeta"
 import { editAttributes } from "./pageTools"
+import { folderTitle } from "../../plugins/local/folder-index/names"
 
 const JqiHeader = JqiHeaderConstructor()
 const JqiFooter = JqiFooterConstructor()
@@ -26,9 +27,6 @@ const sectionLabels: Record<string, string> = Object.fromEntries([
 
 const handbookSections = new Set(["equipment", "setups", "materials", "places"])
 
-const humanize = (segment: string) =>
-  segment.replace(/[-_]+/g, " ").replace(/^\w/, (letter) => letter.toUpperCase())
-
 /** Every ancestor of the page, so nested content reads as part of its section. */
 function breadcrumbs(slug: FullSlug, allFiles: PageFrameProps["componentData"]["allFiles"]) {
   const parts = slug.split("/")
@@ -41,7 +39,8 @@ function breadcrumbs(slug: FullSlug, allFiles: PageFrameProps["componentData"]["
       (prefix.startsWith("tags/") ? prefix : `${prefix}/index`)) as FullSlug
     // Folder and tag pages are titled by their raw path segment; present those readably.
     const title = page?.frontmatter?.title as string | undefined
-    const label = sectionLabels[prefix] ?? (title && title !== segment ? title : humanize(segment))
+    const label =
+      sectionLabels[prefix] ?? (title && title !== segment ? title : folderTitle(segment))
     return { target, label }
   })
 }

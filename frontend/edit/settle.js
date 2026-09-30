@@ -8,7 +8,7 @@
 import { h } from "../dashboard/dom.js"
 import { createNotebookEditor } from "./cells.js"
 import { createSourceEditor } from "./editor.js"
-import { fileName, lineSeparator, settleWords } from "./model.js"
+import { fileName, lineSeparator, settleOpen, settleWords } from "./model.js"
 
 async function call(path, options = {}) {
   const response = await fetch(path, {
@@ -49,7 +49,7 @@ export async function mountSettle(root, id) {
     status.classList.toggle("dash-error", error)
   }
   root.append(h("div", { class: "edit-notices" }, ...words.lines.map((text) => h("p", { text }))))
-  if (!detail.can_settle || conflict.state !== "open") {
+  if (!settleOpen(detail)) {
     root.append(h("p", { class: "muted", text: words.closed }))
     return
   }

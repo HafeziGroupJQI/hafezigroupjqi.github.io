@@ -241,6 +241,11 @@ export function settleNotice(conflict, login) {
     : `${name} has a change to this page that conflicts with one sent before it.`
 }
 
+/** Whether the viewer may settle a conflict as GET /api/edit/conflicts/:id gives it: open, and
+ *  theirs to settle (the answer's `conflict.can_settle`). */
+export const settleOpen = (detail) =>
+  detail?.conflict?.state === "open" && detail.conflict.can_settle === true
+
 /**
  * The settle view's words (settle.js) for a conflict as GET /api/edit/conflicts/:id gives it: the
  * second editor's change against the first one (or against main's version, when no member's

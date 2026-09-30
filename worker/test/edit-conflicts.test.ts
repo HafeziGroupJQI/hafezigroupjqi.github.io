@@ -575,6 +575,12 @@ describe("settling a queued conflict", () => {
         },
       })
     }
+    // The settle view opens on the answer's conflict.can_settle (frontend/edit/model.js).
+    expect((await ada.json(`/api/edit/conflicts/${conflict}`)).body.conflict).toMatchObject({
+      state: "open",
+      can_settle: true,
+    })
+    expect((await bob.json(`/api/edit/conflicts/${conflict}`)).body.conflict.can_settle).toBe(false)
     expect((await ada.json("/api/edit/conflicts?role=first")).body).toMatchObject({
       conflicts: [{ id: conflict, you_first: true, can_settle: true }],
       counts: { first: 1, mine: 0 },

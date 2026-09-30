@@ -20,6 +20,7 @@ import {
   sendLabel,
   sendRefusal,
   settleNotice,
+  settleOpen,
   settleWords,
   stackWords,
   staleNotice,
@@ -355,4 +356,17 @@ test("a folder's new page opens the private vault's index.md in that folder", ()
     [intent.repo, intent.path, intent.new],
     ["vault-private", "notes/group-meeting/index.md", true],
   )
+})
+
+test("the settle view opens for whoever the Worker says may settle, as its answer says it", () => {
+  // GET /api/edit/conflicts/:id: the conflict's view, then its texts.
+  const answer = (can_settle, state = "open") => ({
+    conflict: { id: "c", state, can_settle },
+    first_text: "a",
+    proposed: "b",
+  })
+  assert.equal(settleOpen(answer(true)), true)
+  assert.equal(settleOpen(answer(false)), false)
+  assert.equal(settleOpen(answer(true, "resolved")), false)
+  assert.equal(settleOpen({ can_settle: true, conflict: { state: "open" } }), false)
 })

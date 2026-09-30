@@ -4,7 +4,7 @@ import type { Env } from "../env"
 import { HttpError } from "../http"
 import { dueAt } from "../profile/routes"
 import { RepoConflict, type RepoFetch, type TreeEntry } from "../repo"
-import { type ChangeRow, type DraftRow, settle, stagedKey } from "../uploads/drafts"
+import { type ChangeRow, type DraftRow, publishedKey, settle } from "../uploads/drafts"
 import { DraftRepo } from "../uploads/github"
 import { type VaultView, pageProblems, vaultProblems } from "./public"
 import { editMessage, editTitle } from "./rules"
@@ -83,6 +83,10 @@ export async function publishEdit(
     vaultView(repo, await repo.tree(tip.tree)),
   )
   if (problems.length) refuse(problems)
+  // What goes in is this text, whatever its member saves after (they publish that again).
+  await env.ARTIFACTS.put(publishedKey(row.id, change.path), text, {
+    httpMetadata: { contentType: change.content_type ?? "text/markdown; charset=utf-8" },
+  })
   await env.DB.prepare(
     `UPDATE upload_drafts SET status = 'open', title = ?, author = ?, detail_json = NULL,
        sent_at = ?, due_at = ?, updated_at = ?
@@ -162,7 +166,7 @@ export async function commitDue(
         result.conflicts.push(row.id)
         continue
       }
-      const object = await env.ARTIFACTS.get(stagedKey(row.id, row.path))
+      const object = await env.ARTIFACTS.get(publishedKey(row.id, row.path))
       if (!object) {
         await mark(env, row, "failed", "its text is gone: discard it and edit the page again")
         result.failed.push(row.id)

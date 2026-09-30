@@ -263,10 +263,17 @@ export async function editRoutes(
     if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
     await underLimit(env, session.login, ["edit.create", "edit.save"], SAVES_PER_DAY, "saves")
     const now = Date.now()
+    // Everything is checked before anything is kept: a save refused in part changes nothing.
+    const text = "text" in body ? editText(body.text) : null
+    const summary = "summary" in body ? cleanSummary(body.summary) : null
+    const base = "base_sha" in body ? blobSha(body.base_sha) : null
+    if (text === null && summary === null && base === null)
+      throw new HttpError(422, "send the text, the summary or a base_sha")
+    if (base !== null && (await repoOf(row.repo).file(change.path))?.sha !== base)
+      throw new HttpError(409, "that isn't main's version of the page; load it again")
     const statements: D1PreparedStatement[] = []
     let problems: string[] = []
-    if ("text" in body) {
-      const text = editText(body.text)
+    if (text !== null) {
       const report = checkEdit(row.repo, change.path, text)
       problems = report.problems
       await env.ARTIFACTS.put(stagedKey(row.id, change.path), text, {
@@ -279,25 +286,16 @@ export async function editRoutes(
         ).bind(new TextEncoder().encode(text).length, report.review, now, row.id, change.path),
       )
     }
-    if ("summary" in body)
+    if (summary !== null)
       statements.push(
-        env.DB.prepare("UPDATE upload_drafts SET summary = ? WHERE id = ?").bind(
-          cleanSummary(body.summary),
-          row.id,
-        ),
+        env.DB.prepare("UPDATE upload_drafts SET summary = ? WHERE id = ?").bind(summary, row.id),
       )
-    if ("base_sha" in body) {
-      const base = blobSha(body.base_sha)
-      const main = await repoOf(row.repo).file(change.path)
-      if (main?.sha !== base)
-        throw new HttpError(409, "that isn't main's version of the page; load it again")
+    if (base !== null)
       statements.push(
         env.DB.prepare(
           "UPDATE upload_changes SET base_sha = ? WHERE draft_id = ? AND path = ?",
         ).bind(base, row.id, change.path),
       )
-    }
-    if (!statements.length) throw new HttpError(422, "send the text, the summary or a base_sha")
     statements.push(
       env.DB.prepare("UPDATE upload_drafts SET edited_at = ?, updated_at = ? WHERE id = ?").bind(
         now,

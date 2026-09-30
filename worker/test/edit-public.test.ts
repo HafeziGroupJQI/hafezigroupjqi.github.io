@@ -263,6 +263,18 @@ describe("public pages: publishing", () => {
     expect((await commitDue(env as any, vault.fetch, due + 3_600_000)).merged).toEqual([ids[4]])
   })
 
+  it("commits the text its member published, not one saved while the run goes", async () => {
+    const ada = await as("ada")
+    const path = "content/research/engines.md"
+    const id = (await draft(ada, path, RESEARCH + "Published.\n")).body.id
+    const due = (await publish(ada, id)).body.due_at
+    // A save that lands while the run is going: its text is there before its D1 row says so.
+    await env.ARTIFACTS.put(`uploads/${id}/${path}`, RESEARCH + "Half typed")
+    expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ merged: [id] })
+    expect(vault.text(path)).toBe(RESEARCH + "Published.\n")
+    expect((await env.ARTIFACTS.list({ prefix: `uploads/${id}/` })).objects).toEqual([])
+  })
+
   it("refuses to publish over someone else's change, and shows it", async () => {
     const ada = await as("ada")
     const id = (await draft(ada, "content/research/engines.md", RESEARCH + "Mine.\n")).body.id

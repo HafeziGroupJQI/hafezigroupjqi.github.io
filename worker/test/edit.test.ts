@@ -285,8 +285,10 @@ describe("edit: drafts of a private page", () => {
     })
     expect(repo.pulls.size).toBe(0)
     expect([...repo.refs.keys()]).toEqual(["main"])
-    // Only main's version can become the draft's new base.
-    expect((await save(ada, id, { base_sha: base })).status).toBe(409)
+    // Only main's version can become the draft's new base, and a save refused in part keeps
+    // nothing of it.
+    expect((await save(ada, id, { base_sha: base, text: "lost\n" })).status).toBe(409)
+    expect((await ada.json(`/api/edit/drafts/${id}`)).body.text).toBe(NOTE + "Mine.\n")
     const rebased = await save(ada, id, {
       base_sha: repo.sha("notes/meeting.md"),
       text: NOTE + "Theirs.\nMine.\n",

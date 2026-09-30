@@ -64,6 +64,9 @@ export interface Detail {
 }
 
 export const stagedKey = (id: string, path: string) => `uploads/${id}/${path}`
+/** A public page edit's text as its member published it (src/edit/publish.ts): what the hourly
+ *  run commits, whatever they save after. No vault path starts with a dot, so none is here. */
+export const publishedKey = (id: string, path: string) => `uploads/${id}/.published/${path}`
 
 export async function draftRow(env: Env, id: string): Promise<DraftRow | null> {
   return env.DB.prepare("SELECT * FROM upload_drafts WHERE id = ?").bind(id).first<DraftRow>()

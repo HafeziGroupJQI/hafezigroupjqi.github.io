@@ -7,6 +7,7 @@ import SectionNav from "../jqi/SectionNav"
 import { publicNav, resourceNav } from "../jqi/nav"
 import { FullSlug, resolveRelative } from "../../util/path"
 import { PrintMeta } from "./printMeta"
+import { editAttributes } from "./pageTools"
 
 const JqiHeader = JqiHeaderConstructor()
 const JqiFooter = JqiFooterConstructor()
@@ -144,7 +145,14 @@ export const JqiFrame: PageFrame = {
                         ))}
                       </ul>
                     )}
-                    {source && <div class="page-tools" data-page-tools data-source={source} />}
+                    {source && (
+                      <div
+                        class="page-tools"
+                        data-page-tools
+                        data-source={source}
+                        {...editAttributes(slug, frontmatter)}
+                      />
+                    )}
                   </>
                 </div>
                 <div class="page-content__body">

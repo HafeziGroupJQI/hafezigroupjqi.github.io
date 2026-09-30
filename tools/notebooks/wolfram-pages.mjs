@@ -19,6 +19,7 @@ import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import yaml from "yaml"
 import { slugifyFilePath } from "@quartz-community/utils"
+import { blobSha } from "../docs-manifest.mjs"
 
 export const ASSET_URL = "/notebook-assets/"
 const MAX_ASSET_BYTES = 24 * 1024 * 1024
@@ -616,7 +617,8 @@ export async function writeWolframPages({
   const entries = []
   for (const file of notebooks) {
     const rel = posix(path.relative(contentDir, file))
-    const sha = fileSha(file)
+    const bytes = fs.readFileSync(file)
+    const sha = sha256(bytes)
     const render = bySha.has(sha) ? renderOf(bySha.get(sha), rel) : null
     if (!render) {
       missing.push({ source: rel, source_sha: sha })
@@ -627,7 +629,7 @@ export async function writeWolframPages({
       conflicts.push({ source: rel, page: posix(path.relative(contentDir, page)) })
       continue
     }
-    entries.push({ file, rel, page, sha, render, title: render.title })
+    entries.push({ file, rel, page, sha, blob: blobSha(bytes), render, title: render.title })
   }
   const store = new AssetStore({ outDir: assetsDir, cacheDir, sourceDir: null })
   const deployed = new Set(notebooks.map((file) => posix(path.relative(contentDir, file))))
@@ -663,6 +665,16 @@ export async function writeWolframPages({
           inputs,
           outputs,
         },
+        // Its file in the private vault, for the page's History and its Edit, which opens the
+        // notebook in the Scratchpad (the lab's Wolfram notebook editor; JqiFrame's [data-page-tools]).
+        ...(source
+          ? {
+              edit_repo: "vault-private",
+              edit_path: source,
+              edit_sha: entry.blob,
+              edit_mode: "scratchpad",
+            }
+          : {}),
       }) +
         "\n" +
         body +

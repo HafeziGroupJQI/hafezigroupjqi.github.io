@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import {
+  blobSha,
   docsManifest,
   documentExtensions,
   pruneDocuments,
@@ -35,6 +36,20 @@ const repository = () => {
   git(root, "commit", "-q", "-m", "seed")
   return root
 }
+
+test("a file's blob sha is the one git gives it", () => {
+  const root = repository()
+  try {
+    for (const file of ["notes/meeting.md", "files/equipment/Big Laser/Manual (Rev 2).PDF"])
+      assert.equal(
+        blobSha(fs.readFileSync(path.join(root, file))),
+        git(root, "hash-object", file).trim(),
+      )
+    assert.equal(blobSha(Buffer.alloc(0)), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test("manifest keys documents by their slugified site path with git blob shas", () => {
   const root = repository()

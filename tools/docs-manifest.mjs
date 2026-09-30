@@ -1,7 +1,12 @@
 import { execFileSync } from "node:child_process"
+import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { slugifyFilePath } from "@quartz-community/utils"
+
+/** A file's git blob sha, as `git hash-object` gives it: what GitHub calls the file's sha on main. */
+export const blobSha = (bytes) =>
+  crypto.createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex")
 
 // Private documents (PDFs, Office files, audio, scripts: everything that is neither a page
 // nor an image) never enter the deployed site. The member build records, per output path,

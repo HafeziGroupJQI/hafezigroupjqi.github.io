@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import yaml from "yaml"
+import { blobSha } from "./docs-manifest.mjs"
 import { prepareUnified } from "./prepare-unified.mjs"
 
 test("combined content keeps homepage, namespaces private links and aliases, and excludes tooling", () => {
@@ -50,8 +51,36 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     assert.match(read("resources/notes/test.md"), /resources\/old-note/)
     assert.match(read("resources/notes/test.md"), /\[\[resources\/notes\/other\|Other\]\]/)
     assert.match(read("resources/notes/test.md"), /\/resources\/notes\/file.txt/)
-    // Each private page knows its own file in the vault, for its Replace and Move tools.
+    // Each private page knows its own file in the vault, for its Replace and Move tools, and for
+    // its Edit and History tools with the blob it was built from.
     assert.match(read("resources/notes/test.md"), /vault_source: notes\/test.md/)
+    const blob = (file) => blobSha(fs.readFileSync(file))
+    assert.match(
+      read("resources/notes/test.md"),
+      new RegExp(
+        `\nedit_repo: vault-private\nedit_path: notes/test.md\nedit_sha: ${blob(path.join(privateRoot, "notes", "test.md"))}\n`,
+      ),
+    )
+    // So does every public page, by its path in the public vault; the home page, which the site
+    // wraps in generated parts, says so.
+    assert.match(
+      read("equipment/laser.md"),
+      new RegExp(
+        `\nedit_repo: vault\nedit_path: content/equipment/laser.md\nedit_sha: ${blob(path.join(publicRoot, "equipment", "laser.md"))}\n`,
+      ),
+    )
+    assert.match(
+      read("index.md"),
+      /\nedit_repo: vault\nedit_path: content\/index.md\nedit_sha: [0-9a-f]{40}\nedit_note: generated\n/,
+    )
+    // Pages the site makes whole have no file to edit.
+    for (const page of [
+      "resources/index.md",
+      "resources/notes/index.md",
+      "recent.md",
+      "uploads.md",
+    ])
+      assert.doesNotMatch(read(page), /edit_path/, page)
     assert.match(read("resources/index.md"), /resource-grid[\s\S]*\/resources\/notes\//)
     assert.match(read("resources/topics/index.md"), /href="\/tags\/private-tag"/)
     assert.match(read("resources/notes/index.md"), /tags:\n  - internal\n  - notes/)
@@ -138,8 +167,14 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
       /---\n\n<p class="wl-source" data-source="code\/Sweep &amp; fit\.qmd">Rendered from <a class="internal" href="\/resources\/code\/sweep--and--fit\.qmd">Sweep &amp; fit\.qmd<\/a><\/p>\n\nThe sweep\.\n$/,
     )
     assert.ok(!fs.existsSync(path.join(built.output, "resources/code/Sweep & fit.qmd")))
-    // A Quarto page's own file is its source.
+    // A Quarto page's own file is its source: its edits and history are the .qmd's.
     assert.match(read("resources/code/Sweep & fit.md"), /vault_source: code\/Sweep & fit.qmd/)
+    assert.match(
+      read("resources/code/Sweep & fit.md"),
+      new RegExp(
+        `\nedit_path: code/Sweep & fit.qmd\nedit_sha: ${blobSha(fs.readFileSync(path.join(privateRoot, "code", "Sweep & fit.qmd")))}\n`,
+      ),
+    )
     assert.doesNotMatch(note, /wl-source/)
     // The notebooks themselves are staged; their pages are made later in the build.
     assert.ok(
@@ -168,6 +203,11 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
     assert.match(
       guideIndex,
       /About this guide\.\n\n## Pages\n\n- \[\[resources\/code\/wolfram-guide\/01-starting-out\|01-starting-out\]\]\n$/,
+    )
+    // Its file is edited as written; the list is the site's.
+    assert.match(
+      guideIndex,
+      /\nedit_path: code\/wolfram-guide\/index.md\n[\s\S]*edit_note: generated\n/,
     )
     // An index without list_pages is left as written.
     const plainIndex = path.join(listed.output, "resources/code/note.md")

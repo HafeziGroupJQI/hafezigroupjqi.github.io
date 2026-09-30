@@ -13,6 +13,13 @@ test("a page's source loses only the build's own front matter keys", () => {
     "---\ntitle: Git\ntags:\n  - onboarding\n---\n\nsite_public: true stays in the body.\n",
   )
   assert.equal(pageSource("No front matter.\n"), "No front matter.\n")
+  // The page's own file in the vault is the build's too, even folded onto more lines.
+  assert.equal(
+    pageSource(
+      "---\ntitle: Sweep\nvault_source: code/a folder with a long name/and a long file name that goes on\n  and on.qmd\nedit_repo: vault-private\nedit_path: code/a folder with a long name/and a long file name that goes on\n  and on.qmd\nedit_sha: 0123456789abcdef0123456789abcdef01234567\nedit_mode: notebook\nedit_note: generated\ntags:\n  - code\n---\n\nedit_path: stays in the body.\n",
+    ),
+    "---\ntitle: Sweep\ntags:\n  - code\n---\n\nedit_path: stays in the body.\n",
+  )
   assert.equal(
     pageSource("---\r\ntitle: A\r\nsite_home: true\r\n---\r\nBody"),
     "---\r\ntitle: A\r\n---\r\nBody",

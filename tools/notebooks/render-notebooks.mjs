@@ -32,6 +32,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import yaml from "yaml"
+import { blobSha } from "../docs-manifest.mjs"
 import {
   documentHref,
   escapeHtml,
@@ -330,6 +331,15 @@ export function renderIpynb(
   fm.tags = [...new Set(["internal", "notebook", "notebook/jupyter", ...tags])]
   fm.rendered_from = rel
   fm.notebook = { kind: "jupyter", source_sha: sourceSha, kernel }
+  // A private vault notebook's own file, for the page's Edit (its cells, frontend/edit/) and
+  // History tools (JqiFrame's [data-page-tools]).
+  if (fork)
+    Object.assign(fm, {
+      edit_repo: "vault-private",
+      edit_path: fork,
+      edit_sha: blobSha(fs.readFileSync(file)),
+      edit_mode: "notebook",
+    })
   body = `${bar}\n\n${body.trimStart()}`
   fs.writeFileSync(md, "---\n" + yaml.stringify(fm).trimEnd() + "\n---\n\n" + body)
   if (entry) {

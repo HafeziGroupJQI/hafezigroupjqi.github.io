@@ -3,6 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { blobSha } from "./docs-manifest.mjs"
 import {
   alumniPage,
   cards,
@@ -50,11 +51,25 @@ export function prepareSite(source, yaml) {
   if (config) fs.copyFileSync(config, path.join(stage, "_quarto.yml"))
   const records = walk(output)
     .filter((f) => f.endsWith(".md"))
-    .map((file) => ({
-      ...parse(fs.readFileSync(file, "utf8")),
-      slug: path.relative(output, file).replace(/\\/g, "/").replace(/\.md$/, ""),
-    }))
+    .map((file) => {
+      const bytes = fs.readFileSync(file)
+      return {
+        ...parse(bytes.toString("utf8")),
+        slug: path.relative(output, file).replace(/\\/g, "/").replace(/\.md$/, ""),
+        sha: blobSha(bytes),
+      }
+    })
   const get = (slug) => records.find((r) => r.slug === slug)
+  // A page's own file in the public vault (HafeziGroupJQI/vault, whose pages live under content/)
+  // and its blob, for the page's Edit and History tools (JqiFrame's [data-page-tools]). Pages the
+  // site makes whole (the people, research, news and publications indexes, tag pages) have none;
+  // the home and places pages, which wrap their file's text in generated parts, say so.
+  const vaultFile = (record, generated = false) => ({
+    edit_repo: "vault",
+    edit_path: `content/${record.slug}.md`,
+    edit_sha: record.sha,
+    ...(generated ? { edit_note: "generated" } : {}),
+  })
   const manifest = records
     .filter((r) => typeof r.fm.source === "string")
     .map((r) => ({ source: r.fm.source, slug: r.slug }))
@@ -91,7 +106,7 @@ export function prepareSite(source, yaml) {
       "places/index",
       "Places",
       placesSource.body.replace("<!-- places-directory -->", directory),
-      { tags: placesSource.fm.tags },
+      { tags: placesSource.fm.tags, ...vaultFile(placesSource, true) },
     )
   }
   const research = records.filter((r) => r.fm.type === "research")
@@ -130,7 +145,12 @@ export function prepareSite(source, yaml) {
       cards(news.slice(0, 3), "index"),
       "[[news/index|View all news]]",
     ].join("\n\n"),
-    { site_home: true, tags: home.fm.tags, description: home.fm.description },
+    {
+      site_home: true,
+      tags: home.fm.tags,
+      description: home.fm.description,
+      ...vaultFile(home, true),
+    },
   )
   // Preserve individual records and resources, adding only presentation metadata.
   for (const record of records) {
@@ -163,6 +183,7 @@ export function prepareSite(source, yaml) {
         ...record.fm,
         title: String(record.fm.title ?? record.slug).trim(),
         ...(publicPage ? { site_public: true } : {}),
+        ...vaultFile(record),
       },
       body,
     )

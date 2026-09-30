@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import sharp from "sharp"
+import { blobSha } from "../docs-manifest.mjs"
 import {
   AssetStore,
   assetPath,
@@ -274,6 +275,14 @@ test("writeWolframPages puts a page next to every notebook, matched by the noteb
   // Forkable only under the private vault's prefix, by its path inside the vault.
   assert.match(page, /data-source="guide\/01-start.nb"/)
   assert.doesNotMatch(fs.readFileSync(path.join(content, "public/demo.md"), "utf8"), /data-source=/)
+  // Its History and Edit (in the Scratchpad) name its file in the private vault, with its blob.
+  assert.match(
+    page,
+    new RegExp(
+      `\nedit_repo: vault-private\nedit_path: guide/01-start.nb\nedit_sha: ${blobSha(Buffer.from("Notebook[{1}]"))}\nedit_mode: scratchpad\n`,
+    ),
+  )
+  assert.doesNotMatch(fs.readFileSync(path.join(content, "public/demo.md"), "utf8"), /edit_path/)
   assert.match(page, /<p class="wl-exsummary">9 exercises<\/p>/)
   // The raw notebook is linked at the path the site serves it: Quartz's (lower-case) slug.
   assert.match(

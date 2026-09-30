@@ -15,9 +15,11 @@ export const manifest = {
   category: "emitter",
 }
 
-// Front matter the build adds for itself (tools/prepare-site.mjs, tools/prepare-unified.mjs), which
-// no author writes and which means nothing outside this site.
-const BUILD_KEYS = /^(?:site_public|site_internal|site_home):.*\r?\n/gm
+// Front matter the build adds for itself (tools/prepare-site.mjs, tools/prepare-unified.mjs,
+// tools/notebooks/), which no author writes and which means nothing outside this site: where the
+// page is shown, and its own file in the vault. A long value may be folded onto indented lines.
+const BUILD_KEYS =
+  /^(?:site_public|site_internal|site_home|vault_source|edit_repo|edit_path|edit_sha|edit_mode|edit_note):.*\r?\n(?:[ \t]+.*\r?\n)*/gm
 
 /** The source as it goes out: the staged page, without the build's own front matter keys. */
 export function pageSource(text) {

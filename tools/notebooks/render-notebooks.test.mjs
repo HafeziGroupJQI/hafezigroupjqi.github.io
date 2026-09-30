@@ -4,6 +4,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { blobSha } from "../docs-manifest.mjs"
 import { assetRefs, problems, renderDirsIn, renderIpynb, stage1 } from "./render-notebooks.mjs"
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), "render-notebooks-"))
@@ -250,6 +251,8 @@ test(
       /^---\ntitle: Ring sweep\ntags:\n {2}- internal\n {2}- notebook\n {2}- notebook\/jupyter\n/,
     )
     assert.match(page, /rendered_from: code\/sweep.ipynb/)
+    // Outside the private vault it names no file to edit.
+    assert.doesNotMatch(page, /edit_path/)
     // Math as Jupyter writes it: \(…\) and LaTeX environments are kept as math.
     assert.match(page, /\$t\^2 \+ \\kappa\^2 = 1\$/)
     assert.match(page, /\$\$\\begin\{align\}\nT &= \|H\|\^2\n\\end\{align\}\$\$/)
@@ -295,9 +298,17 @@ test(
       /./,
     )
     assert.equal(renderIpynb(file, content, { quarto, cache, forkPrefix: "code/" }).cache, "miss")
+    const forked = fs.readFileSync(path.join(content, "code", "sweep.md"), "utf8")
     assert.match(
-      fs.readFileSync(path.join(content, "code", "sweep.md"), "utf8"),
+      forked,
       /<p class="wl-source" data-source="sweep.ipynb">Rendered from <a class="internal" href="\/code\/sweep.ipynb">/,
+    )
+    // Its Edit (the notebook's cells) and History tools name it there too, with its blob.
+    assert.match(
+      forked,
+      new RegExp(
+        `\nedit_repo: vault-private\nedit_path: sweep.ipynb\nedit_sha: ${blobSha(fs.readFileSync(file))}\nedit_mode: notebook\n`,
+      ),
     )
     clear()
     notebook.cells[0].source = ["# Ring sweep, revised\n"]

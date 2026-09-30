@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { documentKey } from "./docs-manifest.mjs"
+import { blobSha, documentKey } from "./docs-manifest.mjs"
 import { prepareSite } from "./prepare-site.mjs"
 import { recentChanges } from "./recent-changes.mjs"
 import { recentPage } from "./site-model.mjs"
@@ -129,12 +129,21 @@ export function prepareUnified(publicSource, privateSource, yaml) {
         for (const key of ["photo", "image", "manual"])
           if (typeof fm[key] === "string") fm[key] = privateLink(fm[key], sourceFile, root)
         // The page's own file in the vault (a Quarto page's is its .qmd), for the page's tools:
-        // replace or move it through /uploads (frontend/member-tools.js).
-        if (filename.endsWith(".md"))
+        // replace or move it through /uploads (frontend/member-tools.js), edit it (/edit) and list
+        // its revisions (History), with the blob it was built from. A drawing is replaced whole,
+        // never edited as text; an index that lists its folder's pages gets that list made here.
+        if (filename.endsWith(".md")) {
           fm.vault_source =
             typeof fm.rendered_from === "string"
               ? fm.rendered_from
               : path.relative(root, sourceFile).split(path.sep).join("/")
+          const own = path.join(root, fm.vault_source)
+          fm.edit_repo = "vault-private"
+          fm.edit_path = fm.vault_source
+          if (fs.existsSync(own)) fm.edit_sha = blobSha(fs.readFileSync(own))
+          if (filename.endsWith(".excalidraw.md")) fm.edit_mode = "file"
+          if (fm.list_pages === true) fm.edit_note = "generated"
+        }
         const bar = qmdSourceBar(fm, root)
         text =
           `---\n${yaml.stringify(fm)}---\n` +

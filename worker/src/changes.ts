@@ -57,6 +57,131 @@ export const repoName = (env: Env, repo: ChangeRepo) =>
     ? env.VAULT_REPO || "HafeziGroupJQI/vault"
     : env.DOCS_REPO || "HafeziGroupJQI/vault-private"
 
+// ---- what the site records as members act: one statement each, since a Workers Free invocation
+// may make 50 D1 queries, the hourly runs' included ----
+
+/** A vault file's page on the site, or null (tools/changes-import.mjs's pageSlug, for commits). */
+export function pageSlug(repo: ChangeRepo, path: string): string | null {
+  if (repo === "vault") return /^content\/(.+)\.md$/.exec(path)?.[1] ?? null
+  const page = /^(.+)\.(?:md|qmd|ipynb|nb)$/.exec(path)?.[1]
+  return page ? `resources/${page}` : null
+}
+
+/** A change the site made to one file. */
+export interface SiteChange {
+  at: number
+  login: string
+  author: string
+  repo: ChangeRepo
+  path: string
+  from_path?: string | null
+  kind: ChangeKind
+  state: ChangeState
+  summary: string
+  commit_sha?: string | null
+  pr_number?: number | null
+  draft_id?: string | null
+  bytes?: number | null
+}
+
+const SITE_COLUMNS = [
+  "at",
+  "login",
+  "author",
+  "repo",
+  "path",
+  "from_path",
+  "slug",
+  "kind",
+  "state",
+  "summary",
+  "commit_sha",
+  "pr_number",
+  "draft_id",
+  "bytes",
+] as const
+
+/**
+ * The statement recording changes the site made, all of them at once. A commit's file that the
+ * deploy's import recorded first gives way to the site's row, which knows its draft and pull
+ * request.
+ */
+export function recordChanges(env: Pick<Env, "DB">, changes: SiteChange[]): D1PreparedStatement {
+  const rows = changes.map((change) => ({
+    from_path: null,
+    commit_sha: null,
+    pr_number: null,
+    draft_id: null,
+    bytes: null,
+    ...change,
+    slug: change.kind === "delete" ? null : pageSlug(change.repo, change.path),
+  }))
+  return env.DB.prepare(
+    `INSERT OR REPLACE INTO changes (${SITE_COLUMNS.join(", ")}, source)
+     SELECT ${SITE_COLUMNS.map((column) => `json_extract(value, '$.${column}')`).join(", ")}, 'site'
+     FROM json_each(?)`,
+  ).bind(JSON.stringify(rows))
+}
+
+/** A draft's files as the changes it sends: an upload's each, or the page an edit changes. */
+export function draftChanges(
+  draft: { id: string; login: string; repo?: ChangeRepo; kind?: "upload" | "edit" },
+  files: {
+    path: string
+    action: "add" | "replace" | "rename" | "delete"
+    from_path: string | null
+    size: number | null
+  }[],
+  sent: { at: number; author: string; summary: string; pull: number | null },
+): SiteChange[] {
+  return files.map((file) => ({
+    at: sent.at,
+    login: draft.login,
+    author: sent.author,
+    repo: draft.repo ?? "vault-private",
+    path: file.path,
+    from_path: file.from_path,
+    kind:
+      file.action === "rename" || file.action === "delete"
+        ? file.action
+        : draft.kind !== "edit"
+          ? "upload"
+          : file.action === "add"
+            ? "new"
+            : "edit",
+    state: "sent",
+    summary: sent.summary,
+    pr_number: sent.pull,
+    draft_id: draft.id,
+    bytes: file.size,
+  }))
+}
+
+/**
+ * The statement moving a draft's changes on (merged with its commit on main, refused, discarded),
+ * once the draft itself stands so (upload_drafts.status, whose words these are): a revision sent
+ * meanwhile keeps its changes as sent. Batched with the draft's own update, so it costs the hourly
+ * runs no request of its own. A merged change stays merged; a commit's file that the deploy's
+ * import recorded first gives way, as in recordChanges.
+ */
+export function settleChanges(
+  env: Pick<Env, "DB">,
+  draft: string,
+  state: "review" | "failed" | "conflict" | "merged" | "discarded",
+  { commit = null, at = Date.now() }: { commit?: string | null; at?: number } = {},
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `UPDATE OR REPLACE changes SET state = ?1, commit_sha = COALESCE(?2, commit_sha), at = ?3
+     WHERE draft_id = ?4 AND state != 'merged'
+       AND EXISTS (SELECT 1 FROM upload_drafts WHERE id = ?4 AND status = ?1)`,
+  ).bind(state, commit, at, draft)
+}
+
+/** The statement taking back a draft's changes not merged yet, before it is sent again. */
+export function unsentChanges(env: Pick<Env, "DB">, draft: string): D1PreparedStatement {
+  return env.DB.prepare("DELETE FROM changes WHERE draft_id = ? AND state != 'merged'").bind(draft)
+}
+
 /** A change as the members site shows it, with its links on GitHub. */
 export function changeView(env: Env, row: ChangeRow) {
   const github = `https://github.com/${repoName(env, row.repo)}`

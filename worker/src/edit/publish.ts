@@ -4,6 +4,7 @@ import type { Env } from "../env"
 import { HttpError } from "../http"
 import { dueAt } from "../profile/routes"
 import { RepoConflict, type RepoFetch, type TreeEntry } from "../repo"
+import { draftChanges, recordChanges, settleChanges, unsentChanges } from "../changes"
 import { type ChangeRow, type DraftRow, publishedKey, settle } from "../uploads/drafts"
 import { DraftRepo } from "../uploads/github"
 import { type VaultView, pageProblems, vaultProblems } from "./public"
@@ -87,13 +88,20 @@ export async function publishEdit(
   await env.ARTIFACTS.put(publishedKey(row.id, change.path), text, {
     httpMetadata: { contentType: change.content_type ?? "text/markdown; charset=utf-8" },
   })
-  await env.DB.prepare(
-    `UPDATE upload_drafts SET status = 'open', title = ?, author = ?, detail_json = NULL,
-       sent_at = ?, due_at = ?, updated_at = ?
-     WHERE id = ?`,
-  )
-    .bind(editTitle(change.path, author, row.summary ?? ""), author, now, dueAt(now), now, row.id)
-    .run()
+  const title = editTitle(change.path, author, row.summary ?? "")
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE upload_drafts SET status = 'open', title = ?, author = ?, detail_json = NULL,
+         sent_at = ?, due_at = ?, updated_at = ?
+       WHERE id = ?`,
+    ).bind(title, author, now, dueAt(now), now, row.id),
+    // The site's recent changes (src/changes.ts): the page as published now, in place of before.
+    unsentChanges(env, row.id),
+    recordChanges(
+      env,
+      draftChanges(row, [change], { at: now, author, summary: title, pull: null }),
+    ),
+  ])
   return null
 }
 
@@ -108,12 +116,13 @@ type Due = DraftRow & Pick<ChangeRow, "path" | "base_sha">
 
 /** Record why a due edit didn't go in, unless its member published it again meanwhile. */
 async function mark(env: Env, row: Due, status: "open" | "failed" | "conflict", message: string) {
-  await env.DB.prepare(
+  const update = env.DB.prepare(
     `UPDATE upload_drafts SET status = ?, detail_json = ?, updated_at = ?
      WHERE id = ? AND sent_at IS ?`,
-  )
-    .bind(status, JSON.stringify({ message }), Date.now(), row.id, row.sent_at)
-    .run()
+  ).bind(status, JSON.stringify({ message }), Date.now(), row.id, row.sent_at)
+  // A refusal shows in the site's recent changes (src/changes.ts), in the same request.
+  if (status === "open") await update.run()
+  else await env.DB.batch([update, settleChanges(env, row.id, status)])
 }
 
 /**

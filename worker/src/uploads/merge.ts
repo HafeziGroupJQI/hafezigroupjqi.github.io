@@ -1,6 +1,7 @@
 import { auditJob } from "../audit"
 import type { Env } from "../env"
 import type { RepoFetch } from "../repo"
+import { settleChanges } from "../changes"
 import { type Detail, type DraftRow, type Status, changesOf, needsReview, settle } from "./drafts"
 import { PrivateVault } from "./github"
 
@@ -31,12 +32,15 @@ const kind = (row: DraftRow) => (row.kind === "edit" ? "edit" : "uploads")
 
 /** Record where a draft stands, unless its author sent a new version meanwhile. */
 async function mark(env: Env, row: DraftRow, status: Status, detail: Detail): Promise<void> {
-  await env.DB.prepare(
+  const update = env.DB.prepare(
     `UPDATE upload_drafts SET status = ?, detail_json = ?, updated_at = ?
      WHERE id = ? AND head_sha IS ?`,
-  )
-    .bind(status, JSON.stringify(detail), Date.now(), row.id, row.head_sha)
-    .run()
+  ).bind(status, JSON.stringify(detail), Date.now(), row.id, row.head_sha)
+  // A refusal shows in the site's recent changes (src/changes.ts), in the same request; waiting
+  // for the hour or the check changes nothing there.
+  if (status === "failed" || status === "conflict" || status === "review")
+    await env.DB.batch([update, settleChanges(env, row.id, status)])
+  else await update.run()
 }
 
 async function settleDraft(

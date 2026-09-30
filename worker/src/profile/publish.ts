@@ -1,3 +1,4 @@
+import { recordChanges } from "../changes"
 import type { Env } from "../env"
 import { type Page, getScalar, joinPage, setScalar, splitPage } from "./frontmatter"
 import { type Field, type PendingRow, fields, photoKey, siteUrl, slugOf } from "./routes"
@@ -61,8 +62,9 @@ export async function publishDue(
     .all<PendingRow>()
   if (!due.length) return result
 
-  let used: { row: PendingRow; page: Page; photo: boolean }[] = []
+  let used: { row: PendingRow; page: Page; photo: boolean; files: VaultFile[] }[] = []
   let dropped: { row: PendingRow; reason: string }[] = []
+  let message = ""
   result.commit = await vault.commit(
     SITE_AUTHOR,
     async () => {
@@ -84,26 +86,26 @@ export async function publishDue(
         if (row.link && !owner) setScalar(page, "github", row.login)
         const wanted = JSON.parse(row.fields_json) as Partial<Record<Field, string | null>>
         for (const [field, value] of Object.entries(wanted)) setScalar(page, field, value ?? null)
-        let photo = false
+        const own: VaultFile[] = []
         if (row.photo_at !== null) {
           const object = await env.ARTIFACTS.get(photoKey(row.login, "pending"))
-          if (object) {
-            files.push(
+          if (object)
+            own.push(
               ...withPhoto(page, slugOf(row.path), new Uint8Array(await object.arrayBuffer())),
             )
-            photo = true
-          }
         }
-        files.push({ path: row.path, content: joinPage(page) })
-        used.push({ row, page, photo })
+        own.push({ path: row.path, content: joinPage(page) })
+        files.push(...own)
+        used.push({ row, page, photo: own.length > 1, files: own })
       }
       const slugs = used.map(({ row }) => slugOf(row.path))
+      message =
+        slugs.length === 1
+          ? `update people/${slugs[0]} from the members site settings`
+          : `update ${slugs.length} people pages from the members site settings: ${slugs.join(", ")}`
       return {
         files,
-        message:
-          slugs.length === 1
-            ? `update people/${slugs[0]} from the members site settings`
-            : `update ${slugs.length} people pages from the members site settings: ${slugs.join(", ")}`,
+        message,
         // One member's edit is theirs; several go in under the site's name.
         author:
           used.length === 1
@@ -114,6 +116,28 @@ export async function publishDue(
     { skipEmpty: true },
   )
 
+  // The site's activity (src/changes.ts): each member's files in the commit, as theirs, at once.
+  // Only a record: the publish stands without it, and the next deploy's import adds the commit.
+  const at = Date.now()
+  if (result.commit && used.length)
+    await recordChanges(
+      env,
+      used.flatMap(({ row, page, files }) =>
+        files.map((file) => ({
+          at,
+          login: row.login,
+          author: getScalar(page, "title") || row.login,
+          repo: "vault" as const,
+          path: file.path,
+          kind: "profile" as const,
+          state: "merged" as const,
+          summary: message,
+          commit_sha: result.commit,
+        })),
+      ),
+    )
+      .run()
+      .catch((error) => console.error("recording profile publishes failed", error))
   for (const { row, page, photo } of used) {
     // Only the edit that was published: a save made meanwhile stays pending.
     const { meta } = await env.DB.prepare(

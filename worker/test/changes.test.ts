@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
+import { draftChanges, recordChanges, settleChanges, unsentChanges } from "../src/changes"
 import importSql from "./fixtures/changes-import.sql?raw"
 import { ORIGIN, SITE, as } from "./helpers"
 
@@ -247,5 +248,91 @@ describe("changes: the members' feed", () => {
       from: "notes/old.md",
       visibility: "members",
     })
+  })
+})
+
+describe("changes: what the site records as members act", () => {
+  const DRAFT = "0123456789ab"
+  const MERGE = "f".repeat(40)
+  const upload = (files: Parameters<typeof draftChanges>[1], at = T0) =>
+    draftChanges({ id: DRAFT, login: "ada", repo: "vault-private", kind: "upload" }, files, {
+      at,
+      author: "Ada Lovelace",
+      summary: "add notes/a.pdf and 2 more by ada lovelace",
+      pull: 7,
+    })
+  // The draft as it stands in D1: its changes follow it only to where it is.
+  const draftIs = (status: string) =>
+    env.DB.prepare(
+      `INSERT INTO upload_drafts (id, login, status, created_at, edited_at, updated_at)
+       VALUES (?, 'ada', ?, 0, 0, 0) ON CONFLICT (id) DO UPDATE SET status = excluded.status`,
+    )
+      .bind(DRAFT, status)
+      .run()
+  beforeEach(async () => {
+    await env.DB.prepare("DELETE FROM upload_drafts WHERE id = ?").bind(DRAFT).run()
+  })
+  const files: Parameters<typeof draftChanges>[1] = [
+    { path: "notes/a.pdf", action: "add", from_path: null, size: 1200 },
+    { path: "notes/b.md", action: "rename", from_path: "notes/old.md", size: null },
+    { path: "notes/c.md", action: "delete", from_path: null, size: null },
+  ]
+
+  it("records a sent draft's files, moves them on as it goes, and never unmerges one", async () => {
+    await recordChanges(env, upload(files)).run()
+    let { changes } = await feed(`?state=sent`)
+    expect(changes.map((c) => [c.kind, c.path, c.from, c.slug, c.bytes, c.pull?.number])).toEqual([
+      ["delete", "notes/c.md", null, null, null, 7],
+      ["rename", "notes/b.md", "notes/old.md", "resources/notes/b", null, 7],
+      ["upload", "notes/a.pdf", null, null, 1200, 7],
+    ])
+    expect(changes[0]).toMatchObject({ login: "ada", author: "Ada Lovelace", source: "site" })
+    // An admin merged it on GitHub, and the deploy's import recorded the commit first.
+    await seed({
+      at: T0 + 1,
+      repo: "vault-private",
+      path: "notes/a.pdf",
+      kind: "new",
+      commit_sha: MERGE,
+    })
+    await draftIs("merged")
+    await settleChanges(env, DRAFT, "merged", { commit: MERGE, at: T0 + 2 }).run()
+    ;({ changes } = await feed())
+    expect(changes.map((c) => [c.path, c.state, c.commit?.sha, c.source, c.at])).toEqual([
+      ["notes/c.md", "merged", MERGE, "site", T0 + 2],
+      ["notes/b.md", "merged", MERGE, "site", T0 + 2],
+      ["notes/a.pdf", "merged", MERGE, "site", T0 + 2],
+    ])
+    await draftIs("discarded")
+    await settleChanges(env, DRAFT, "discarded").run()
+    expect((await feed("?state=merged")).changes).toHaveLength(3)
+  })
+
+  it("replaces what a draft sent before when it is sent again", async () => {
+    await recordChanges(env, upload(files)).run()
+    // The check's answer came for a revision its author has replaced since: nothing moves.
+    await draftIs("open")
+    await settleChanges(env, DRAFT, "failed", { at: T0 + 1 }).run()
+    expect((await feed("?state=sent")).changes).toHaveLength(3)
+    await draftIs("failed")
+    await settleChanges(env, DRAFT, "failed", { at: T0 + 1 }).run()
+    expect((await feed("?state=failed")).changes).toHaveLength(3)
+    await env.DB.batch([
+      unsentChanges(env, DRAFT),
+      recordChanges(env, upload(files.slice(0, 1), T0 + 2)),
+    ])
+    const { changes } = await feed()
+    expect(changes.map((c) => [c.path, c.state, c.at])).toEqual([["notes/a.pdf", "sent", T0 + 2]])
+  })
+
+  it("says an edit changes its page, or makes a new one", () => {
+    const edit = (action: "add" | "replace") =>
+      draftChanges(
+        { id: DRAFT, login: "ada", repo: "vault", kind: "edit" },
+        [{ path: "content/news/launch.md", action, from_path: null, size: 90 }],
+        { at: T0, author: "Ada Lovelace", summary: "fix the date", pull: null },
+      )[0]
+    expect(edit("replace")).toMatchObject({ kind: "edit", repo: "vault", state: "sent" })
+    expect(edit("add").kind).toBe("new")
   })
 })

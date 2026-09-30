@@ -47,6 +47,7 @@ beforeEach(async () => {
   })
   await env.DB.prepare("DELETE FROM profiles").run()
   await env.DB.prepare("DELETE FROM profile_pending").run()
+  await env.DB.prepare("DELETE FROM changes").run()
   for (const login of ["ada", "eve", "cbabbage"])
     for (const which of ["photo", "pending"])
       await env.ARTIFACTS.delete(`profiles/${login}/${which}.jpg`)
@@ -255,6 +256,32 @@ describe("member settings: the People page", () => {
         "hafezi members site",
       ],
     ])
+    // Each member's page is theirs in the site's recent changes, public once committed.
+    const { changes } = (await (await as("eve")).json("/api/changes?kind=profile")).body
+    expect(
+      changes
+        .map((c: any) => [c.login, c.author, c.path, c.slug, c.state, c.visibility, c.commit.sha])
+        .sort(),
+    ).toEqual([
+      [
+        "ada",
+        "Ada Lovelace",
+        "content/people/ada-lovelace.md",
+        "people/ada-lovelace",
+        "merged",
+        "public",
+        done.commit,
+      ],
+      [
+        "grace",
+        "Grace Hopper",
+        "content/people/alumni/grace-hopper.md",
+        "people/alumni/grace-hopper",
+        "merged",
+        "public",
+        done.commit,
+      ],
+    ])
   })
 
   it("discards a saved edit on request, keeping the link", async () => {
@@ -372,8 +399,15 @@ describe("member settings: the photo", () => {
     expect(served.headers.get("x-content-type-options")).toBe("nosniff")
     expect(served.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'")
 
-    await publish()
+    const done = await publish()
     expect(vault.bytes("content/assets/people/ada-lovelace.jpg")).toEqual(JPEG)
+    // Every file the commit changed for her is in the site's recent changes.
+    const { changes } = (await ada.json(`/api/changes?login=ada&kind=profile`)).body
+    expect(changes.map((c: any) => [c.path, c.commit.sha]).sort()).toEqual([
+      ["content/assets/people/ada-lovelace.jpg", done.commit],
+      ["content/assets/people/ada-lovelace.png", done.commit],
+      ["content/people/ada-lovelace.md", done.commit],
+    ])
     expect(vault.bytes("content/assets/people/ada-lovelace.png")).toBeUndefined()
     const page = vault.text("content/people/ada-lovelace.md")!
     expect(page).toContain("photo: assets/people/ada-lovelace.jpg\n")

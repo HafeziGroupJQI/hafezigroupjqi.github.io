@@ -1,3 +1,4 @@
+import { draftChanges, recordChanges, settleChanges, unsentChanges } from "../changes"
 import { editMessage, editTitle, freezeDir } from "../edit/rules"
 import type { Env } from "../env"
 import { HttpError } from "../http"
@@ -176,13 +177,15 @@ export async function settle(
   { detail = null, merge = null }: { detail?: Detail | null; merge?: string | null } = {},
 ): Promise<void> {
   const now = Date.now()
-  await env.DB.prepare(
-    `UPDATE upload_drafts SET status = ?, detail_json = ?, merge_sha = COALESCE(?, merge_sha),
-       merged_at = CASE WHEN ? = 'merged' THEN ? ELSE merged_at END, updated_at = ?
-     WHERE id = ?`,
-  )
-    .bind(status, detail ? JSON.stringify(detail) : null, merge, status, now, now, id)
-    .run()
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE upload_drafts SET status = ?, detail_json = ?, merge_sha = COALESCE(?, merge_sha),
+         merged_at = CASE WHEN ? = 'merged' THEN ? ELSE merged_at END, updated_at = ?
+       WHERE id = ?`,
+    ).bind(status, detail ? JSON.stringify(detail) : null, merge, status, now, now, id),
+    // Its files in the site's recent changes (src/changes.ts) go with it.
+    settleChanges(env, id, status, { commit: merge, at: now }),
+  ])
   await dropStaged(env, id)
 }
 
@@ -399,11 +402,17 @@ export async function send(
   const number = row.pr_number
     ? (await repo.updatePull(row.pr_number, { title, body })).number
     : (await repo.openPull({ title, body, head: branch })).number
-  await env.DB.prepare(
-    `UPDATE upload_drafts SET status = 'open', title = ?, branch = ?, pr_number = ?, head_sha = ?,
-       detail_json = NULL, sent_at = ?, due_at = ?, updated_at = ?
-     WHERE id = ?`,
-  )
-    .bind(title, branch, number, commit, now, due, now, row.id)
-    .run()
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE upload_drafts SET status = 'open', title = ?, branch = ?, pr_number = ?, head_sha = ?,
+         detail_json = NULL, sent_at = ?, due_at = ?, updated_at = ?
+       WHERE id = ?`,
+    ).bind(title, branch, number, commit, now, due, now, row.id),
+    // The site's recent changes (src/changes.ts): its files as sent now, in place of any sent before.
+    unsentChanges(env, row.id),
+    recordChanges(
+      env,
+      draftChanges(row, changes, { at: now, author: name, summary: title, pull: number }),
+    ),
+  ])
 }

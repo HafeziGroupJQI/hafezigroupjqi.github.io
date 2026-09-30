@@ -38,6 +38,17 @@ const PDF = (() => {
 
 type Client = Awaited<ReturnType<typeof as>>
 
+/** A draft's files in the site's recent changes (src/changes.ts): path, kind, state and more. */
+const recent = async (id: string) =>
+  (
+    await env.DB.prepare(
+      `SELECT path, kind, state, commit_sha, pr_number, author, source FROM changes
+       WHERE draft_id = ? ORDER BY path`,
+    )
+      .bind(id)
+      .all()
+  ).results
+
 beforeEach(async () => {
   repo.reset({
     "README.md": "# vault-private\n",
@@ -496,6 +507,7 @@ describe("uploads: drafts", () => {
       detail: { message: "discarded by its author" },
     })
     expect(repo.pulls.get(1)!.state).toBe("closed")
+    expect(await recent(id)).toMatchObject([{ path: "notes/scan.pdf", state: "discarded" }])
     expect(repo.refs.has(`uploads/ada/${id}`)).toBe(false)
     expect((await env.ARTIFACTS.list({ prefix: `uploads/${id}/` })).objects).toEqual([])
     expect((await stage(ada, id, "notes/x.pdf", PDF)).status).toBe(409)
@@ -652,6 +664,18 @@ describe("uploads: the hourly merge", () => {
     const ada = await as("ada")
     const main = repo.head
     const { id, due, head } = await sent(ada, { "notes/scan.pdf": PDF })
+    // Sent, it is in the site's recent changes at once, as the member's.
+    expect(await recent(id)).toEqual([
+      {
+        path: "notes/scan.pdf",
+        kind: "upload",
+        state: "sent",
+        commit_sha: null,
+        pr_number: 1,
+        author: "ada",
+        source: "site",
+      },
+    ])
     // Not due: nothing happens, not even a look at GitHub.
     const calls = repo.calls.length
     expect(await merge(due - 3 * 600_000)).toMatchObject({ merged: [], waiting: [] })
@@ -695,6 +719,10 @@ describe("uploads: the hourly merge", () => {
     expect(await auditRows("action = 'uploads.merge'")).toEqual([
       expect.objectContaining({ login: "ada", target: id }),
     ])
+    // Its recent change is merged, with the commit the deploy's import will find on main.
+    expect(await recent(id)).toMatchObject([
+      { path: "notes/scan.pdf", state: "merged", commit_sha: repo.head },
+    ])
     // Settled: the next hour leaves it alone.
     expect(await merge(due + 3_600_000)).toMatchObject({ merged: [], waiting: [] })
   })
@@ -715,11 +743,17 @@ describe("uploads: the hourly merge", () => {
       },
     })
     expect(await auditRows("action = 'uploads.failed'")).toHaveLength(1)
+    expect(await recent(id)).toMatchObject([{ path: "notes/scan.pdf", state: "failed" }])
 
     // A revision is checked again, and merges in its own hour.
     await stage(ada, id, "notes/minutes.md", NOTE)
     const revised = (await send(ada, id)).body
     expect(revised).toMatchObject({ status: "open", detail: null })
+    // The revision's files replace what the draft sent before.
+    expect((await recent(id)).map((c: any) => [c.path, c.state])).toEqual([
+      ["notes/minutes.md", "sent"],
+      ["notes/scan.pdf", "sent"],
+    ])
     repo.report(repo.refs.get(`uploads/ada/${id}`)!, "success")
     expect(await merge(revised.due_at)).toMatchObject({ merged: [id] })
     expect(repo.text("notes/minutes.md")).toBe(NOTE)

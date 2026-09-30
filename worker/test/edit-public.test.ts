@@ -192,6 +192,27 @@ describe("public pages: publishing", () => {
     expect(vault.head).toBe(main)
     expect([...vault.refs.keys()]).toEqual(["main"])
     expect(vault.pulls.size).toBe(0)
+    // Members see it in the site's recent changes (src/changes.ts) from now, as hers and waiting.
+    const recent = async () =>
+      (
+        await env.DB.prepare(
+          "SELECT path, slug, kind, state, repo, author, summary, commit_sha FROM changes WHERE draft_id = ?",
+        )
+          .bind(id)
+          .all()
+      ).results
+    expect(await recent()).toEqual([
+      {
+        path: "content/people/ada-lovelace.md",
+        slug: "people/ada-lovelace",
+        kind: "edit",
+        state: "sent",
+        repo: "vault",
+        author: "Ada Lovelace",
+        summary: "edit content/people/ada-lovelace.md by ada lovelace: say what i work on",
+        commit_sha: null,
+      },
+    ])
 
     const due = queued.body.due_at as number
     const calls = vault.calls.length
@@ -214,6 +235,7 @@ describe("public pages: publishing", () => {
     expect(await auditRows("action = 'edit.merge'")).toEqual([
       expect.objectContaining({ login: "ada", target: id }),
     ])
+    expect(await recent()).toMatchObject([{ state: "merged", commit_sha: vault.head }])
     // Settled: the next hour leaves it alone.
     expect(await commitDue(env as any, vault.fetch, due + 3_600_000)).toMatchObject({ merged: [] })
   })
@@ -303,6 +325,10 @@ describe("public pages: publishing", () => {
       detail: { message: expect.stringContaining("changed on main") },
     })
     expect(await auditRows("action = 'edit.conflict'")).toHaveLength(1)
+    const { results } = await env.DB.prepare("SELECT state FROM changes WHERE draft_id = ?")
+      .bind(id)
+      .all()
+    expect(results).toEqual([{ state: "conflict" }])
   })
 
   it("waits for a draft changed after it was published, and for main that moved meanwhile", async () => {

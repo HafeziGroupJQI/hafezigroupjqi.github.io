@@ -62,3 +62,24 @@ test("a failed fetch is tried again; a missing PDF is remembered as missing", as
   assert.equal(await (await pdf.load()).text(), "%PDF-1.7")
   assert.equal(pdf.missing(), false)
 })
+
+test("the menu asks whether the page has a PDF without fetching it", async () => {
+  const requests = []
+  const answering = (response) => async (url, init) => {
+    requests.push(init.method ?? "GET")
+    return response
+  }
+  const missing = pdfLoader("/pdf/x.pdf", answering(new Response(null, { status: 404 })))
+  assert.equal(await missing.check(), false)
+  assert.equal(missing.missing(), true)
+  const present = pdfLoader(
+    "/pdf/x.pdf",
+    answering(new Response(null, { headers: { "content-type": "application/pdf" } })),
+  )
+  assert.equal(await present.check(), true)
+  assert.equal(present.missing(), false)
+  // Offline or a server error: unknown, so it isn't called missing.
+  const failing = pdfLoader("/pdf/x.pdf", () => Promise.reject(new TypeError("offline")))
+  assert.equal(await failing.check(), true)
+  assert.deepEqual(requests, ["HEAD", "HEAD"])
+})

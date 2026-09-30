@@ -87,9 +87,17 @@ export function driveType(name) {
       qmd: "text/markdown",
       ipynb: "application/x-ipynb+json",
       nb: "application/vnd.wolfram.mathematica",
+      pdf: "application/pdf",
     }[extension] ?? "application/octet-stream"
   )
 }
+
+/** The page's PDF (pdf.js) as a Drive file named after the page: the Blob itself, as downloaded. */
+export const pdfForDrive = (title, blob) => ({
+  metadata: { name: `${title}.pdf`, mimeType: "application/pdf" },
+  type: "application/pdf",
+  body: blob,
+})
 
 /** Colab opens a notebook in the member's Drive by its file id. */
 export const colabUrl = (id) => `https://colab.research.google.com/drive/${encodeURIComponent(id)}`

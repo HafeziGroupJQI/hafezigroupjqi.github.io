@@ -33,7 +33,7 @@ export async function fetchPdf(url, fetcher = fetch) {
 
 /**
  * The page's PDF, loaded once: load() gives the same Blob every time (after a failure it tries
- * again), and missing() says whether the site has answered that there is none.
+ * again), and missing() says whether the site has answered that there is none (check() asks).
  */
 export function pdfLoader(url, fetcher = fetch) {
   let file = null
@@ -54,5 +54,18 @@ export function pdfLoader(url, fetcher = fetch) {
       return file
     },
     missing: () => missing,
+    /** Ask whether the site has it, without the file (HEAD): sets missing(), answers !missing(). */
+    async check() {
+      try {
+        const response = await fetcher(url, { method: "HEAD", cache: "no-cache" })
+        const type = response.headers.get("content-type") ?? ""
+        if (response.status === 404 || (response.ok && !/^application\/pdf\b/i.test(type)))
+          missing = true
+        else if (response.ok) missing = false
+      } catch {
+        // Unknown; load() will tell.
+      }
+      return !missing
+    },
   }
 }

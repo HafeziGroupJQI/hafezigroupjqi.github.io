@@ -11,9 +11,17 @@ import { h } from "../dashboard/dom.js"
 import { convertNotebook } from "../notebook-page/exporting.js"
 import { GOOGLE_CLIENT_ID } from "./config.js"
 import { DOC_LIMIT, articleHtml, docDocument } from "./doc.js"
-import { GOOGLE_DOC, colabUrl, driveToken, driveType, loadGis, uploadToDrive } from "./drive.js"
+import {
+  GOOGLE_DOC,
+  colabUrl,
+  driveToken,
+  driveType,
+  loadGis,
+  pdfForDrive,
+  uploadToDrive,
+} from "./drive.js"
 import { exportItems, pageStem } from "./menu.js"
-import { pdfLoader, pdfPath } from "./pdf.js"
+import { MissingPdf, pdfLoader, pdfPath } from "./pdf.js"
 import { cleanup, fit, installPrint, prepare } from "./print.js"
 import { markdownToQmd } from "./quarto.js"
 import { save } from "./save.js"
@@ -54,7 +62,8 @@ function renderedFile(article) {
   return { name: link.textContent.trim(), url: url.pathname + url.search }
 }
 
-function menu(groups, run) {
+// The menu: `run` does an item; `opened` runs as it first opens.
+function menu(groups, run, opened) {
   const summary = h("summary", { "aria-label": "Export this page", text: "Export" })
   const panel = h(
     "div",
@@ -91,12 +100,7 @@ function menu(groups, run) {
     ]),
   )
   const details = h("details", { class: "page-export" }, summary, panel)
-  // Google's sign-in script loads as the menu first opens, so a click on a Drive item can open its
-  // window straight away (browsers let only a click open one).
-  if (groups.some((group) => group.items.some((item) => item.id.startsWith("drive-"))))
-    details.addEventListener("toggle", () => details.open && loadGis().catch(() => {}), {
-      once: true,
-    })
+  details.addEventListener("toggle", () => details.open && opened(), { once: true })
   details.addEventListener("keydown", (event) => {
     const buttons = [...panel.querySelectorAll("button:not(:disabled)")]
     if (event.key === "Escape" && details.open) {
@@ -158,6 +162,15 @@ export function mountPageExport(tools) {
   }
   // The page's PDF from the build, fetched once (pdf.js); where there is none, the print dialog.
   const pdf = source ? pdfLoader(pdfPath(source)) : null
+  const missingPdf = () =>
+    new Error("this page's PDF isn't built yet: Print… makes one you can save to Drive yourself")
+  const drivePdf = toDrive(async () => {
+    try {
+      return pdfForDrive(title, await pdf.load())
+    } catch (error) {
+      throw error instanceof MissingPdf ? missingPdf() : error
+    }
+  })
   const printDialog = async (say, why = "") => {
     say("Preparing to print…")
     await prepare()
@@ -212,6 +225,13 @@ export function mountPageExport(tools) {
         )
       return { metadata: { name: title, mimeType: GOOGLE_DOC }, type: "text/html", body: html }
     }),
+    // The same file the PDF download gives (pdf.js fetches it once), fetched while Google asks;
+    // a page the menu found without one stops before Google's window opens.
+    "drive-pdf": (say) => {
+      if (pdf.missing()) throw missingPdf()
+      pdf.load().catch(() => {})
+      return drivePdf(say)
+    },
     "drive-source": toDrive(async () => ({
       metadata: { name: `${stem}.md`, mimeType: driveType(`${stem}.md`) },
       type: driveType(`${stem}.md`),
@@ -236,7 +256,16 @@ export function mountPageExport(tools) {
       say(`Export failed: ${error.message}`)
     }
   }
-  tools.append(menu(groups, run), status)
+  // As the menu first opens: Google's sign-in script loads, so a click on a Drive item can open
+  // its window straight away (browsers let only a click open one), and whether the page has a PDF
+  // is asked, so saving a missing one to Drive fails before Google's window opens.
+  const drive = groups.some((group) => group.items.some((item) => item.id.startsWith("drive-")))
+  const opened = () => {
+    if (!drive) return
+    loadGis().catch(() => {})
+    pdf?.check()
+  }
+  tools.append(menu(groups, run, opened), status)
 }
 
 // Printing: Ctrl+P readies the page (print.js), and the build's PDF renderer drives the same steps

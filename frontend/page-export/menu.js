@@ -25,7 +25,8 @@ const extension = (name) => name?.match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase() ??
  *   pdf       the page's PDF, printed by the build (pdf.js), else the print dialog
  *   print     the print dialog (print.js)
  *   notebook-qmd, notebook-md  a Jupyter notebook converted (notebook-page/exporting.js)
- *   drive-doc  the article as a Google Doc        drive-source, drive-rendered  those files, to Drive
+ *   drive-pdf  the page's PDF, as downloaded     drive-doc  the article as a Google Doc
+ *   drive-source, drive-rendered  those files, to Drive
  */
 export function exportItems({ source = null, rendered = null, drive = false } = {}) {
   const kind = extension(rendered)
@@ -44,8 +45,8 @@ export function exportItems({ source = null, rendered = null, drive = false } = 
   if (kind === "nb") download.push({ id: "rendered", label: "Wolfram notebook (.nb)" })
   if (source) download.push({ id: "pdf", label: "PDF (.pdf)" })
   download.push({ id: "print", label: "Print…" })
-  // To the member's Google Drive: the article as a Google Doc, and the page's file as it is (a
-  // Jupyter notebook opens from Drive in Colab).
+  // To the member's Google Drive: the page's PDF, the article as a Google Doc, and the page's file
+  // as it is (a Jupyter notebook opens from Drive in Colab).
   const saved = {
     ipynb: "As the notebook (.ipynb), for Colab",
     qmd: "As the Quarto file (.qmd)",
@@ -53,6 +54,7 @@ export function exportItems({ source = null, rendered = null, drive = false } = 
   }[kind]
   const toDrive = drive
     ? [
+        source && { id: "drive-pdf", label: "As PDF" },
         { id: "drive-doc", label: "As a Google Doc" },
         saved
           ? { id: "drive-rendered", label: saved }

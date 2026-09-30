@@ -8,6 +8,7 @@ import {
   consentMessage,
   driveErrorMessage,
   driveType,
+  pdfForDrive,
   popupMessage,
   resumeOffset,
   tokenValid,
@@ -76,6 +77,7 @@ test("files keep their type in Drive, and a notebook opens in Colab by its id", 
   assert.equal(driveType("git.md"), "text/markdown")
   assert.equal(driveType("01_ring.ipynb"), "application/x-ipynb+json")
   assert.equal(driveType("EIWL3-01.nb"), "application/vnd.wolfram.mathematica")
+  assert.equal(driveType("Setup 1.PDF"), "application/pdf")
   assert.equal(colabUrl("1AbC-d_9"), "https://colab.research.google.com/drive/1AbC-d_9")
 })
 
@@ -126,4 +128,13 @@ test("equations come from the page's source, in order, outside code and comments
     "`$y$` %% $z$ %% <!-- $w$ --> and $$T = |H|^2$$ inline.",
   ].join("\n")
   assert.deepEqual(sourceMath(markdown), ["E = mc^2", "H = \\frac{t - a}{1 - ta}", "T = |H|^2"])
+})
+
+test("the PDF saved to Drive is the downloaded file itself, named after the page", () => {
+  const blob = new Blob(["%PDF-1.7"], { type: "application/pdf" })
+  const file = pdfForDrive("Setup 1: main bench", blob)
+  assert.deepEqual(file.metadata, { name: "Setup 1: main bench.pdf", mimeType: "application/pdf" })
+  assert.equal(file.type, "application/pdf")
+  // The same object as the download's (pdf.js loads it once): the same bytes in Drive.
+  assert.equal(file.body, blob)
 })

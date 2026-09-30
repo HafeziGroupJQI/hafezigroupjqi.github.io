@@ -51,6 +51,7 @@
     "quartz": "./quartz/bootstrap-cli.mjs"
   },
   "dependencies": {
+    "@catppuccin/palette": "^1.8.0",
     "@clack/prompts": "^0.11.0",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.1",
@@ -120,6 +121,7 @@
     "@quartz-community/tag-page": "^0.1.0",
     "@quartz-community/unlisted-pages": "^0.1.0",
     "@quartz-themes/core": "^1.0.0",
+    "@rose-pine/palette": "^4.0.1",
     "ansi-truncate": "^1.4.0",
     "async-mutex": "^0.5.0",
     "chokidar": "^5.0.0",
@@ -162,6 +164,7 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "vfile": "^6.0.3",
+    "wcag-contrast": "^3.0.0",
     "workerpool": "^10.0.1",
     "ws": "^8.19.0",
     "yaml": "^2.8.2",

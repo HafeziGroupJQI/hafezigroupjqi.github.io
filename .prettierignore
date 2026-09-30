@@ -13,3 +13,5 @@ tools/fixtures/print/kitchen-sink.html
 .claude/
 .mcp.json
 CLAUDE.md
+# Color schemes copied unchanged from tinted-theming (tools/themes/themes.mjs)
+tools/themes/schemes

@@ -1,6 +1,7 @@
 import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test"
 import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { issueLabTicket } from "../src/compute/tokens"
+import { COMPLETION_CONTRACT } from "../src/gpt/completion"
 import { labAgent, upstreamBody } from "../src/gpt/lab-agent"
 import { LAB_PROMPT } from "../src/gpt/lab-prompt"
 import { VAULT_TOOLS } from "../src/gpt/lab-tools"
@@ -223,7 +224,11 @@ describe("the lab's coding agent endpoint", () => {
     }
     expect((await agent(own, completion, { overrides })).status).toBe(200)
     expect(anthropicCalls[0].body.max_tokens).toBe(512)
-    expect(anthropicCalls[0].body.system).toEqual(completion.system)
+    expect(anthropicCalls[0].body.system).toEqual([
+      ...completion.system,
+      { type: "text", text: COMPLETION_CONTRACT },
+    ])
+    expect(anthropicCalls[0].body.stop_sequences).toEqual(["\n```"])
     const tools = [{ name: "add_cell", input_schema: { type: "object" } }]
     expect((await agent(own, { ...ask, messages: hello, tools }, { overrides })).status).toBe(429)
     expect(
@@ -233,13 +238,32 @@ describe("the lab's coding agent endpoint", () => {
     expect(anthropicCalls).toHaveLength(1)
   })
 
-  it("sends a ghost-text completion with its completer's own prompt, capped at 512 tokens", () => {
+  it("sends a ghost-text completion with its completer's prompt, then the code-only contract, capped at 512 tokens", () => {
     const system = [{ type: "text", text: "You are an AI code completion assistant." }]
     const completion = { model: "claude-haiku-4-5", max_tokens: 64_000, system, messages: hello }
-    expect(upstreamBody(completion)).toEqual({ ...completion, max_tokens: 512 })
+    const contract = { type: "text", text: COMPLETION_CONTRACT }
+    // It stops at the fence that closes its code (jupyter-ai's stop), never at an opening one.
+    const stop_sequences = ["\n```"]
+    expect(upstreamBody(completion)).toEqual({
+      ...completion,
+      system: [...system, contract],
+      max_tokens: 512,
+      stop_sequences,
+    })
     expect(upstreamBody({ ...completion, max_tokens: 100 }).max_tokens).toBe(100)
     const { system: _, ...bare } = completion
-    expect(upstreamBody(bare)).toEqual({ ...bare, max_tokens: 512 })
+    expect(upstreamBody(bare)).toEqual({
+      ...bare,
+      system: COMPLETION_CONTRACT,
+      max_tokens: 512,
+      stop_sequences,
+    })
+    // A prompt as a string gets the contract as a paragraph; the completer's own stops stay.
+    const own = upstreamBody({ ...completion, system: "Complete code.", stop_sequences: ["\n\n"] })
+    expect(own.system).toBe(`Complete code.\n\n${COMPLETION_CONTRACT}`)
+    expect(own.stop_sequences).toEqual(["\n\n", "\n```"])
+    expect(COMPLETION_CONTRACT).toContain("Reply with code only")
+    expect(COMPLETION_CONTRACT).toContain("Never ask for more context")
     // The agent's turns, which stream or carry tools, still get the lab's section.
     const tools = [{ name: "add_cell", input_schema: { type: "object" } }]
     for (const turn of [{ stream: true }, { tools }]) {
@@ -247,6 +271,22 @@ describe("the lab's coding agent endpoint", () => {
       expect(sent.system).toEqual([...system, { type: "text", text: LAB_PROMPT }])
       expect(sent.max_tokens).toBe(16_000)
     }
+  })
+
+  it("leaves a chat's title request as it came: no code-only contract, no stop at a fence", () => {
+    // jupyterlite-ai asks for a chat's title the way its completer asks for code (requestTitle).
+    const title = {
+      model: "claude-sonnet-5",
+      max_tokens: 64_000,
+      system: [
+        {
+          type: "text",
+          text: "Generate a concise title (no more than 10 words) for the following conversation. Do not use formatting, quotes, or punctuation.",
+        },
+      ],
+      messages: [{ role: "user", content: "user: plot y against x" }],
+    }
+    expect(upstreamBody(title)).toEqual({ ...title, max_tokens: 512 })
   })
 
   it("offers only the site's models, and no sampling knobs where the model refuses them", () => {

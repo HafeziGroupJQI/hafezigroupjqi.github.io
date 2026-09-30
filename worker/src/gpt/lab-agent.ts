@@ -1,6 +1,7 @@
 import type { Env } from "../env"
 import { HttpError, readLimited, withPrivateHeaders } from "../http"
 import type { AnthropicFetch } from "./chat"
+import { completionStops, isTitleRequest, withCompletionContract } from "./completion"
 import { labSession } from "./lab"
 import { withLabPrompt } from "./lab-prompt"
 import { type GptModel, MODELS, addUsage, emptyUsage } from "./models"
@@ -47,10 +48,15 @@ const COMPLETION_TOKENS = 512
  */
 export const isCompletion = (sent: Record<string, unknown>) => !sent.tools && !sent.stream
 
+/** A completion that asks for code, not for a chat's title (completion.ts). */
+export const isCodeCompletion = (sent: Record<string, unknown>) =>
+  isCompletion(sent) && !isTitleRequest(sent.system)
+
 /**
  * The request sent on: only what the agent needs, never server tools, MCP or betas, with the
- * lab's section after its system prompt. A completion keeps its completer's prompt as it came:
- * the lab's section would cost more than the completion itself.
+ * lab's section after its system prompt. A completion keeps its completer's prompt (the lab's
+ * section would cost more than the completion itself), then the code-only contract, and stops at
+ * the fence that closes its code; a chat's title keeps its prompt as it came.
  */
 export function upstreamBody(body: Record<string, unknown>): Record<string, unknown> {
   const model = typeof body.model === "string" ? body.model : ""
@@ -74,7 +80,11 @@ export function upstreamBody(body: Record<string, unknown>): Record<string, unkn
   const cap = completion ? COMPLETION_TOKENS : MAX_TOKENS
   out.max_tokens = Math.min(Number(body.max_tokens) || 4096, cap)
   if (!completion) out.system = withLabPrompt(body.system)
-  else if (body.system !== undefined) out.system = body.system
+  else if (isTitleRequest(body.system)) out.system = body.system
+  else {
+    out.system = withCompletionContract(body.system)
+    out.stop_sequences = completionStops(body.stop_sequences)
+  }
   if (!NO_SAMPLING.has(model))
     for (const key of ["temperature", "top_p", "top_k"] as const)
       if (typeof body[key] === "number") out[key] = body[key]

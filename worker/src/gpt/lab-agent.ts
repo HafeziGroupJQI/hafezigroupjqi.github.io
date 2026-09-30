@@ -1,7 +1,13 @@
 import type { Env } from "../env"
 import { HttpError, readLimited, withPrivateHeaders } from "../http"
 import type { AnthropicFetch } from "./chat"
-import { completionStops, isTitleRequest, withCompletionContract } from "./completion"
+import {
+  cleanCompletion,
+  completionContext,
+  completionStops,
+  isTitleRequest,
+  withCompletionContract,
+} from "./completion"
 import { labSession } from "./lab"
 import { withLabPrompt } from "./lab-prompt"
 import { type GptModel, MODELS, addUsage, emptyUsage } from "./models"
@@ -207,11 +213,19 @@ export async function labAgent(
       new Response(upstream.body.pipeThrough(watchUsage(record)), { status: 200, headers }),
     )
   const text = await upstream.text()
+  let reply: any
   try {
-    const usage = JSON.parse(text)?.usage
-    if (usage) record(usage)
+    reply = JSON.parse(text)
   } catch {
-    // no usage to count
+    return withPrivateHeaders(new Response(text, { status: 200, headers })) // no usage to count
   }
-  return withPrivateHeaders(new Response(text, { status: 200, headers }))
+  if (reply?.usage) record(reply.usage)
+  if (!isCodeCompletion(sent) || !Array.isArray(reply?.content))
+    return withPrivateHeaders(new Response(text, { status: 200, headers }))
+  // Ghost text goes back as code only: fences and restated code cut, prose dropped.
+  const context = completionContext(sent.messages)
+  for (const block of reply.content)
+    if (block?.type === "text" && typeof block.text === "string")
+      block.text = cleanCompletion(block.text, context)
+  return withPrivateHeaders(new Response(JSON.stringify(reply), { status: 200, headers }))
 }

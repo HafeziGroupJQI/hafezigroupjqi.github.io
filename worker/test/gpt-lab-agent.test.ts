@@ -273,6 +273,54 @@ describe("the lab's coding agent endpoint", () => {
     }
   })
 
+  it("sends ghost text back as code only: fences and restated code cut, prose dropped", async () => {
+    const answer = (text: string) => async () =>
+      Response.json({
+        id: "msg_1",
+        type: "message",
+        role: "assistant",
+        model: "claude-haiku-4-5",
+        content: [{ type: "text", text }],
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 20, output_tokens: 5 },
+      })
+    const complete = async (text: string, prompt: string, system = "You complete code.") => {
+      const url = `${ORIGIN}/lab/${own}/hafezi-gpt/anthropic/v1/messages`
+      const ctx = createExecutionContext()
+      const response = await labAgent(
+        new Request(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: ORIGIN },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5",
+            max_tokens: 64_000,
+            system,
+            messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+          }),
+        }),
+        new URL(url),
+        { ...env, ANTHROPIC_API_KEY: "test-key" } as any,
+        ctx,
+        answer(text),
+      )
+      await waitOnExecutionContext(ctx)
+      expect(response.status).toBe(200)
+      return JSON.parse(await response.text()).content[0].text
+    }
+    // hafezi-lab's completer: jupyter-ai's template, the code before the cursor last.
+    const psi =
+      "The document is called `Console 1` and written in python.\n\nComplete the following code:\n\n```\npsi = "
+    const prose = "I need more context to complete this code fragment. What language is this?"
+    expect(await complete(prose, psi)).toBe("")
+    expect(await complete("```python\npsi = np.sqrt(2)\n```", psi)).toBe("np.sqrt(2)")
+    // jupyterlite-ai's console sends the bare prefix.
+    expect(await complete("Could you share more of the code?", "psi =")).toBe("")
+    // A chat's title is words on purpose.
+    const title = "Generate a concise title (no more than 10 words) for the following conversation."
+    expect(await complete("I need a title", "user: plot y", title)).toBe("I need a title")
+  })
+
   it("leaves a chat's title request as it came: no code-only contract, no stop at a fence", () => {
     // jupyterlite-ai asks for a chat's title the way its completer asks for code (requestTitle).
     const title = {

@@ -4984,7 +4984,8 @@ dialog.page-history {
     background: transparent;
     color: inherit;
   }
-  // Rendered outputs are drawn for a white page; keep them on one.
+  // Rendered outputs are drawn for a white page; keep them on one. Matched to a dark theme, the
+  // card is inverted along with its figure (_figures.scss), so it becomes the page's color.
   .wl-out img,
   .wl-sprite,
   details.wl-expected img {
@@ -5053,8 +5054,9 @@ dialog.page-history {
   }
 }
 
-// A member's own theme (frontend/theme/): rules that apply only under one.
+// A member's own theme (frontend/theme/): rules that apply only under one, and its figures.
 @include meta.load-css("themes");
+@include meta.load-css("figures");
 
 // Printing and PDFs: quartz/styles/print.scss, last so it wins ties with everything above.
 @include meta.load-css("print");

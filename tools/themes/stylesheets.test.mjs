@@ -18,6 +18,7 @@ const SHEETS = [
   "quartz/styles/base.scss",
   "quartz/styles/syntax.scss",
   "quartz/styles/_themes.scss",
+  "quartz/styles/_figures.scss",
   "quartz/components/styles/popover.scss",
 ]
 // Stylesheets that define colors of their own on purpose: paper (print.scss) is always light.

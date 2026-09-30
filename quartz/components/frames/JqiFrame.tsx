@@ -168,7 +168,12 @@ export const JqiFrame: PageFrame = {
                   </>
                 </div>
                 <div class="page-content__body">
-                  <div class="text-content page-body">
+                  <div
+                    class="text-content page-body"
+                    data-figures={
+                      internal && frontmatter?.invert_figures === false ? "keep" : undefined
+                    }
+                  >
                     <Content {...componentData} />
                   </div>
                   <div class="page-content__after">

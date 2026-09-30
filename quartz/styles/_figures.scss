@@ -1,0 +1,55 @@
+// Figures under a member's theme (frontend/theme/; the settings switch "Match figures to dark
+// themes" sets data-figures="match"). A figure drawn on white is matched to the page with the
+// theme's --fig-filter and --fig-blend (tools/themes/map.mjs): on a dark theme it is inverted with
+// its hues kept (Dark Reader's filter mode, invert then hue-rotate) and screen-blended, so its
+// white becomes the page's own color; on a tinted light theme it is multiplied, so its white takes
+// the page's tint. Photos are never touched. First match wins:
+//  1. never: photos (people, news, equipment, places), avatars, logos, JPEG/WebP/AVIF, video,
+//     `![](x.png#no-invert)`, class no-invert, a page with `invert_figures: false`, and any figure
+//     its reader set back to its original colors;
+//  2. always: SVG, Quarto and notebook outputs, Wolfram renders, `![](x.jpg#invert)`, class invert;
+//  3. other PNG and GIF in a page: frontend/theme/figures.js looks at the image (Dark Reader's
+//     analysis) and marks it fig-light (matched) or fig-keep.
+$never: (
+  'img[src*="/assets/people/"]',
+  'img[src*="/assets/news/"]',
+  'img[src*="/assets/equipment/"]',
+  'img[src*="/assets/lab-facilities/"]',
+  'img[src*="/assets/positions/"]',
+  'img[src*="/assets/about/"]',
+  'img[src*="/api/profile/photo/"]',
+  'img[src*="avatars.githubusercontent.com"]',
+  'img[src*=".jpg" i]',
+  'img[src*=".jpeg" i]',
+  'img[src*=".webp" i]',
+  'img[src*=".avif" i]',
+  'img[src$="#no-invert"]',
+  ".no-invert",
+  ".nav-avatar",
+  ".settings-avatar",
+  ".site-header__logo img",
+  ".site-footer img",
+  '[data-figures="keep"] img',
+  ".fig-original",
+  ".fig-keep"
+);
+$always: (
+  'img[src$=".svg" i]',
+  'img[src*=".svg#" i]',
+  'img[src*="/figure-"]',
+  'img[src*="/notebook-assets/"]',
+  ".wl-out img",
+  ".wl-sprite",
+  "details.wl-expected img",
+  ".quarto-figure img",
+  ".cell-output-display img",
+  ".fig-light"
+);
+
+:root[data-figures="match"] {
+  :is(#{$always}):not(#{$never}),
+  :is(img[src$="#invert"], img.invert):not(.fig-original, [data-figures="keep"] img) {
+    filter: var(--fig-filter, none);
+    mix-blend-mode: var(--fig-blend, normal);
+  }
+}

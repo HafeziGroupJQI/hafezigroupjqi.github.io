@@ -73,6 +73,11 @@ test("combined content keeps homepage, namespaces private links and aliases, and
       read("index.md"),
       /\nedit_repo: vault\nedit_path: content\/index.md\nedit_sha: [0-9a-f]{40}\nedit_note: generated\n/,
     )
+    // The stage keeps each public page's own file, which its Export gives as its Markdown.
+    assert.equal(
+      fs.readFileSync(path.join(built.stage, "sources/content/equipment/laser.md"), "utf8"),
+      fs.readFileSync(path.join(publicRoot, "equipment", "laser.md"), "utf8"),
+    )
     // Pages the site makes whole have no file to edit.
     for (const page of [
       "resources/index.md",

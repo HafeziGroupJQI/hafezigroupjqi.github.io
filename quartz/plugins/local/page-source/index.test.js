@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import PageSource, { pageSource, sourcePath } from "./index.js"
+import PageSource, { pageSource, sourcePath, vaultFile } from "./index.js"
 
 test("a page's source loses only the build's own front matter keys", () => {
   const staged =
@@ -35,6 +35,66 @@ test("only Markdown pages get a source, next to their HTML", () => {
   // Folder and tag pages are made by the build, from no file.
   assert.equal(sourcePath("/out", { slug: "tags/code" }), null)
   assert.equal(sourcePath("/out", undefined), null)
+})
+
+test("a public page's source is its file as the vault has it, a private page's the staged copy", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "page-source-"))
+  try {
+    const content = path.join(root, "content")
+    const own = "---\ntitle: Ada\nplaces: [atlantic-2369]\n---\n\nAda's page.\n"
+    const staged =
+      '---\ntitle: Ada\nplaces:\n  - atlantic-2369\nsite_public: true\nedit_repo: vault\nedit_path: content/people/ada.md\n---\n\n<section class="profile-contact"></section>\n\nAda\'s page.\n'
+    fs.mkdirSync(path.join(content, "people"), { recursive: true })
+    fs.mkdirSync(path.join(root, "sources", "content", "people"), { recursive: true })
+    fs.writeFileSync(path.join(content, "people", "ada.md"), staged)
+    fs.writeFileSync(path.join(root, "sources", "content", "people", "ada.md"), own)
+    fs.mkdirSync(path.join(content, "resources"))
+    fs.writeFileSync(
+      path.join(content, "resources", "git.md"),
+      "---\ntitle: Git\nedit_repo: vault-private\nedit_path: onboarding/git.md\n---\n\n[[resources/x]]\n",
+    )
+    const output = path.join(root, "out")
+    const data = (slug, file, frontmatter) => ({
+      data: { slug, filePath: path.join(content, file), frontmatter },
+    })
+    const pages = [
+      [
+        {},
+        data("people/ada", "people/ada.md", {
+          edit_repo: "vault",
+          edit_path: "content/people/ada.md",
+        }),
+      ],
+      [
+        {},
+        data("resources/git", "resources/git.md", {
+          edit_repo: "vault-private",
+          edit_path: "onboarding/git.md",
+        }),
+      ],
+    ]
+    for await (const _ of PageSource().emit({ argv: { output, directory: content } }, pages));
+    assert.equal(fs.readFileSync(path.join(output, "people/ada.md"), "utf8"), own)
+    assert.equal(
+      fs.readFileSync(path.join(output, "resources/git.md"), "utf8"),
+      "---\ntitle: Git\n---\n\n[[resources/x]]\n",
+    )
+    // Only a file under the stage's sources/ is ever read.
+    assert.equal(
+      vaultFile(content, {
+        frontmatter: { edit_repo: "vault", edit_path: "content/../../etc/passwd.md" },
+      }),
+      null,
+    )
+    assert.equal(
+      vaultFile(content, {
+        frontmatter: { edit_repo: "vault", edit_path: "content/people/none.md" },
+      }),
+      null,
+    )
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test("the emitter writes each published page's source into the output", async () => {

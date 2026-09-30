@@ -49,10 +49,16 @@ export function prepareSite(source, yaml) {
     path.join(path.dirname(input), "_quarto.yml"),
   ].find(fs.existsSync)
   if (config) fs.copyFileSync(config, path.join(stage, "_quarto.yml"))
+  // Each page's own file as the vault has it, which the page's Export gives as its Markdown
+  // (quartz/plugins/local/page-source/): the staged copy below gets the site's own additions.
+  const sources = path.join(stage, "sources")
   const records = walk(output)
     .filter((f) => f.endsWith(".md"))
     .map((file) => {
       const bytes = fs.readFileSync(file)
+      const own = path.join(sources, "content", path.relative(output, file))
+      fs.mkdirSync(path.dirname(own), { recursive: true })
+      fs.writeFileSync(own, bytes)
       return {
         ...parse(bytes.toString("utf8")),
         slug: path.relative(output, file).replace(/\\/g, "/").replace(/\.md$/, ""),

@@ -6,7 +6,10 @@ import path from "node:path"
 // edition's to GitHub Pages (the public vault is public anyway), the member edition's into the
 // Worker's assets, which only a signed-in member reaches (GET /api/site/*), so a members-only
 // page's source is exactly as private as the page. Only pages Quartz publishes get one: drafts are
-// filtered out before emitters run, and folder, tag and Bases pages have no Markdown source.
+// filtered out before emitters run, and folder, tag and Bases pages have no Markdown source. A
+// public page's source is its file as the public vault has it (tools/prepare-site.mjs keeps it in
+// the stage's sources/), not the page the site made from it; a private page's is the staged copy,
+// whose links name the site's /resources/ paths, which its Quarto export resolves.
 export const manifest = {
   name: "page-source",
   displayName: "Page source",
@@ -35,6 +38,15 @@ export function sourcePath(output, data) {
   return path.join(output, slug + ".md")
 }
 
+/** A public page's own file in the stage (beside its content/), or null for any other page. */
+export function vaultFile(contentDir, data) {
+  const { edit_repo: repo, edit_path: file } = data?.frontmatter ?? {}
+  if (repo !== "vault" || typeof file !== "string" || !/^content\/.+\.md$/.test(file)) return null
+  const own = path.resolve(path.dirname(contentDir), "sources", file)
+  const root = path.resolve(path.dirname(contentDir), "sources")
+  return own.startsWith(root + path.sep) && fs.existsSync(own) ? own : null
+}
+
 export default () => ({
   name: "PageSource",
   async *emit(ctx, content) {
@@ -42,8 +54,12 @@ export default () => ({
       const destination = sourcePath(ctx.argv.output, file.data)
       if (!destination) continue
       await fs.promises.mkdir(path.dirname(destination), { recursive: true })
-      const text = await fs.promises.readFile(file.data.filePath, "utf8")
-      await fs.promises.writeFile(destination, pageSource(text))
+      const own = vaultFile(ctx.argv.directory, file.data)
+      if (own) await fs.promises.copyFile(own, destination)
+      else {
+        const text = await fs.promises.readFile(file.data.filePath, "utf8")
+        await fs.promises.writeFile(destination, pageSource(text))
+      }
       yield destination
     }
   },

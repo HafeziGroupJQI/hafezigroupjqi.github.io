@@ -1150,8 +1150,12 @@ describe("a folder's new page", () => {
     expect(opened.body).toMatchObject({
       main: null,
       new: true,
-      template: '---\ntitle: "Group meeting index"\ntype: note\ntags: [internal]\n---\n\n',
+      template: '---\ntitle: "Group meeting"\ntype: note\ntags: [internal]\n---\n\n',
     })
+    // Titled as the automatic folder page is: a date's dashes stay.
+    privateVault.push("notes/group-meeting-2026-09-29/primer.md", "x")
+    const dated = await open(ada, "notes/group-meeting-2026-09-29/index.md")
+    expect(dated.body.template).toContain('title: "Group meeting 2026-09-29"')
     const text = opened.body.template + "The group's meetings.\n"
     const made = await make(ada, "notes/group-meeting/index.md", text)
     expect(made.status).toBe(201)

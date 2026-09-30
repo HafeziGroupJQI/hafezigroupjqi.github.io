@@ -94,10 +94,18 @@ export function newIndexPath(repo: RepoName, raw: unknown): { path: string; fold
   return { path, folder: segments.slice(0, -1).join("/") }
 }
 
-/** A new folder page's first text: front matter the vault's check takes, named for the folder. */
+/**
+ * A new folder page's first text: front matter the vault's check takes, titled as the automatic
+ * folder page is (quartz/plugins/local/folder-index/names.js): "group-meeting-2026-09-29" is
+ * "Group meeting 2026-09-29", dashes inside a date or a number kept.
+ */
 export function indexTemplate(folder: string): string {
-  const name = folder.split("/").pop()!.replace(/[-_]+/g, " ").trim()
-  const title = `${name.charAt(0).toUpperCase()}${name.slice(1)} index`
+  const title = folder
+    .split("/")
+    .pop()!
+    .replace(/(?<!\d)[-_]+|[-_]+(?!\d)/g, " ")
+    .trim()
+    .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase())
   return `---\ntitle: ${JSON.stringify(title)}\ntype: note\ntags: [internal]\n---\n\n`
 }
 

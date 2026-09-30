@@ -6,12 +6,14 @@
 //
 // Usage: node tools/migrate-jqi.mjs [--vault ../vault] [--only people,publications,...]
 // Re-running is safe: page-data is cached under .cache/jqi/, existing person
-// records keep their hand-maintained fields (building, office, scope, projects).
+// records keep their hand-maintained fields (building, office, scope, projects,
+// and a website in `profile:`, which is otherwise empty: `source:` keeps the JQI page).
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import yaml from "yaml"
 import TurndownService from "turndown"
+import { personWebsite } from "./site-model.mjs"
 
 const SITE = "https://hafezi.jqi.umd.edu"
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -191,7 +193,9 @@ if (ONLY.includes("people")) {
       office: old.office ?? "TBD",
       email,
       scope: old.scope ?? "TBD",
-      profile: `https://hafezigroupjqi.github.io/people/${slug}`,
+      profile:
+        personWebsite({ profile: old.profile, source: `${SITE}${u}` }, `people/${slug}`)?.href ??
+        null,
       photo: photo ? `assets/people/${path.basename(photo)}` : null,
       research_areas: areas,
       projects: old.projects ?? [],

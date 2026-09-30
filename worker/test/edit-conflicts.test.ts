@@ -701,3 +701,25 @@ describe("settling a queued conflict", () => {
     expect(privateVault.pulls.get(2)!.title).toContain("settled by ada")
   })
 })
+
+describe("the daily run", () => {
+  it("sends an unsettled conflict back to its author after 14 days, and drops drafts idle 30", async () => {
+    const { bob, second } = await overlapping()
+    await post(bob, `/api/edit/drafts/${second}/queue`)
+    const eve = await as("eve")
+    const idle = (await draft(eve, TEXT + "eve\n", "idle", "content/research/optics.md")).body.id
+    const { expireConflicts } = await import("../src/edit/conflicts")
+    const now = Date.now()
+    expect(await expireConflicts(env as any, now)).toEqual({ expired: [], dropped: [] })
+    const later = await expireConflicts(env as any, now + 31 * 86_400_000)
+    expect(later.expired).toHaveLength(1)
+    expect(later.dropped).toEqual([idle])
+    expect((await bob.json(`/api/edit/drafts/${second}`)).body).toMatchObject({
+      status: "editing",
+      text: BOB_LINE,
+    })
+    expect((await conflicts())[0].state).toBe("expired")
+    expect(await auditRows("action = 'edit.conflict.expire'")).toHaveLength(1)
+    expect(await statusOf(idle)).toBe("discarded")
+  })
+})

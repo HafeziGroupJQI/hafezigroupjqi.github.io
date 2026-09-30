@@ -1,6 +1,8 @@
 import type { Env } from "../env"
 import type { RepoBlob } from "../repo"
-import { type ChangeRow, type DraftRow, publishedKey } from "../uploads/drafts"
+import { auditJob } from "../audit"
+import { unsentChanges } from "../changes"
+import { type ChangeRow, type DraftRow, publishedKey, settle } from "../uploads/drafts"
 import type { DraftRepo } from "../uploads/github"
 import { threeWay } from "./merge"
 import { pageProblems, readPage } from "./public"
@@ -367,3 +369,63 @@ export async function openConflictOf(env: Env, draft: string) {
 
 /** Open conflicts at most this many per member at once. */
 export const CONFLICTS_OPEN_MAX = 5
+
+/** A page edit never sent (or taken back) is dropped after this long untouched. */
+export const UNSENT_DAYS = 30
+/** Conflicts expired and idle drafts dropped per daily run, well within its subrequests. */
+const EXPIRE_PER_RUN = 20
+
+/**
+ * The daily run: a conflict nobody settled in CONFLICT_DAYS goes back to its author as a draft,
+ * its text kept; a page edit left unsent for UNSENT_DAYS is discarded. Each is audited.
+ */
+export async function expireConflicts(env: Env, now = Date.now()) {
+  const expired: string[] = []
+  const dropped: string[] = []
+  const { results: conflicts } = await env.DB.prepare(
+    `SELECT id, draft_id, login, path FROM edit_conflicts
+     WHERE state = 'open' AND expires_at <= ? ORDER BY expires_at LIMIT ?`,
+  )
+    .bind(now, EXPIRE_PER_RUN)
+    .all<Pick<ConflictRow, "id" | "draft_id" | "login" | "path">>()
+  for (const conflict of conflicts) {
+    const [closed] = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE edit_conflicts SET state = 'expired', resolved_at = ?
+         WHERE id = ? AND state = 'open'`,
+      ).bind(now, conflict.id),
+      env.DB.prepare(
+        `UPDATE upload_drafts SET status = 'editing', detail_json = ?, updated_at = ?
+         WHERE id = ? AND status = 'conflict'`,
+      ).bind(
+        JSON.stringify({
+          message: `nobody settled it in ${CONFLICT_DAYS} days: it is your draft again, with your text`,
+        }),
+        now,
+        conflict.draft_id,
+      ),
+      unsentChanges(env, conflict.draft_id),
+    ])
+    if (!closed.meta.changes) continue
+    await auditJob(env, conflict.login, "edit.conflict.expire", conflict.draft_id, {
+      conflict: conflict.id,
+      path: conflict.path,
+    })
+    expired.push(conflict.id)
+  }
+  const { results: idle } = await env.DB.prepare(
+    `SELECT id, login FROM upload_drafts
+     WHERE kind = 'edit' AND status = 'editing' AND pr_number IS NULL AND updated_at <= ?
+     ORDER BY updated_at LIMIT ?`,
+  )
+    .bind(now - UNSENT_DAYS * 86_400_000, EXPIRE_PER_RUN)
+    .all<Pick<DraftRow, "id" | "login">>()
+  for (const draft of idle) {
+    await settle(env, draft.id, "discarded", {
+      detail: { message: `not sent for ${UNSENT_DAYS} days` },
+    })
+    await auditJob(env, draft.login, "edit.expire", draft.id, { days: UNSENT_DAYS })
+    dropped.push(draft.id)
+  }
+  return { expired, dropped }
+}

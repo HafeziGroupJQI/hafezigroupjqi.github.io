@@ -16,11 +16,14 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
-    "luxon": "3.7.2"
+    "js-yaml": "^4.3.2",
+    "luxon": "3.7.2",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260915.1",
+    "@types/js-yaml": "^4.0.9",
     "@types/luxon": "^3.7.5",
     "typescript": "^5.9.0",
     "vitest": "^4.1.0",

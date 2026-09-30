@@ -4,8 +4,7 @@ import type { RepoFetch } from "../repo"
 import { type Detail, type DraftRow, type Status, changesOf, needsReview, settle } from "./drafts"
 import { PrivateVault } from "./github"
 
-// The hourly merge of members' uploads (the Worker's "0 * * * *" cron, beside the People page
-// publish): a draft sent in an earlier hour whose pull request's validate check is green is marked
+// The hourly merge of members' uploads and private page edits (the Worker's "2 * * * *" cron): a draft sent in an earlier hour whose pull request's validate check is green is marked
 // ready and merged into vault-private's main by rebase, as the member's own commit. A failed check or a conflict stays open for
 // its author to revise or discard; a draft with something in it that runs waits, checked and
 // ready, for an admin to merge it on GitHub; a draft changed since it was sent waits for the next
@@ -13,9 +12,10 @@ import { PrivateVault } from "./github"
 
 /** Due within this long of now counts as due: the cron fires on the hour, give or take. */
 const SLACK_MS = 5 * 60_000
-/** Drafts looked at per run: each takes up to six GitHub requests, and the cron's invocation may
- *  make 50 on the Workers Free plan, shared with the People page publish. The rest wait an hour. */
-export const PER_RUN = 6
+/** Drafts looked at per run: each takes up to six GitHub requests and about six D1 and R2 calls,
+ *  and the cron's invocation (its own, src/index.ts) may make 50 on the Workers Free plan. The
+ *  rest wait an hour. */
+export const PER_RUN = 4
 
 export interface MergeResult {
   merged: string[]
@@ -152,6 +152,7 @@ export async function mergeDue(
   env: Env,
   fetcher: RepoFetch,
   now = Date.now(),
+  perRun = PER_RUN,
 ): Promise<MergeResult> {
   const result: MergeResult = {
     merged: [],
@@ -166,10 +167,11 @@ export async function mergeDue(
   // Due drafts first, oldest first; then those waiting for an admin, to see whether one merged.
   const { results } = await env.DB.prepare(
     `SELECT * FROM upload_drafts
-     WHERE pr_number IS NOT NULL AND ((status = 'open' AND due_at <= ?) OR status = 'review')
+     WHERE repo = 'vault-private' AND pr_number IS NOT NULL
+       AND ((status = 'open' AND due_at <= ?) OR status = 'review')
      ORDER BY status = 'review', due_at LIMIT ?`,
   )
-    .bind(now + SLACK_MS, PER_RUN)
+    .bind(now + SLACK_MS, perRun)
     .all<DraftRow>()
   for (const row of results)
     await settleDraft(env, repo, row, result).catch((error) => {

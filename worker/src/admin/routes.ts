@@ -308,7 +308,7 @@ export async function adminRoutes(
 
   // ---- members' uploads to vault-private (src/uploads/) ----
   if (path === "/uploads" && request.method === "GET")
-    return json({ drafts: await liveDrafts(env, new PrivateVault(env, privateVaultFetch).repo) })
+    return json({ drafts: await liveDrafts(env) })
 
   const upload = path.match(/^\/uploads\/([0-9a-f]{12})\/discard$/)
   if (upload && request.method === "POST") {

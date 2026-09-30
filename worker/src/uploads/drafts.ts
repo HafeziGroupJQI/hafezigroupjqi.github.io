@@ -3,7 +3,7 @@ import type { Env } from "../env"
 import { HttpError } from "../http"
 import { dueAt } from "../profile/routes"
 import { RepoConflict, RepoMissing } from "../repo"
-import type { DraftRepo, RepoName } from "./github"
+import { type DraftRepo, type RepoName, repoFullName } from "./github"
 
 // Members' upload drafts in D1 (upload_drafts, upload_changes) and R2 (uploads/<id>/<path>), and
 // what turns one into a pull request on vault-private: the routes (routes.ts), the hourly merge
@@ -93,7 +93,7 @@ export async function changesOfAll(env: Env, ids: string[]): Promise<Map<string,
 }
 
 /** Every member's live drafts, with their changes, for /admin: those due soonest first. */
-export async function liveDrafts(env: Env, repo: string) {
+export async function liveDrafts(env: Env) {
   const { results } = await env.DB.prepare(
     `SELECT * FROM upload_drafts WHERE ${LIVE_SQL}
      ORDER BY status = 'editing', COALESCE(due_at, updated_at), login`,
@@ -102,7 +102,9 @@ export async function liveDrafts(env: Env, repo: string) {
     env,
     results.map((row) => row.id),
   )
-  return results.map((row) => draftView(repo, row, changes.get(row.id) ?? []))
+  return results.map((row) =>
+    draftView(repoFullName(env, row.repo), row, changes.get(row.id) ?? []),
+  )
 }
 
 /** A draft as the members site shows it. */

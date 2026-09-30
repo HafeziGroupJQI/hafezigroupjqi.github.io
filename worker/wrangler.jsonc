@@ -45,10 +45,14 @@
     { "name": "COMPLETE_LIMIT", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } },
   ],
   "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "hafezi-artifacts" }],
-  // Daily audit-log retention sweep (src/audit.ts pruneAudit), and the hourly publish of members'
-  // People page edits (src/profile/publish.ts) and merge of their uploads (src/uploads/merge.ts).
-  // src/index.ts tells them apart by the daily one.
-  "triggers": { "crons": ["17 4 * * *", "0 * * * *"] },
+  // Daily audit-log retention sweep (src/audit.ts pruneAudit); hourly, each in an invocation of its
+  // own (50 subrequests each on Workers Free): the publish of members' People page edits
+  // (src/profile/publish.ts) on the hour, the merge of their uploads and private page edits
+  // (src/uploads/merge.ts) at :02, the commit of their public page edits (src/edit/publish.ts) at
+  // :04. src/index.ts tells them apart by their schedule. Workers Free allows 5 cron triggers per
+  // account: if the account can't spare these, keep "17 4 * * *" and "0 * * * *" and set the var
+  // HOURLY_RUNS to "one", and the hourly run does all three.
+  "triggers": { "crons": ["17 4 * * *", "0 * * * *", "2 * * * *", "4 * * * *"] },
   "vars": {
     "AUTH_MODE": "github",
     "GITHUB_ORG": "HafeziGroupJQI",

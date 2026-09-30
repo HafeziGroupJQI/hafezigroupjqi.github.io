@@ -46,6 +46,9 @@ export interface Env {
   /** "true" lets owners open any member's server (every such request is logged), and admins read
    *  members' live sessions and code history in /admin (every read is audited). */
   COMPUTE_OWNER_ACCESS?: string
+  /** "one": the hourly cron alone does the People page publish, the uploads' merge and the public
+   *  page edits' commit (src/index.ts), for an account without cron triggers to spare. */
+  HOURLY_RUNS?: string
 }
 
 export interface DocumentEntry {

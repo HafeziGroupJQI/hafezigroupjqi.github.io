@@ -351,7 +351,9 @@ export class FakeVault {
       if (!base) return new Response("", { status: 422 })
       const snapshot = new Map(base)
       for (const entry of body.tree)
-        if (entry.sha === null) snapshot.delete(entry.path)
+        if (typeof entry.content === "string")
+          snapshot.set(entry.path, encoder.encode(entry.content))
+        else if (entry.sha === null) snapshot.delete(entry.path)
         else {
           const bytes =
             this.blobs.get(entry.sha) ?? [...base.values()].find((b) => blobSha(b) === entry.sha)
@@ -381,8 +383,15 @@ export class FakeVault {
       }
       if (!this.refs.has(branch))
         return Response.json({ message: "Reference does not exist" }, { status: 422 })
-      const commit = this.commits.find((c) => c.sha === body.sha)!
-      if (!body.force && commit.parents[0] !== this.refs.get(branch))
+      // A fast-forward: the branch's tip is among the new commit's ancestors.
+      const ancestors = new Set<string>()
+      let sha: string | undefined = body.sha
+      while (sha && !ancestors.has(sha)) {
+        ancestors.add(sha)
+        const at: string = sha
+        sha = this.commits.find((c) => c.sha === at)?.parents[0]
+      }
+      if (!body.force && !ancestors.has(this.refs.get(branch)!))
         return Response.json({ message: "Update is not a fast forward" }, { status: 422 })
       this.refs.set(branch, body.sha)
       return Response.json({ object: { sha: body.sha } })

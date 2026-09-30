@@ -139,11 +139,17 @@ export class GitRepo {
     }
   }
 
-  /** A tree over `base`: each entry's blob, or null to delete that path. */
-  async createTree(base: string, entries: { path: string; sha: string | null }[]): Promise<string> {
+  /**
+   * A tree over `base`: each entry's blob, or null to delete that path, or its text, of which
+   * GitHub makes the blob (a request fewer).
+   */
+  async createTree(
+    base: string,
+    entries: ({ path: string; sha: string | null } | { path: string; content: string })[],
+  ): Promise<string> {
     const tree = await this.call<{ sha: string }>("POST", "/git/trees", {
       base_tree: base,
-      tree: entries.map(({ path, sha }) => ({ path, mode: "100644", type: "blob", sha })),
+      tree: entries.map((entry) => ({ mode: "100644", type: "blob", ...entry })),
     })
     return tree.sha
   }

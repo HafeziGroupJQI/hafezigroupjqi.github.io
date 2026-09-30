@@ -112,7 +112,7 @@ export function typeOf(path: string): { ext: string; kind: Kind; mime: string } 
 }
 
 // Windows and macOS can't hold these in a name, and Obsidian's links break on # ^ [ ] |.
-const FORBIDDEN = /[\p{Cc}\u2028\u2029\\:*?"<>|#^[\]`]/u
+export const FORBIDDEN = /[\p{Cc}\u2028\u2029\\:*?"<>|#^[\]`]/u
 
 /** A folder of vault-private, as members may write to it: "" is the top, else under FOLDERS. */
 export function vaultFolder(raw: unknown): string {

@@ -41,6 +41,8 @@ beforeEach(async () => {
   })
   await env.DB.prepare("DELETE FROM upload_changes").run()
   await env.DB.prepare("DELETE FROM upload_drafts").run()
+  // A member's name on their commits is their People page's, when they have one.
+  await env.DB.prepare("DELETE FROM profiles").run()
   await env.DB.prepare(
     "DELETE FROM audit_log WHERE action LIKE 'edit.%' OR action LIKE 'uploads.%'",
   ).run()
@@ -154,7 +156,7 @@ describe("edit: drafts of a private page", () => {
     expect((await source(ada, "code/fit.ipynb")).body.main.text).toBe(NOTEBOOK)
     expect((await source(ada, "notes/gone.md")).status).toBe(404)
     expect((await source(ada, "code/guide/intro.nb")).status).toBe(422)
-    expect((await source(ada, "content/index.md", "vault")).status).toBe(422)
+    expect((await source(ada, "content/people/index.md", "vault")).status).toBe(422)
     expect((await source(ada, "notes/meeting.md", "elsewhere")).status).toBe(422)
   })
 

@@ -18,6 +18,7 @@ import {
   lineSeparator,
   othersNotice,
   sendHint,
+  sendLabel,
   startingText,
   storageKey,
 } from "./model.js"
@@ -297,7 +298,7 @@ export async function mountEdit(root) {
     saveButton.disabled = busy || !dirty()
     sendButton.disabled = busy || (!draft && !dirty()) || (sent && !dirty())
     discardButton.disabled = busy || (!draft && !dirty())
-    sendButton.textContent = draft?.pull ? "Send the new version" : "Send"
+    sendButton.textContent = sendLabel(source.repo, draft)
     stateLine.textContent = dirty() ? "Unsaved changes." : draftStatus(draft)
     // When a send would go in says nothing once it is sent and unchanged.
     hint.hidden = sent && !dirty()
@@ -421,12 +422,12 @@ export async function mountEdit(root) {
   sendButton.onclick = async () => {
     if (!cleanSummary(summary.value)) {
       summary.focus()
-      return say("Say in a line what you changed, then send it.", true)
+      return say("Say in a line what you changed first.", true)
     }
     if (!(await save())) return
     busy = true
     refresh()
-    say("Sending…")
+    say(source.repo === "vault" ? "Publishing…" : "Sending…")
     try {
       const answer = await call(`/api/edit/drafts/${draft.id}/send`, { method: "POST" })
       if (answer.status === 409 && answer.body.incoming) {
@@ -435,7 +436,13 @@ export async function mountEdit(root) {
       } else if (!answer.ok) say(answer.body.detail ?? `Sending failed (${answer.status}).`, true)
       else {
         draft = { ...answer.body, text: draft.text, base_sha: base }
-        say(answer.body.pull ? `Sent as pull request #${answer.body.pull.number}.` : "Sent.")
+        say(
+          answer.body.pull
+            ? `Sent as pull request #${answer.body.pull.number}.`
+            : source.repo === "vault"
+              ? "Published."
+              : "Sent.",
+        )
       }
     } catch (error) {
       say(error.message, true)

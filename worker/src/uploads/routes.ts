@@ -19,7 +19,7 @@ import {
   send,
   stagedKey,
 } from "./drafts"
-import { PrivateVault } from "./github"
+import { PrivateVault, repoFullName } from "./github"
 import {
   CHANGES_MAX,
   DRAFT_MAX,
@@ -164,8 +164,11 @@ export async function uploadRoutes(
   // Code in a member's lab can read its ticket; what reaches the vault comes from the site.
   if (session.lab) throw new HttpError(403, "uploads are made from the members site")
   const repo = new PrivateVault(env, fetcher)
-  const view = async (id: string) =>
-    draftView(repo.repo, (await draftRow(env, id))!, await changesOf(env, id))
+  // A draft's links go to its own repository: a public page's edit is the public vault's.
+  const view = async (id: string) => {
+    const row = (await draftRow(env, id))!
+    return draftView(repoFullName(env, row.repo), row, await changesOf(env, id))
+  }
 
   if (path === "/api/uploads" && request.method === "GET") {
     // Every live draft, and the settled ones of the last 30 days.
@@ -186,7 +189,9 @@ export async function uploadRoutes(
       folders: FOLDERS,
       types: Object.keys(TYPES),
       limits: { file: FILE_MAX, draft: DRAFT_MAX, changes: CHANGES_MAX, drafts: DRAFTS_MAX },
-      drafts: results.map((row) => draftView(repo.repo, row, changes.get(row.id) ?? [])),
+      drafts: results.map((row) =>
+        draftView(repoFullName(env, row.repo), row, changes.get(row.id) ?? []),
+      ),
     })
   }
 

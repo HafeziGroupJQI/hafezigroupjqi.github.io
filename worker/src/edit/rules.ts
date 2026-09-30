@@ -1,13 +1,20 @@
+import { isAdmin } from "../audit"
+import type { Env } from "../env"
 import { HttpError } from "../http"
-import { checkContent, vaultPath } from "../uploads/rules"
+import { PEOPLE_PAGE } from "../profile/vault"
+import type { Session } from "../session"
 import type { RepoName } from "../uploads/github"
+import { FORBIDDEN, checkContent, vaultPath } from "../uploads/rules"
 
 // What members may edit from the site's editor (/edit, routes.ts): a page's own file in its
 // vault, as its author wrote it, never the page the site made from it. In vault-private these are
 // its pages (.md, and .qmd, whose code runs when the site builds) and Jupyter notebooks (.ipynb)
 // under the folders uploads may change (uploads/rules.ts); a Wolfram notebook (.nb) is edited in
-// the Scratchpad and a drawing is replaced whole on /uploads. An edit is a draft of the uploads
-// pipeline (one change, whose base is the blob the member loaded), checked here as uploads are.
+// the Scratchpad and a drawing is replaced whole on /uploads. In the public vault they are its
+// pages (content/**.md), a People page only by its own member or an admin, and the home and
+// privacy pages only by an admin. An edit is a draft of the uploads pipeline (one change, whose
+// base is the blob the member loaded), checked here as uploads are, and a public page's by
+// public.ts as the public vault's own check would.
 
 export type EditKind = "md" | "qmd" | "ipynb"
 
@@ -19,10 +26,40 @@ export const SUMMARY_MAX = 120
 const KINDS: Record<string, EditKind> = { md: "md", qmd: "qmd", ipynb: "ipynb" }
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
 
+/** Public pages the site makes whole from other pages: their own file never shows. */
+const GENERATED = new Set([
+  "content/people/index.md",
+  "content/people/alumni/index.md",
+  "content/research/index.md",
+  "content/news/index.md",
+  "content/publications/index.md",
+])
+/** Public pages only an admin edits: the home page and the privacy notice. */
+export const ADMIN_ONLY = new Set(["content/index.md", "content/privacy.md"])
+
+/** A public vault page's path: a Markdown file under content/, not an asset. */
+function publicPath(raw: unknown): string {
+  if (typeof raw !== "string" || !raw.trim()) throw new HttpError(422, "choose a page")
+  const path = raw.normalize("NFC")
+  if (path.length > 300) throw new HttpError(422, "that path is longer than 300 characters")
+  if (FORBIDDEN.test(path)) throw new HttpError(422, "that isn't a page's path")
+  const segments = path.split("/")
+  if (
+    segments[0] !== "content" ||
+    segments.length < 2 ||
+    segments.some((segment) => !segment || segment.startsWith(".") || segment !== segment.trim())
+  )
+    throw new HttpError(422, "a public page is a file under content/")
+  if (segments[1] === "assets" || !path.endsWith(".md"))
+    throw new HttpError(422, "the editor opens the public vault's pages (.md files)")
+  if (GENERATED.has(path))
+    throw new HttpError(422, "the site makes this page from other pages, so its file never shows")
+  return path
+}
+
 /** A path the editor opens in `repo`, and what kind of file it is; a 422 says why not. */
 export function editablePath(repo: RepoName, raw: unknown): { path: string; kind: EditKind } {
-  if (repo !== "vault-private")
-    throw new HttpError(422, "only the private vault's pages can be edited from the site")
+  if (repo === "vault") return { path: publicPath(raw), kind: "md" }
   const path = vaultPath(raw)
   const name = path.split("/").pop()!
   const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase()
@@ -110,3 +147,38 @@ export const editMessage = (title: string) => `${title} from the members site ed
 
 /** Where a Quarto document's frozen results are kept (vault-private's _freeze). */
 export const freezeDir = (path: string) => `_freeze/${path.replace(/\.qmd$/i, "")}`
+
+/**
+ * Whether the member may change a file (can_edit), and if not why, in a sentence for the editor.
+ * Any member may edit the private vault's pages and most public ones; a People page is its own
+ * member's (their approved link, /settings) or an admin's, and the home and privacy pages an
+ * admin's. Admins may also add what runs in browsers to a public page (public.ts).
+ */
+export async function editAccess(
+  env: Env,
+  session: Session,
+  repo: RepoName,
+  path: string,
+): Promise<{ can_edit: boolean; why: string | null; admin: boolean }> {
+  const admin = await isAdmin(env, session)
+  if (repo === "vault-private" || admin) return { can_edit: true, why: null, admin }
+  if (ADMIN_ONLY.has(path))
+    return { can_edit: false, why: "Only an admin can edit this page.", admin }
+  if (PEOPLE_PAGE.test(path) && !path.endsWith("/index.md")) {
+    const owner = await env.DB.prepare(
+      "SELECT login, name FROM profiles WHERE path = ? AND status = 'approved'",
+    )
+      .bind(path)
+      .first<{ login: string; name: string | null }>()
+    if (owner?.login.toLowerCase() === session.login.toLowerCase())
+      return { can_edit: true, why: null, admin }
+    return {
+      can_edit: false,
+      why: owner
+        ? `Only ${owner.name || owner.login} or an admin can edit this People page.`
+        : "Only the person on this page (once they link it in Settings) or an admin can edit it.",
+      admin,
+    }
+  }
+  return { can_edit: true, why: null, admin }
+}

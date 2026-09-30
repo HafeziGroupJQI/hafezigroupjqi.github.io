@@ -9,6 +9,7 @@ import {
   lineSeparator,
   othersNotice,
   sendHint,
+  sendLabel,
   startingText,
   storageKey,
 } from "./model.js"
@@ -42,8 +43,11 @@ test("a page's Edit opens its own file in the editor, never the page the site ma
     )?.href ?? "",
     /note=generated/,
   )
-  // Public pages aren't edited from the site yet.
-  assert.equal(editAction({ editRepo: "vault", editPath: "content/people/ada.md" }, "/"), null)
+  // A public page's file is in the public vault.
+  assert.equal(
+    editAction({ editRepo: "vault", editPath: "content/people/ada.md" }, "/people/ada")?.href,
+    "/edit?repo=vault&path=content%2Fpeople%2Fada.md&page=%2Fpeople%2Fada",
+  )
   // A Wolfram notebook is edited in the Scratchpad; a drawing is replaced whole, not edited here.
   assert.deepEqual(
     editAction(
@@ -131,6 +135,27 @@ test("a draft's state and when a send goes in read as sentences", () => {
   assert.match(draftStatus({ status: "failed", detail: { message: "no title" } }), /\(no title\)/)
   assert.match(sendHint({ review: null }, NOW, "en-US"), /goes in at .*, in 1 h 40 min if/)
   assert.match(sendHint({ review: "its code cells run" }, NOW), /an admin merges it/)
+  // A public page's edit is published: straight into the public vault in its hour.
+  assert.match(
+    sendHint({ repo: "vault", review: null }, NOW, "en-US"),
+    /^Published now, it goes into the public vault at .*, in 1 h 40 min, and the public page shows it/,
+  )
+  assert.match(
+    draftStatus({ repo: "vault", status: "open", unsent: false, due_at: NOW + HOUR }, NOW),
+    /^Published: it goes into the public vault at .*\. Until then only you see it\.$/,
+  )
+  assert.match(
+    draftStatus({ repo: "vault", status: "open", unsent: true }, NOW),
+    /publish it again/,
+  )
+  assert.match(draftStatus({ repo: "vault", status: "conflict" }), /publish it again/)
+  assert.equal(sendLabel("vault", null), "Publish")
+  assert.equal(sendLabel("vault", { status: "open" }), "Publish the new version")
+  assert.equal(sendLabel("vault-private", { status: "editing", pull: null }), "Send")
+  assert.equal(
+    sendLabel("vault-private", { status: "open", pull: { number: 1 } }),
+    "Send the new version",
+  )
 })
 
 test("others' drafts of the same file are named, with when they go in", () => {

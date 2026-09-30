@@ -20,8 +20,7 @@ export function editUrl({ repo, path, page = null, sha = null, note = null }) {
 /** What a page's Edit does, from its tools row's data: open the editor, the Scratchpad, or nothing. */
 export function editAction(dataset, page) {
   const { editRepo: repo, editPath: path, editMode: mode, editSha: sha, editNote: note } = dataset
-  // The public vault's pages can't be edited from the site yet.
-  if (repo !== "vault-private" || !path || mode === "file") return null
+  if (!repo || !path || mode === "file") return null
   if (mode === "scratchpad")
     return {
       label: "Edit in Scratchpad",

@@ -67,7 +67,12 @@ export function draftStatus(draft, now = Date.now(), locale = undefined) {
     case "editing":
       return `Draft saved ${when(draft.edited_at, locale)}, not sent yet.`
     case "open":
-      if (draft.unsent) return "Changed since you sent it: send it again (its hour starts over)."
+      if (draft.unsent)
+        return draft.repo === "vault"
+          ? "Changed since you published it: publish it again (its hour starts over)."
+          : "Changed since you sent it: send it again (its hour starts over)."
+      if (draft.due_at > now && draft.repo === "vault")
+        return `Published: it goes into the public vault ${publishLabel(draft.due_at, now, locale)}. Until then only you see it.`
       if (draft.due_at > now)
         return review
           ? `Sent: an admin merges it after checking it, since something in it runs.`
@@ -76,9 +81,13 @@ export function draftStatus(draft, now = Date.now(), locale = undefined) {
         ? `Waiting for the next hourly run: ${draft.detail.message}.`
         : "Waiting for the next hourly run."
     case "failed":
-      return `The vault's check failed${draft.detail?.message ? ` (${draft.detail.message})` : ""}: fix it and send it again.`
+      return draft.repo === "vault"
+        ? `It didn't go in${draft.detail?.message ? ` (${draft.detail.message})` : ""}: fix it and publish it again.`
+        : `The vault's check failed${draft.detail?.message ? ` (${draft.detail.message})` : ""}: fix it and send it again.`
     case "conflict":
-      return "Main changed this page since you sent it: take in what changed and send it again."
+      return draft.repo === "vault"
+        ? "The page changed on main since you started: take in what changed and publish it again."
+        : "Main changed this page since you sent it: take in what changed and send it again."
     case "review":
       return "Checked: waiting for an admin to merge it, since something in it runs."
     case "merged":
@@ -95,6 +104,8 @@ export const dueAt = (now) => Math.floor(now / 3_600_000) * 3_600_000 + 7_200_00
 
 /** When an edit sent now would go in, and what happens next, for the Send button's hint. */
 export function sendHint(source, now = Date.now(), locale = undefined) {
+  if (source.repo === "vault")
+    return `Published now, it goes into the public vault ${publishLabel(dueAt(now), now, locale)}, and the public page shows it about 3 minutes after that. Until then only you see it, and you can change it or discard it.`
   if (source.review)
     return "Sending opens a pull request; an admin merges it after checking it, since something in it runs when the site builds."
   return `Sent now, it goes in ${publishLabel(dueAt(now), now, locale)} if the vault's check passes, and members' pages show it about 15 minutes after that. Until then you can change it or discard it.`
@@ -110,4 +121,11 @@ export function othersNotice(others, now = Date.now(), locale = undefined) {
   const names = others.map(one)
   const list = names.length < 2 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`
   return `${others.length === 1 ? "Another member has" : "Other members have"} a draft of this file too: ${list}. Whoever sends second must take in the first one's changes.`
+}
+
+/** The Send button's words: a public page's edit is published, a private one's sent for review. */
+export function sendLabel(repo, draft) {
+  const again = draft?.status !== "editing" && draft?.status !== undefined
+  if (repo === "vault") return again ? "Publish the new version" : "Publish"
+  return draft?.pull ? "Send the new version" : "Send"
 }

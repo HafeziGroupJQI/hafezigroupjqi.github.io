@@ -118,6 +118,18 @@ test("a draft's status says what happens next", () => {
   )
 })
 
+test("a public page's edit reads as going into the public vault, with no pull request", () => {
+  const now = Date.UTC(2026, 8, 29, 14, 20)
+  assert.match(
+    statusLabel(draft({ kind: "edit", repo: "vault", status: "open", due_at: now + HOUR }), now),
+    /^Published: it goes into the public vault at .*\. Until then only you see it$/,
+  )
+  assert.match(
+    statusLabel(draft({ kind: "edit", repo: "vault", status: "conflict" }), now),
+    /^The page changed on main since you started/,
+  )
+})
+
 test("paths split into folders and breadcrumbs", () => {
   assert.equal(folderOf("notes/2026/a.md"), "notes/2026")
   assert.equal(folderOf("a.md"), "")

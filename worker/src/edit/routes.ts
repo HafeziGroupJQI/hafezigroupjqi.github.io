@@ -1,5 +1,4 @@
 import type { Auditor } from "../audit"
-import { isAdmin } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
 import { HttpError, json, readJson } from "../http"
@@ -15,16 +14,20 @@ import {
   discard,
   draftRow,
   draftView,
+  plainName,
   send,
   stagedKey,
 } from "../uploads/drafts"
 import { DraftRepo, REPO_NAMES, type RepoName } from "../uploads/github"
 import { SENDS_PER_DAY, ownDraft, underLimit } from "../uploads/routes"
+import { readPage } from "./public"
+import { publishEdit } from "./publish"
 import {
   type EditKind,
   blobSha,
   cleanSummary,
   contentReport,
+  editAccess,
   editText,
   editablePath,
 } from "./rules"
@@ -34,10 +37,11 @@ import {
 // The editor loads the file at main with its blob sha, the base of the member's edit. Saving keeps
 // a draft in the uploads pipeline (src/uploads/: D1 upload_drafts with kind 'edit', one
 // upload_changes row whose base_sha is that blob, the text in R2), which only its author sees.
-// Sending it makes it a pull request on vault-private, merged by the hourly run once its check
-// passes, like an upload; a page that changed on main since the member loaded it is refused with
-// main's new version, so nothing anyone else wrote is overwritten. Signed-in members only, never a
-// lab ticket; every action is audited, with daily limits.
+// Sending a private page's edit makes it a pull request on vault-private, merged by the hourly run
+// once its check passes, like an upload; publishing a public page's edit queues it for the hourly
+// run that commits it to the public vault's main (publish.ts). A page that changed on main since
+// the member loaded it is refused with main's new version, so nothing anyone else wrote is
+// overwritten. Signed-in members only, never a lab ticket; every action is audited, with limits.
 
 /** Page edits one member may have open at once (one per page). */
 export const EDIT_DRAFTS_MAX = 10
@@ -103,6 +107,16 @@ async function othersEditing(env: Env, login: string, repo: RepoName, path: stri
   return results
 }
 
+/**
+ * What the vault's check would refuse in a page's text (its problems: saving keeps them, sending
+ * refuses them) and why an admin must merge it (review). A public page's full check, against the
+ * vault at main, is made when it is published (publish.ts).
+ */
+function checkEdit(repo: RepoName, path: string, text: string) {
+  if (repo === "vault-private") return contentReport(path, text)
+  return { problems: readPage(text).problems, review: null }
+}
+
 async function stagedText(env: Env, row: DraftRow, path: string): Promise<string> {
   const object = await env.ARTIFACTS.get(stagedKey(row.id, path))
   if (!object) throw new HttpError(409, "this draft's text is gone; discard it and start again")
@@ -143,11 +157,9 @@ export async function editRoutes(
       path: file,
       kind,
       main: main ? { sha: main.sha, size: main.size, text } : null,
-      can_edit: true,
-      why: null,
-      admin: await isAdmin(env, session),
-      // Something in it runs (Quarto code cells, HTML): an admin merges it on GitHub.
-      review: text === null ? null : contentReport(file, text).review,
+      ...(await editAccess(env, session, name, file)),
+      // Something in a private page runs (Quarto code cells, HTML): an admin merges it on GitHub.
+      review: text === null || name === "vault" ? null : contentReport(file, text).review,
       draft: mine
         ? {
             ...(await view(mine.row)),
@@ -173,6 +185,8 @@ export async function editRoutes(
     const summary = cleanSummary(body.summary)
     const repo = repoOf(name)
     if (!repo.ready) throw new HttpError(503, "editing isn't set up yet: ask an admin")
+    const access = await editAccess(env, session, name, file)
+    if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
     const existing = await liveEdit(env, session.login, name, file)
     if (existing)
       return json({ detail: "you already have a draft of this page", draft: existing.row.id }, 409)
@@ -188,7 +202,7 @@ export async function editRoutes(
         `you have ${EDIT_DRAFTS_MAX} page edits open; send or discard one first`,
       )
     await underLimit(env, session.login, ["edit.create", "edit.save"], SAVES_PER_DAY, "saves")
-    const report = contentReport(file, text)
+    const report = checkEdit(name, file, text)
     const id = [...crypto.getRandomValues(new Uint8Array(6))]
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("")
@@ -245,13 +259,15 @@ export async function editRoutes(
     const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
     const [change] = await changesOf(env, row.id)
     const body = (await readJson(request)) as Record<string, unknown>
+    const access = await editAccess(env, session, row.repo, change.path)
+    if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
     await underLimit(env, session.login, ["edit.create", "edit.save"], SAVES_PER_DAY, "saves")
     const now = Date.now()
     const statements: D1PreparedStatement[] = []
     let problems: string[] = []
     if ("text" in body) {
       const text = editText(body.text)
-      const report = contentReport(change.path, text)
+      const report = checkEdit(row.repo, change.path, text)
       problems = report.problems
       await env.ARTIFACTS.put(stagedKey(row.id, change.path), text, {
         httpMetadata: { contentType: change.content_type ?? "text/plain; charset=utf-8" },
@@ -299,18 +315,44 @@ export async function editRoutes(
     })
   }
 
-  // Send the draft: a pull request on vault-private, merged at the end of the hour after this one.
+  // Send the draft: a private page's becomes a pull request on vault-private, a public page's
+  // goes into the public vault; either at the end of the hour after this one.
   if (part === "send" && request.method === "POST") {
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
     const changes = await changesOf(env, row.id)
     const [change] = changes
     if (!row.summary) throw new HttpError(422, "say in a line what you changed, then send it")
+    const access = await editAccess(env, session, row.repo, change.path)
+    if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
     const text = await stagedText(env, row, change.path)
-    const report = contentReport(change.path, text)
+    const report = checkEdit(row.repo, change.path, text)
     if (report.problems.length) throw new HttpError(422, report.problems.join("; "))
     await underLimit(env, session.login, ["uploads.send", "edit.send"], SENDS_PER_DAY, "sends")
     const repo = repoOf(row.repo)
+    const { display_name } = await navIdentity(env, session)
+    if (row.repo === "vault") {
+      const author = plainName(display_name, session.login)
+      const refused = await publishEdit(env, repo, row, change, text, { ...access, author })
+      if (refused)
+        return json(
+          {
+            detail: refused.incoming
+              ? "the page changed on main since you started editing: look at what changed, take it into your version, then publish again"
+              : "the page was moved or deleted on main since you started editing",
+            incoming: refused.incoming,
+          },
+          409,
+        )
+      const published = await view((await draftRow(env, row.id))!)
+      record("edit.send", change.path, {
+        draft: row.id,
+        repo: "vault",
+        due_at: published.due_at,
+        revision: row.sent_at !== null,
+      })
+      return json(published)
+    }
     // Someone else's change to the page since the member loaded it comes back with the refusal,
     // so the editor can show what changed.
     const main = await repo.file(change.path)
@@ -326,7 +368,6 @@ export async function editRoutes(
       )
     if (decode(main.bytes, change.path) === text)
       throw new HttpError(422, "nothing changed: the page is the same as on main")
-    const { display_name } = await navIdentity(env, session)
     await send(env, repo, row, changes, display_name)
     const sent = await view((await draftRow(env, row.id))!)
     record("edit.send", change.path, {

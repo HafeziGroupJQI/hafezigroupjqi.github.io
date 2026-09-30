@@ -1,6 +1,7 @@
 // Pure helpers for /uploads (frontend/uploads/index.js) and the admin console's Uploads tab, so
 // node:test covers them. A draft is the Worker's view of one (worker/src/uploads/drafts.ts).
 
+import { draftStatus } from "../edit/model.js"
 import { publishLabel } from "../settings/model.js"
 
 /** Drafts the member can still change, send or discard. */
@@ -40,6 +41,9 @@ export function draftName(draft, locale = undefined) {
 
 /** Where a draft stands, in a sentence. `check` is the pull request's check so far, if read. */
 export function statusLabel(draft, now = Date.now(), locale = undefined) {
+  // A public page's edit has no pull request: it goes into the public vault in its hour.
+  if (draft.kind === "edit" && draft.repo === "vault")
+    return draftStatus(draft, now, locale).replace(/\.$/, "")
   const review = Boolean(draft.review)
   switch (draft.status) {
     case "editing":

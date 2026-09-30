@@ -74,6 +74,12 @@ export function statusLabel(draft, now = Date.now(), locale = undefined) {
   }
 }
 
+/** The drafts, with one of them as it is now (the Worker's answer to a change to it). */
+export const replaceDraft = (drafts, draft) =>
+  drafts.some((d) => d.id === draft.id)
+    ? drafts.map((d) => (d.id === draft.id ? draft : d))
+    : [draft, ...drafts]
+
 /** Where /uploads says how something went: beside the open draft, else at the top of the page. */
 export const statusTarget = (current) => (current ? "draft" : "page")
 

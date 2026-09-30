@@ -11,6 +11,7 @@ import {
   intentOf,
   joinPath,
   replaceProblem,
+  replaceDraft,
   statusLabel,
   statusTarget,
   uploadsUrl,
@@ -198,4 +199,12 @@ test("messages go beside the open draft, else at the top of the page", () => {
   assert.equal(statusTarget(null), "page")
   assert.equal(statusTarget(draft({ status: "open" })), "draft")
   assert.equal(statusTarget(draft({ status: "merged" })), "draft")
+})
+
+test("a changed draft replaces its card, keeping the others where they are", () => {
+  const a = draft({ id: "a", changes: [] })
+  const b = draft({ id: "b" })
+  const staged = { ...a, changes: [{ action: "add", path: "notes/x.pdf", size: 10 }], bytes: 10 }
+  assert.deepEqual(replaceDraft([a, b], staged), [staged, b])
+  assert.deepEqual(replaceDraft([b], staged), [staged, b])
 })

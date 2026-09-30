@@ -19,6 +19,7 @@ import {
   isLive,
   joinPath,
   replaceProblem,
+  replaceDraft,
   statusLabel,
   statusTarget,
 } from "./model.js"
@@ -166,9 +167,17 @@ export async function mountUploads(root, { api }) {
   }
 
   // Apply a change to the draft and show the result.
+  // The draft as the Worker answered a change to it, on its card too: its changes, size and
+  // state show there at once, not only once it is sent.
+  function keep(draft) {
+    current = draft
+    state.drafts = replaceDraft(state.drafts, draft)
+    showList()
+  }
+
   async function change(request, done = "") {
     try {
-      current = { ...(await request()), check: current.check }
+      keep({ ...(await request()), check: current.check })
       say(done)
     } catch (error) {
       fail(error)
@@ -203,7 +212,7 @@ export async function mountUploads(root, { api }) {
         continue
       say(`Uploading ${file.name} (${i} of ${files.length})…`)
       try {
-        current = { ...(await upload(path, file, replace ? "replace" : "add")), check: null }
+        keep({ ...(await upload(path, file, replace ? "replace" : "add")), check: null })
       } catch (error) {
         problems.push(`${file.name}: ${error.message}`)
       }

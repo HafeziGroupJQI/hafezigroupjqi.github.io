@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: HafeziGroupJQI/vault
-          # The whole history: the "Recently modified" page reads it (tools/recent-changes.mjs).
+          # The whole history: each page's History reads it (tools/history.mjs).
           fetch-depth: 0
           path: vault-src
           # the default token can read the vault only while it is public; a fine-grained

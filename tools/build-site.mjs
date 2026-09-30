@@ -20,6 +20,7 @@ import { excluded } from "./prepare-unified.mjs"
 import { writeAuthPages } from "./members-pages.mjs"
 import { DEFAULT_API, bundleMembers } from "./members-bundles.mjs"
 import { writeGptSkills } from "./gpt-manifest.mjs"
+import { pageHistories } from "./history.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
 // The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
@@ -41,6 +42,25 @@ if (options.mode === "internal") {
   prepared = prepareSite(options.content, yaml)
 }
 const { stage, output, manifest: sourceMap } = prepared
+// Each page's revisions, from the vaults' git history (tools/history.mjs): the public vault's in both
+// editions, the private vault's only in the member edition. The page-history emitter writes each
+// page's beside it (quartz/plugins/local/page-history/), for the page's History button.
+const historyFile = path.join(stage, "history.json")
+fs.writeFileSync(
+  historyFile,
+  JSON.stringify(
+    pageHistories(
+      [
+        { repo: "vault", dir: prepared.input },
+        ...(options.mode === "internal"
+          ? [{ repo: "vault-private", dir: fs.realpathSync(options.content) }]
+          : []),
+      ],
+      prepared.records,
+      { pages: (file) => /\.(?:md|qmd|ipynb|nb)$/.test(file) },
+    ),
+  ),
+)
 const config = yaml.parse(fs.readFileSync(options.config, "utf8"))
 if (options.mode === "internal") {
   const index = config.plugins.find((plugin) => plugin.source === "@quartz-community/content-index")
@@ -56,6 +76,7 @@ const env = {
   CONTENT_DIR: output,
   SITE_MODE: options.mode,
   QUARTZ_CONFIG_PATH: generatedConfig,
+  SITE_HISTORY: historyFile,
   ...(options.quartzBaseUrl ? { QUARTZ_BASE_URL: options.quartzBaseUrl } : {}),
 }
 try {

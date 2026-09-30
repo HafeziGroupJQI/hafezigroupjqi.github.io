@@ -44,6 +44,12 @@ export interface DraftRow {
   merged_at: number | null
   merge_sha: string | null
   updated_at: number
+  /** An edit made on top of another member's sent draft goes in after that one. */
+  after_draft: string | null
+  /** How many times it was saved: a save that names an older one is refused. */
+  version: number
+  /** What a revert from a page's History restores or undoes, as JSON {rev, mode}. */
+  revert_json: string | null
 }
 
 export interface ChangeRow {

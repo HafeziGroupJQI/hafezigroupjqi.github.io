@@ -153,6 +153,14 @@ jobs:
           path: ~/.cache/hafezi-notebooks
           key: notebook-pages-${{ github.run_id }}
           restore-keys: notebook-pages-
+      - name: page pdfs from earlier deploys
+        # Each page's PDF (tools/render-pdfs.mjs), keyed by what it is printed from: an unchanged
+        # page's is copied from here, a changed one is printed again. Pruned to this build's pages.
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/hafezi-pdfs
+          key: pdf-pages-${{ github.run_id }}
+          restore-keys: pdf-pages-
       - name: build the member edition and the documents manifest
         run: npm run build:members
         working-directory: website

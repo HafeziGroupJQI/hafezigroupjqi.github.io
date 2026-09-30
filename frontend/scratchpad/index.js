@@ -7,6 +7,8 @@
 // in its URL.
 // member-tools.js lazy-loads mountScratchpad() with its api() (JSON + 401 → login) and the session.
 
+import { labMessage } from "../theme/cache.js"
+import { currentTheme } from "../theme/sync.js"
 import { h, present, setText } from "../dashboard/dom.js"
 import {
   LAUNCHERS,
@@ -502,14 +504,23 @@ export function mountScratchpad(root, { api, session }) {
     const origin = labOrigin()
     if (origin) frame.contentWindow?.postMessage(message, origin)
   }
-  // The lab follows this site's light/dark mode: it asks once it has loaded, then gets each change.
-  const theme = () => ({
-    type: "hafezi-theme",
-    theme: document.documentElement.getAttribute("saved-theme") === "dark" ? "dark" : "light",
-  })
+  // The lab follows this site's look: it asks once it has loaded, then gets each change. Light or
+  // dark, and under a member's theme its sixteen colors by base16 slot (frontend/theme/cache.js),
+  // which the lab maps onto JupyterLab's own variables.
+  const theme = () => {
+    const root = document.documentElement
+    const shown = currentTheme()
+    // The theme showing is the cached one unless something else set the page (a preview, print).
+    return shown?.id === root.getAttribute("data-palette")
+      ? labMessage(shown)
+      : {
+          type: "hafezi-theme",
+          theme: root.getAttribute("saved-theme") === "dark" ? "dark" : "light",
+        }
+  }
   new MutationObserver(() => toLab(theme())).observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["saved-theme"],
+    attributeFilter: ["saved-theme", "data-palette"],
   })
   window.addEventListener("message", (event) => {
     if (event.origin !== labOrigin() || event.source !== frame.contentWindow) return

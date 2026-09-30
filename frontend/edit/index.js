@@ -9,6 +9,7 @@
 import { slugifyFilePath } from "@quartz-community/utils/path"
 import { h, present } from "../dashboard/dom.js"
 import { createNotebookEditor } from "./cells.js"
+import { openConflictDialog } from "./conflict.js"
 import { createSourceEditor } from "./editor.js"
 import {
   REPO_LABELS,
@@ -17,11 +18,16 @@ import {
   draftStatus,
   editIntent,
   fileName,
+  heldNotice,
+  movedNotice,
   lineSeparator,
   othersNotice,
+  besideNote,
   sendHint,
   sendLabel,
   sendRefusal,
+  settleNotice,
+  stackWords,
   staleNotice,
   startingText,
   storageKey,
@@ -102,6 +108,9 @@ export async function mountEdit(root) {
   root.replaceChildren()
   root.classList.add("dashboard", "edit-page")
   const intent = editIntent(location.search)
+  // A conflict to settle (/edit?conflict=<id>) has a view of its own (settle.js).
+  if (intent.conflict)
+    return import("./settle.js").then(({ mountSettle }) => mountSettle(root, intent.conflict))
   const title = h("h1", { class: "dash-title", text: "Edit" })
   root.append(h("header", { class: "dash-header" }, title))
   if (!intent.repo || !intent.path) {
@@ -126,7 +135,7 @@ export async function mountEdit(root) {
   }
   const source = got.body
   const key = storageKey(source.repo, source.path)
-  let draft = source.draft
+  let draft = source.draft && { ...source.draft, conflict: source.conflict ?? null }
   let base = draft?.base_sha ?? source.main?.sha
   let saved = { text: draft?.text ?? source.main?.text ?? "", summary: draft?.summary ?? "" }
   const start = startingText(source, browserCopy.read(key))
@@ -158,6 +167,42 @@ export async function mountEdit(root) {
     )
   const others = othersNotice(source.others)
   if (others) notice(others)
+  // Conflicts on this page the viewer may settle: they sent the first change, or are an admin.
+  for (const conflict of source.to_settle ?? [])
+    notice(
+      settleNotice(conflict),
+      h("a", {
+        href: `/edit?${new URLSearchParams({ conflict: conflict.id })}`,
+        text: "Settle it",
+      }),
+    )
+  // The member's own change, held until someone settles it: withdrawing it lets them change it.
+  let heldNote = null
+  const showHeld = () => {
+    heldNote?.remove()
+    heldNote = null
+    if (!draft?.conflict) return
+    heldNote = h(
+      "div",
+      { class: "settings-pending", role: "note" },
+      h("p", { text: heldNotice(draft.conflict) }),
+      h("button", {
+        type: "button",
+        text: "Withdraw it",
+        onclick: async () => {
+          const answer = await call(`/api/edit/conflicts/${draft.conflict.id}/withdraw`, {
+            method: "POST",
+          })
+          if (!answer.ok) return say(answer.body.detail ?? "Withdrawing failed.", true)
+          draft = { ...draft, ...answer.body.draft, text: draft.text, conflict: null }
+          showHeld()
+          say("Withdrawn: it's your draft again. Change it, then send it when you're ready.")
+          refresh()
+        },
+      }),
+    )
+    notices.append(heldNote)
+  }
   if (source.review)
     notice(`An admin merges edits to this file after checking them, since ${source.review}.`)
 
@@ -241,7 +286,7 @@ export async function mountEdit(root) {
   const editor = create(pane, start.text, {
     kind: source.kind,
     separator: lineSeparator(saved.text),
-    readOnly: !source.can_edit,
+    readOnly: !source.can_edit || Boolean(draft?.conflict),
     onSave: () => void save(),
     onChange: (text) => {
       refresh()
@@ -297,10 +342,15 @@ export async function mountEdit(root) {
   preview?.addEventListener("load", () => void showPreview().catch(console.error))
   const dirty = () =>
     editor.getText() !== saved.text || cleanSummary(summary.value) !== (saved.summary ?? "")
+  let wasHeld = Boolean(draft?.conflict)
   function refresh() {
     const sent = draft?.status === "open" && !draft.unsent
-    saveButton.disabled = busy || !dirty()
-    sendButton.disabled = busy || (!draft && !dirty()) || (sent && !dirty())
+    // A held draft waits as it is; withdrawing it (above) makes it the member's again.
+    const held = Boolean(draft?.conflict)
+    if (held !== wasHeld) editor.setReadOnly?.(!source.can_edit || held)
+    wasHeld = held
+    saveButton.disabled = busy || held || !dirty()
+    sendButton.disabled = busy || held || (!draft && !dirty()) || (sent && !dirty())
     discardButton.disabled = busy || (!draft && !dirty())
     sendButton.textContent = sendLabel(source.repo, draft)
     stateLine.textContent = dirty() ? "Unsaved changes." : draftStatus(draft)
@@ -324,7 +374,7 @@ export async function mountEdit(root) {
 
   /** Keep what the Worker said about the draft (its view, with its text and base). */
   const took = (answer, text) => {
-    draft = { ...answer, text }
+    draft = { ...answer, text, conflict: answer.conflict ?? null }
     base = answer.base_sha ?? base
     saved = { text, summary: answer.summary ?? "" }
     browserCopy.drop(key)
@@ -333,7 +383,7 @@ export async function mountEdit(root) {
   }
 
   async function save({ quiet = false } = {}) {
-    if (busy || !source.can_edit) return false
+    if (busy || !source.can_edit || draft?.conflict) return false
     if (draft && !dirty()) return true
     busy = true
     refresh()
@@ -417,10 +467,10 @@ export async function mountEdit(root) {
   // with the member's where they touch different lines (`text`); the editor marks each place the
   // result differs from main's version, to keep or to take main's, and then main's version
   // becomes the draft's base.
-  function compare(incoming, { kind = "main", text = null } = {}) {
+  function compare(incoming, { kind = "main", text = null, stack = null } = {}) {
     if (text !== null && text !== editor.getText()) editor.setText(text)
-    editor.compareWith(incoming.text)
-    const words = compareWords(kind, source.repo)
+    const words = stack ? stackWords(stack, source.repo) : compareWords(kind, source.repo)
+    editor.compareWith(incoming.text, words.labels)
     comparing.hidden = false
     comparing.replaceChildren(
       h("p", { text: words.message }),
@@ -436,7 +486,7 @@ export async function mountEdit(root) {
             const answer = await call(`/api/edit/drafts/${draft.id}`, {
               method: "PUT",
               body: JSON.stringify({
-                base_sha: incoming.sha,
+                ...(stack ? { stack_on: stack.draft } : { base_sha: incoming.sha }),
                 text,
                 summary: summary.value,
                 version: draft.version,
@@ -484,7 +534,16 @@ export async function mountEdit(root) {
     say(source.repo === "vault" ? "Publishing…" : "Sending…")
     try {
       const answer = await call(`/api/edit/drafts/${draft.id}/send`, { method: "POST" })
-      if (answer.status === 409 && answer.body.incoming) {
+      if (answer.status === 409 && answer.body.kind === "pending") {
+        say(sendRefusal(answer.body), true)
+        openConflictDialog(answer.body, {
+          repo: source.repo,
+          choose: (choice) => void chose(choice, answer.body),
+        })
+      } else if (answer.status === 409 && answer.body.kind === "moved") {
+        say(sendRefusal(answer.body), true)
+        moved()
+      } else if (answer.status === 409 && answer.body.incoming) {
         // Main's version is the newest the page knows of now (Discard goes back to it).
         source.main = { ...answer.body.incoming, size: answer.body.incoming.text.length }
         say(sendRefusal(answer.body), true)
@@ -495,13 +554,13 @@ export async function mountEdit(root) {
         })
       } else if (!answer.ok) say(answer.body.detail ?? `Sending failed (${answer.status}).`, true)
       else {
-        draft = { ...answer.body, text: draft.text, base_sha: base }
+        draft = { ...answer.body, text: draft.text, base_sha: base, conflict: null }
         say(
-          answer.body.pull
+          (answer.body.pull
             ? `Sent as pull request #${answer.body.pull.number}.`
             : source.repo === "vault"
               ? "Published."
-              : "Sent.",
+              : "Sent.") + besideNote(answer.body.beside),
         )
       }
     } catch (error) {
@@ -512,8 +571,56 @@ export async function mountEdit(root) {
     }
   }
 
-  discardButton.onclick = async () => {
+  // The member's choice in the conflict dialog (conflict.js).
+  async function chose(choice, body) {
+    if (choice === "discard") return discard(false)
+    if (choice === "stack")
+      return compare(
+        { sha: null, text: body.their_text },
+        { text: body.proposed ?? null, stack: body.with },
+      )
+    busy = true
+    refresh()
+    try {
+      const answer = await call(`/api/edit/drafts/${draft.id}/queue`, { method: "POST" })
+      if (!answer.ok) return say(answer.body.detail ?? `Queueing failed (${answer.status}).`, true)
+      draft = { ...draft, ...answer.body.draft, conflict: answer.body.conflict }
+      showHeld()
+      say("Queued for review.")
+    } finally {
+      busy = false
+      refresh()
+    }
+  }
+
+  // The page was moved or deleted on main: the member's text is still here to copy.
+  let movedNote = null
+  function moved() {
+    movedNote?.remove()
+    movedNote = h(
+      "div",
+      { class: "settings-pending", role: "alert" },
+      h("p", { text: movedNotice() }),
+      h("button", {
+        type: "button",
+        text: "Copy your text",
+        onclick: async (event) => {
+          try {
+            await navigator.clipboard.writeText(editor.getText())
+            event.target.textContent = "Copied"
+          } catch {
+            say("This browser didn't let the page copy: select the text and copy it.", true)
+          }
+        },
+      }),
+    )
+    notices.append(movedNote)
+    movedNote.scrollIntoView({ block: "nearest" })
+  }
+
+  async function discard(ask = true) {
     if (
+      ask &&
       !confirm(
         draft?.pull
           ? "Discard your draft? Its pull request closes, and the file stays as it is on main."
@@ -532,9 +639,11 @@ export async function mountEdit(root) {
     editor.setText(saved.text)
     browserCopy.drop(key)
     showProblems()
+    heldNote?.remove()
     say("Discarded.")
     refresh()
   }
+  discardButton.onclick = () => void discard()
   saveButton.onclick = () => void save()
   // Ctrl/⌘+S saves from anywhere on the page (the editors handle it themselves first).
   root.addEventListener("keydown", (event) => {
@@ -554,5 +663,6 @@ export async function mountEdit(root) {
   window.addEventListener("beforeunload", (event) => {
     if (source.can_edit && dirty()) event.preventDefault()
   })
+  showHeld()
   refresh()
 }

@@ -157,12 +157,20 @@ export function createSourceEditor(parent, text, { kind, separator, readOnly, on
     setText: (next) =>
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } }),
     focus: () => view.focus(),
+    setReadOnly: (readOnly) =>
+      view.dispatch({
+        effects: editable.reconfigure([
+          EditorState.readOnly.of(readOnly),
+          EditorView.editable.of(!readOnly),
+        ]),
+      }),
     previewMarkdown: () => view.state.doc.toString(),
     /**
-     * Mark where this text differs from `original` (main's newer version of the file): each
-     * difference can be kept as the member wrote it, or taken from main. null ends it.
+     * Mark where this text differs from `original` (main's newer version of the file, or the
+     * version another member sent): each difference can be kept as it is here, or taken from
+     * `original`, with the buttons' words given. null ends it.
      */
-    compareWith(original) {
+    compareWith(original, { keep = "Keep mine", take = "Take main's" } = {}) {
       view.dispatch({
         effects: merge.reconfigure(
           original === null
@@ -174,7 +182,7 @@ export function createSourceEditor(parent, text, { kind, separator, readOnly, on
                   h("button", {
                     type: "button",
                     class: `edit-merge-${type}`,
-                    text: type === "accept" ? "Keep mine" : "Take main's",
+                    text: type === "accept" ? keep : take,
                     onmousedown: action,
                   }),
               }),

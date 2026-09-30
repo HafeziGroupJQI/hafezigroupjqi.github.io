@@ -242,9 +242,9 @@ export function createNotebookEditor(parent, text, { separator, readOnly, onChan
     },
     focus: () => cellsHost.querySelector(".cm-content")?.focus(),
     // Someone else's version of the notebook is compared as JSON, where the differences show.
-    compareWith(original) {
+    compareWith(original, labels) {
       if (original !== null) show("json")
-      json?.compareWith(original)
+      json?.compareWith(original, labels)
     },
     previewMarkdown() {
       try {

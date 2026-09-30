@@ -1,17 +1,25 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { editAction, editUrl } from "./link.js"
+import { diffHtml } from "../page-history/diff.js"
 import {
+  besideNote,
   cleanSummary,
+  conflictWords,
   compareWords,
   draftStatus,
   dueAt,
   editIntent,
+  heldNotice,
   lineSeparator,
+  movedNotice,
   othersNotice,
   sendHint,
   sendLabel,
   sendRefusal,
+  settleNotice,
+  settleWords,
+  stackWords,
   staleNotice,
   startingText,
   storageKey,
@@ -83,9 +91,29 @@ test("the editor reads what it was opened with", () => {
       page: "/",
       sha: "ab",
       note: "generated",
+      conflict: null,
+      restore: null,
+      undo: null,
+      from: null,
     },
   )
-  assert.deepEqual(editIntent(""), { repo: null, path: null, page: null, sha: null, note: null })
+  assert.deepEqual(editIntent(""), {
+    repo: null,
+    path: null,
+    page: null,
+    sha: null,
+    note: null,
+    conflict: null,
+    restore: null,
+    undo: null,
+    from: null,
+  })
+  assert.equal(editIntent("?conflict=0123456789ab").conflict, "0123456789ab")
+  assert.deepEqual(
+    [editIntent("?restore=abc&from=notes%2Fa.md").restore, editIntent("?undo=def").undo],
+    ["abc", "def"],
+  )
+  assert.equal(editIntent("?restore=abc&from=notes%2Fa.md").from, "notes/a.md")
 })
 
 test("a file keeps its own line separator and a summary is one line", () => {
@@ -201,4 +229,98 @@ test("a send refused because main changed says whether the changes were merged",
   assert.match(sendRefusal({ kind: "main" }), /same lines/)
   assert.match(sendRefusal({ kind: "moved" }), /moved or deleted/)
   assert.equal(sendRefusal({ detail: "no" }), "no")
+})
+
+// Names, summaries and page text from another member: the words below are text (index.js and
+// conflict.js put them in with textContent), and their change is drawn by diff2html, escaped.
+const EVIL = '<img src=x onerror="alert(1)">'
+
+test("the conflict dialog names the other member and when their change goes in", () => {
+  const words = conflictWords(
+    { with: { author: "Anish", login: "anish", sent_at: NOW - HOUR, due_at: NOW + HOUR } },
+    "vault",
+    NOW,
+    "en-US",
+  )
+  assert.equal(words.title, "Anish also changed this page")
+  assert.match(
+    words.line,
+    /^Anish published a change at .*\. It goes in at .*\. It changes some of the same lines as yours\.$/,
+  )
+  assert.equal(
+    words.queue,
+    "Queue for review: an admin or Anish will settle it. Your change waits until then.",
+  )
+  assert.match(
+    conflictWords({ with: { login: "eve", due_at: 0 } }, "vault-private", NOW).line,
+    /^eve sent a change .*the next hourly run/,
+  )
+  // A name is kept as the text it is.
+  assert.equal(
+    conflictWords({ with: { author: EVIL } }, "vault", NOW).title,
+    `${EVIL} also changed this page`,
+  )
+})
+
+test("another member's change in the dialog is escaped: nothing in it runs", () => {
+  const markup = diffHtml("---\ntitle: A\n---\n\nText.\n", `---\ntitle: A\n---\n\n${EVIL}\n`)
+  assert.doesNotMatch(markup, /<img/)
+  assert.match(markup, /&lt;img/)
+})
+
+test("a held change and a conflict to settle say who settles it", () => {
+  assert.equal(
+    heldNotice({ first_login: "anish", first_author: "Anish" }),
+    "Your change is waiting for Anish or an admin to settle it. Withdraw it to change it yourself.",
+  )
+  assert.match(heldNotice({ first_login: null }), /waiting for an admin to settle it/)
+  assert.equal(
+    settleNotice({ author: "Rai", you_first: true, first_login: "anish" }, "anish"),
+    "Rai has a change that conflicts with yours.",
+  )
+  assert.match(
+    settleNotice({ author: "Rai", first_login: "anish" }, "owner"),
+    /conflicts with one sent before it/,
+  )
+  assert.equal(
+    draftStatus({ status: "conflict", conflict: { first_login: null } }),
+    heldNotice({ first_login: null }),
+  )
+})
+
+test("the settle view speaks to the first editor, or to an admin", () => {
+  const detail = (conflict) => ({
+    conflict: { author: "Rai", state: "open", ...conflict },
+    due_at: NOW + HOUR,
+  })
+  const first = settleWords(detail({ you_first: true, first_login: "anish" }), NOW, "en-US")
+  assert.equal(first.first, "Keep mine")
+  assert.equal(first.second, "Take theirs")
+  assert.match(first.lines[0], /as you\.$/)
+  const admin = settleWords(detail({ first_login: "anish", first_author: "Anish" }), NOW, "en-US")
+  assert.equal(admin.first, "Keep the first change")
+  assert.equal(admin.second, "Take Rai's")
+  assert.equal(admin.closed, "Only Anish or an admin can settle this.")
+  assert.match(settleWords(detail({ first_login: null }), NOW).lines[0], /went in first/)
+  assert.equal(
+    settleWords(detail({ state: "resolved" }), NOW).closed,
+    "This conflict is settled already.",
+  )
+})
+
+test("editing on top of another's change, a moved page and changes beside each other", () => {
+  assert.match(
+    stackWords({ author: "Anish" }, "vault").message,
+    /on top of Anish's version.*Yours goes in after theirs\.$/,
+  )
+  assert.deepEqual(stackWords({ login: "eve" }, "vault").labels, {
+    keep: "Keep mine",
+    take: "Take theirs",
+  })
+  assert.match(movedNotice(), /Copy your text/)
+  assert.equal(besideNote([]), "")
+  assert.equal(
+    besideNote([{ author: "Anish" }, { login: "eve" }]),
+    " Anish and eve also changed this page, on other lines: both changes go in.",
+  )
 })

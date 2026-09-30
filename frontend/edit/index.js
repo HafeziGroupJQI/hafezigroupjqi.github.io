@@ -102,9 +102,28 @@ function previewFrame() {
     sandbox: "allow-same-origin allow-popups allow-popups-to-escape-sandbox",
     referrerpolicy: "no-referrer",
   })
-  frame.srcdoc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><base target="_blank">${styles}<style>body{margin:0;padding:12px 20px;background:#fff}body>div>h1{margin:8px 0 16px;font-size:1.9rem;font-weight:600}.edit-runs{display:inline-block;margin:8px 0 4px;padding:1px 8px;border-radius:10px;background:#fff3cd;color:#664d03;font-size:.75rem}</style></head><body><div class="page-content__main"><h1></h1><article class="text-content page-body"></article></div></body></html>`
+  frame.srcdoc = `<!doctype html><html lang="en"${themeAttributes()}><head><meta charset="utf-8"><base target="_blank">${styles}<style>body{margin:0;padding:12px 20px;background:var(--light, #fff)}body>div>h1{margin:8px 0 16px;font-size:1.9rem;font-weight:600}.edit-runs{display:inline-block;margin:8px 0 4px;padding:1px 8px;border-radius:10px;background:var(--c-warn-soft, #fff3cd);color:var(--c-warn, #664d03);font-size:.75rem}</style></head><body><div class="page-content__main"><h1></h1><article class="text-content page-body"></article></div></body></html>`
+  // The member's theme changed (frontend/theme/): the preview follows.
+  document.addEventListener("themechange", () => {
+    const html = frame.contentDocument?.documentElement
+    if (!html) return
+    for (const name of THEME_ATTRIBUTES) {
+      const value = document.documentElement.getAttribute(name)
+      if (value === null) html.removeAttribute(name)
+      else html.setAttribute(name, value)
+    }
+  })
   return frame
 }
+
+// The member's theme on the preview's page as on this one: its attributes and its tokens (set
+// inline on <html>).
+const THEME_ATTRIBUTES = ["saved-theme", "data-palette", "data-figures", "style"]
+const themeAttributes = () =>
+  THEME_ATTRIBUTES.map((name) => [name, document.documentElement.getAttribute(name)])
+    .filter(([, value]) => value !== null)
+    .map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`)
+    .join("")
 
 export async function mountEdit(root) {
   root.replaceChildren()

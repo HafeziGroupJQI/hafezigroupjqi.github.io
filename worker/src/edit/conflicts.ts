@@ -32,6 +32,80 @@ export async function baseText(
   return bytes && decoder.decode(bytes)
 }
 
+/** How long an unsettled conflict stays open before its draft goes back to its author. */
+export const CONFLICT_DAYS = 14
+
+/** An id like a draft's: six random bytes in hex. */
+export const newId = () =>
+  [...crypto.getRandomValues(new Uint8Array(6))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+
+export type ConflictReason = "pending" | "main" | "base-gone" | "moved"
+
+export interface ConflictRow {
+  id: string
+  repo: DraftRow["repo"]
+  path: string
+  /** The held draft: the second one sent. */
+  draft_id: string
+  /** The second editor. */
+  login: string
+  first_draft_id: string | null
+  /** Who may settle it besides admins; null when only admins may. */
+  first_login: string | null
+  first_author: string | null
+  first_blob: string | null
+  reason: ConflictReason
+  state: "open" | "resolved" | "rejected" | "withdrawn" | "expired"
+  resolution: "first" | "second" | "merged" | null
+  resolved_by: string | null
+  opened_at: number
+  resolved_at: number | null
+  expires_at: number
+}
+
+/**
+ * The statement that opens a conflict on a draft, once that draft stands as one
+ * (upload_drafts.status 'conflict'); a draft has at most one open. Who the first editor is comes
+ * from the Worker's own rows, never from a request.
+ */
+export function openConflict(
+  env: Pick<Env, "DB">,
+  conflict: {
+    id?: string
+    repo: DraftRow["repo"]
+    path: string
+    draft: string
+    login: string
+    first?: { id: string | null; login: string | null; author: string | null } | null
+    blob?: string | null
+    reason: ConflictReason
+    now: number
+  },
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT OR IGNORE INTO edit_conflicts
+       (id, repo, path, draft_id, login, first_draft_id, first_login, first_author, first_blob,
+        reason, opened_at, expires_at)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+     WHERE EXISTS (SELECT 1 FROM upload_drafts WHERE id = ?4 AND status = 'conflict')`,
+  ).bind(
+    conflict.id ?? newId(),
+    conflict.repo,
+    conflict.path,
+    conflict.draft,
+    conflict.login,
+    conflict.first?.id ?? null,
+    conflict.first?.login ?? null,
+    conflict.first?.author ?? null,
+    conflict.blob ?? null,
+    conflict.reason,
+    conflict.now,
+    conflict.now + CONFLICT_DAYS * 86_400_000,
+  )
+}
+
 /** What would refuse a merged text before anyone looked at it: the page's own checks. */
 export function mergedProblems(
   repo: DraftRow["repo"],
@@ -47,7 +121,7 @@ export function mergedProblems(
 
 /** Notebooks are JSON: merged line by line they would often be broken, so any two edits of one
  *  are a conflict. */
-const mergeable = (path: string) => !/\.ipynb$/i.test(path)
+export const mergeable = (path: string) => !/\.ipynb$/i.test(path)
 
 export type SendCheck =
   | { kind: "ok"; main: RepoBlob; mainText: string }

@@ -100,6 +100,7 @@ beforeEach(async () => {
     "schema/person.schema.json": JSON.stringify(PERSON_SCHEMA),
     "schema/equipment.schema.json": JSON.stringify(EQUIPMENT_SCHEMA),
   })
+  await env.DB.prepare("DELETE FROM edit_conflicts").run()
   await env.DB.prepare("DELETE FROM upload_changes").run()
   await env.DB.prepare("DELETE FROM upload_drafts").run()
   await env.DB.prepare("DELETE FROM profiles").run()
@@ -283,9 +284,77 @@ describe("public pages: publishing", () => {
     expect(await auditRows("action = 'edit.conflict'")).toEqual([
       expect.objectContaining({ login: "bob", target: two }),
     ])
+    // The conflict names Ada, whose change went in first: she or an admin may settle it.
+    const { results } = await env.DB.prepare(
+      "SELECT draft_id, login, first_draft_id, first_login, reason, state FROM edit_conflicts",
+    ).all()
+    expect(results).toEqual([
+      {
+        draft_id: two,
+        login: "bob",
+        first_draft_id: one,
+        first_login: "ada",
+        reason: "main",
+        state: "open",
+      },
+    ])
     // The next run leaves Ada's change alone too.
     await commitDue(env as any, vault.fetch, due + 3_600_000)
     expect(vault.text(path)).toBe(RESEARCH + "Ada's line.\n")
+  })
+
+  it("puts two due edits of one page together when they change different lines", async () => {
+    const ada = await as("ada")
+    const bob = await as("bob")
+    const path = "content/research/engines.md"
+    const body = RESEARCH + "\nOne.\n\nTwo.\n\nThree.\n\nFour.\n\nFive.\n"
+    vault.push(path, body)
+    const one = (await draft(ada, path, body.replace("One.", "One, by Ada."))).body.id
+    const two = (await draft(bob, path, body.replace("Five.", "Five, by Bob."))).body.id
+    const due = (await publish(ada, one)).body.due_at
+    await publish(bob, two)
+    const calls = vault.calls.length
+    expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ merged: [one, two] })
+    expect(vault.text(path)).toBe(
+      body.replace("One.", "One, by Ada.").replace("Five.", "Five, by Bob."),
+    )
+    // Two commits, Ada's and then Bob's, and the audit log says Bob's was merged onto hers.
+    const second = vault.commit(vault.head)
+    expect(second.author.email).toBe("bob@users.noreply.github.com")
+    expect(vault.commit(second.parents[0]).author.email).toBe("ada@users.noreply.github.com")
+    const merges = await auditRows("action = 'edit.merge'")
+    expect(merges.map((row) => JSON.parse(row.detail_json))).toEqual([
+      { path, commit: second.parents[0] },
+      { path, commit: vault.head, auto_merged: true, onto: one },
+    ])
+    // One more GitHub request than two edits of different pages: the second one's base.
+    expect(vault.calls.length - calls).toBeLessThanOrEqual(4 + 3 * 2 + 1)
+  })
+
+  it("merges an edit with a change that reached main after it was published", async () => {
+    const admin = await as("owner", "owner")
+    const path = "content/people/ada-lovelace.md"
+    // An admin's edit of the body, published; then Ada's Settings change lands at :00.
+    const id = (await draft(admin, path, ADA + "A line from an admin.\n")).body.id
+    const due = (await publish(admin, id)).body.due_at
+    vault.push(path, ADA.replace("scope: engines", "scope: difference engines"))
+    expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ merged: [id] })
+    expect(vault.text(path)).toBe(
+      ADA.replace("scope: engines", "scope: difference engines") + "A line from an admin.\n",
+    )
+  })
+
+  it("holds a merge the vault's check would refuse as a conflict", async () => {
+    const ada = await as("ada")
+    const path = "content/research/engines.md"
+    const id = (
+      await draft(ada, path, RESEARCH.replace("title: Engines\n", "title: Engines\nscope: a\n"))
+    ).body.id
+    const due = (await publish(ada, id)).body.due_at
+    vault.push(path, RESEARCH.replace("type: research\n", "type: research\nscope: b\n"))
+    const main = vault.head
+    expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ conflicts: [id] })
+    expect(vault.head).toBe(main)
   })
 
   it("stays within a Free invocation's subrequests: a few edits per run, the rest an hour later", async () => {

@@ -31,6 +31,7 @@ beforeEach(async () => {
     [PAGE]: TEXT,
     "content/research/optics.md": TEXT.replace("Engines", "Optics"),
   })
+  await env.DB.prepare("DELETE FROM edit_conflicts").run()
   await env.DB.prepare("DELETE FROM upload_changes").run()
   await env.DB.prepare("DELETE FROM upload_drafts").run()
   await env.DB.prepare("DELETE FROM changes").run()

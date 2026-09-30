@@ -7,6 +7,8 @@ import { RepoConflict, type RepoFetch, type TreeEntry } from "../repo"
 import { draftChanges, recordChanges, settleChanges, unsentChanges } from "../changes"
 import { type ChangeRow, type DraftRow, publishedKey, settle } from "../uploads/drafts"
 import { DraftRepo } from "../uploads/github"
+import { baseText, mergeable, newId as newConflict, openConflict } from "./conflicts"
+import { threeWay } from "./merge"
 import { type VaultView, pageProblems, vaultProblems } from "./public"
 import { editMessage, editTitle } from "./rules"
 
@@ -16,9 +18,10 @@ import { editMessage, editTitle } from "./rules"
 // hour after this one, so its member can still change or discard it; until then it is theirs
 // alone, in the site's D1 and R2. The hourly run (commitDue, the Worker's "4 * * * *" cron) then
 // commits each due edit straight to main as its member's own commit, checked again against main
-// as it is then, and refused as a conflict if the page changed there since the member loaded it,
-// or if another member's edit of the same page went in earlier in the same run: nothing anyone
-// else wrote is overwritten.
+// as it is then. If the page changed there since the member loaded it, or another member's edit
+// of the same page went in earlier in the same run, the two are merged line by line (merge.ts):
+// changes to different lines both go in, and changes to the same lines make the later edit a
+// conflict (conflicts.ts), held with its text kept. Nothing anyone else wrote is overwritten.
 
 /** Due within this long of now counts as due: the cron fires on the hour, give or take. */
 const SLACK_MS = 5 * 60_000
@@ -110,21 +113,29 @@ export interface CommitResult {
 type Due = DraftRow & Pick<ChangeRow, "path" | "base_sha">
 
 /** Record why a due edit didn't go in, unless its member published it again meanwhile. */
-async function mark(env: Env, row: Due, status: "open" | "failed" | "conflict", message: string) {
+async function mark(
+  env: Env,
+  row: Due,
+  status: "open" | "failed" | "conflict",
+  message: string,
+  also: D1PreparedStatement[] = [],
+) {
   const update = env.DB.prepare(
     `UPDATE upload_drafts SET status = ?, detail_json = ?, updated_at = ?
      WHERE id = ? AND sent_at IS ?`,
   ).bind(status, JSON.stringify({ message }), Date.now(), row.id, row.sent_at)
   // A refusal shows in the site's recent changes (src/changes.ts), in the same request.
   if (status === "open") await update.run()
-  else await env.DB.batch([update, settleChanges(env, row.id, status)])
+  else await env.DB.batch([update, settleChanges(env, row.id, status), ...also])
 }
 
 /**
  * The hourly run: every public page edit that is due goes into the vault's main, each as its
  * member's own commit (chained on one another), and main moves once. An edit changed since it was
- * published waits for its member to publish it again; one whose page changed on main since its
- * base is a conflict; one the vault's check would now refuse (a page it links to is gone, say)
+ * published waits for its member to publish it again; one whose page changed since its base (on
+ * main, or by an edit committed earlier in this run) is merged with that change when the two
+ * touch different lines, and is a conflict when they touch the same; one the vault's check would
+ * now refuse (a page it links to is gone, say)
  * fails; its member sees why in the editor. If main moves while the run commits, the run tries
  * again next hour.
  */
@@ -151,28 +162,15 @@ export async function commitDue(
   const vault = vaultView(repo, files)
   let parent = tip.commit
   let tree = tip.tree
-  const made: { row: Due; commit: string }[] = []
-  // Pages this run has already committed an edit of: main's tree above was read once, so a second
-  // due edit of the same page still matches it, and would replace the first one's text whole.
-  const written = new Set<string>()
+  const made: { row: Due; commit: string; onto: string | null }[] = []
+  // Each page's text as this run has it so far, and whose edit wrote it: main's tree above was
+  // read once, so a second due edit of the same page is checked against the first one's text.
+  const written = new Map<string, { text: string; row: Due }>()
   for (const row of results) {
     try {
       if (row.sent_at === null || row.edited_at > row.sent_at) {
         await mark(env, row, "open", "changed since you published it: publish it again")
         result.waiting.push(row.id)
-        continue
-      }
-      if (written.has(row.path) || files.get(row.path)?.sha !== row.base_sha) {
-        await mark(
-          env,
-          row,
-          "conflict",
-          written.has(row.path)
-            ? "someone else's edit of this page went in first: open it in the editor to take their change in"
-            : "the page changed on main since you started: open it in the editor to take the change in",
-        )
-        await auditJob(env, row.login, "edit.conflict", row.id, { path: row.path })
-        result.conflicts.push(row.id)
         continue
       }
       const object = await env.ARTIFACTS.get(publishedKey(row.id, row.path))
@@ -181,11 +179,58 @@ export async function commitDue(
         result.failed.push(row.id)
         continue
       }
-      const text = await object.text()
-      // Main is the edit's base here (checked above): what the edit adds must still lead
-      // somewhere, and what it names must still be there.
-      const base = await repo.read(row.path)
-      const problems = await vaultProblems(row.path, text, base, vault)
+      let text = await object.text()
+      const before = written.get(row.path)
+      const onMain = files.get(row.path)
+      // The page as it is now: what the edit adds must still lead somewhere, and what it names
+      // must still be there.
+      const current = before ? before.text : onMain ? await repo.read(row.path) : null
+      let merged = false
+      if (before || onMain?.sha !== row.base_sha) {
+        // The page changed since this edit's base: both go in if they touch different lines.
+        const base = current === null ? null : await baseText(env, repo, row, row)
+        const merge = base !== null && mergeable(row.path) ? threeWay(base, current!, text) : null
+        if (!merge?.clean || (await vaultProblems(row.path, merge.text, current, vault)).length) {
+          const conflict = newConflict()
+          await mark(
+            env,
+            row,
+            "conflict",
+            before
+              ? `${before.row.author || before.row.login} changed the same lines of this page, and their change went in first`
+              : current === null
+                ? "the page was moved or deleted on main since you started"
+                : "the page changed on main since you started, on the same lines as your change",
+            [
+              openConflict(env, {
+                id: conflict,
+                repo: "vault",
+                path: row.path,
+                draft: row.id,
+                login: row.login,
+                first: before && {
+                  id: before.row.id,
+                  login: before.row.login,
+                  author: before.row.author,
+                },
+                blob: before ? null : (onMain?.sha ?? null),
+                reason: current === null ? "moved" : "main",
+                now,
+              }),
+            ],
+          )
+          await auditJob(env, row.login, "edit.conflict", row.id, {
+            path: row.path,
+            conflict,
+            first: before?.row.login ?? null,
+          })
+          result.conflicts.push(row.id)
+          continue
+        }
+        text = merge.text
+        merged = true
+      }
+      const problems = await vaultProblems(row.path, text, current, vault)
       if (problems.length) {
         await mark(
           env,
@@ -203,8 +248,8 @@ export async function commitDue(
         name: row.author || row.login,
         email: `${row.login}@users.noreply.github.com`,
       })
-      made.push({ row, commit: parent })
-      written.add(row.path)
+      made.push({ row, commit: parent, onto: merged ? (before?.row.id ?? onMain!.sha) : null })
+      written.set(row.path, { text, row })
     } catch (error) {
       console.error(`committing edit ${row.id} failed`, error)
       result.waiting.push(row.id)
@@ -227,9 +272,14 @@ export async function commitDue(
     }
     return result
   }
-  for (const { row, commit } of made) {
+  for (const { row, commit, onto } of made) {
     await settle(env, row.id, "merged", { merge: commit })
-    await auditJob(env, row.login, "edit.merge", row.id, { path: row.path, commit })
+    // Merged with a change that went in since its base: the audit log says onto what.
+    await auditJob(env, row.login, "edit.merge", row.id, {
+      path: row.path,
+      commit,
+      ...(onto ? { auto_merged: true, onto } : {}),
+    })
     result.merged.push(row.id)
   }
   return result

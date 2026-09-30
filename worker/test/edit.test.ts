@@ -39,6 +39,7 @@ beforeEach(async () => {
     "code/guide/intro.nb": "(* Content-type: application/vnd.wolfram.mathematica *)\n",
     "notes/scan.pdf": "%PDF-1.4",
   })
+  await env.DB.prepare("DELETE FROM edit_conflicts").run()
   await env.DB.prepare("DELETE FROM upload_changes").run()
   await env.DB.prepare("DELETE FROM upload_drafts").run()
   // A member's name on their commits is their People page's, when they have one.

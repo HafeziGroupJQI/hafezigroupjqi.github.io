@@ -133,3 +133,33 @@ export function sendLabel(repo, draft) {
   if (repo === "vault") return again ? "Publish the new version" : "Publish"
   return draft?.pull ? "Send the new version" : "Send"
 }
+
+/**
+ * The words beside the comparison with main's newer version of the page. `rebase`: the Worker
+ * merged main's changes with the member's, which touch other lines. `main`: some of the same
+ * lines changed, and the member settles those.
+ */
+export function compareWords(kind, repo) {
+  const send = repo === "vault" ? "publish" : "send"
+  if (kind === "rebase")
+    return {
+      message: `Someone changed this page while you were editing. Your changes don't touch the same lines, so we merged them. The marks show what differs from their version: look it over, then ${send}.`,
+      done: "It looks right",
+      after: `Your draft has their changes now: ${send} it when you're ready.`,
+    }
+  return {
+    message: `Someone changed this page since you started, on some of the same lines. Their other changes are merged in already. Where the marks show a difference from their version, keep yours or take theirs; then say you're done, and ${send} it again.`,
+    done: "I've taken in their changes",
+    after: `Your draft is on the newest version now: ${send} it when you're ready.`,
+  }
+}
+
+/** What a refused send says in the status line, in plain words. */
+export function sendRefusal(body) {
+  if (body.kind === "rebase")
+    return "This page changed while you were editing. We merged the changes."
+  if (body.kind === "main")
+    return "This page changed while you were editing, on some of the same lines."
+  if (body.kind === "moved") return "This page was moved or deleted since you started editing."
+  return body.detail ?? "That didn't go through."
+}

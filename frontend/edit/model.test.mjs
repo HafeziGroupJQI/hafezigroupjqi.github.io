@@ -3,6 +3,7 @@ import test from "node:test"
 import { editAction, editUrl } from "./link.js"
 import {
   cleanSummary,
+  compareWords,
   draftStatus,
   dueAt,
   editIntent,
@@ -10,6 +11,7 @@ import {
   othersNotice,
   sendHint,
   sendLabel,
+  sendRefusal,
   staleNotice,
   startingText,
   storageKey,
@@ -185,4 +187,18 @@ test("a save over a newer one made elsewhere says when that one was made", () =>
     staleNotice({ edited_at: NOW }, "en-US"),
     /^You saved a newer version of this draft somewhere else \(Sep 29, .*\)\. Use that version/,
   )
+})
+
+test("a send refused because main changed says whether the changes were merged", () => {
+  assert.match(compareWords("rebase", "vault").message, /so we merged them.*then publish\.$/)
+  assert.equal(compareWords("rebase", "vault-private").done, "It looks right")
+  assert.match(
+    compareWords("main", "vault-private").message,
+    /keep yours or take theirs.*send it again\.$/,
+  )
+  assert.equal(compareWords(undefined, "vault").done, "I've taken in their changes")
+  assert.match(sendRefusal({ kind: "rebase" }), /We merged the changes/)
+  assert.match(sendRefusal({ kind: "main" }), /same lines/)
+  assert.match(sendRefusal({ kind: "moved" }), /moved or deleted/)
+  assert.equal(sendRefusal({ detail: "no" }), "no")
 })

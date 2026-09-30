@@ -13,6 +13,7 @@ import { createSourceEditor } from "./editor.js"
 import {
   REPO_LABELS,
   cleanSummary,
+  compareWords,
   draftStatus,
   editIntent,
   fileName,
@@ -20,6 +21,7 @@ import {
   othersNotice,
   sendHint,
   sendLabel,
+  sendRefusal,
   staleNotice,
   startingText,
   storageKey,
@@ -411,22 +413,24 @@ export async function mountEdit(root) {
     staleNote.scrollIntoView({ block: "nearest" })
   }
 
-  // Someone changed the file on main since this draft's base: mark each difference to keep or
-  // take, then make main's version the draft's base.
-  function compare(incoming) {
+  // Someone changed the file on main since this draft's base. The Worker merged their changes
+  // with the member's where they touch different lines (`text`); the editor marks each place the
+  // result differs from main's version, to keep or to take main's, and then main's version
+  // becomes the draft's base.
+  function compare(incoming, { kind = "main", text = null } = {}) {
+    if (text !== null && text !== editor.getText()) editor.setText(text)
     editor.compareWith(incoming.text)
+    const words = compareWords(kind, source.repo)
     comparing.hidden = false
     comparing.replaceChildren(
-      h("p", {
-        text: "Someone changed this file on main since you started. Where your version differs from theirs, keep yours or take theirs; then say you're done, and send it again.",
-      }),
+      h("p", { text: words.message }),
       h(
         "div",
         { class: "editor-actions" },
         h("button", {
           type: "button",
           class: "primary",
-          text: "I've taken in their changes",
+          text: words.done,
           onclick: async () => {
             const text = editor.getText()
             const answer = await call(`/api/edit/drafts/${draft.id}`, {
@@ -438,11 +442,12 @@ export async function mountEdit(root) {
                 version: draft.version,
               }),
             })
+            if (answer.status === 409 && answer.body.kind === "stale") return stale(answer.body)
             if (!answer.ok) return say(answer.body.detail ?? "That didn't save.", true)
             took(answer.body, text)
             editor.compareWith(null)
             comparing.hidden = true
-            say("Your draft is on main's newest version now: send it when you're ready.")
+            say(words.after)
           },
         }),
         h("button", {
@@ -482,8 +487,12 @@ export async function mountEdit(root) {
       if (answer.status === 409 && answer.body.incoming) {
         // Main's version is the newest the page knows of now (Discard goes back to it).
         source.main = { ...answer.body.incoming, size: answer.body.incoming.text.length }
-        say(answer.body.detail, true)
-        compare(answer.body.incoming)
+        say(sendRefusal(answer.body), true)
+        // Their changes to other lines are merged in already; the rest is the member's to settle.
+        compare(answer.body.incoming, {
+          kind: answer.body.kind,
+          text: answer.body.merged_text ?? answer.body.proposed ?? null,
+        })
       } else if (!answer.ok) say(answer.body.detail ?? `Sending failed (${answer.status}).`, true)
       else {
         draft = { ...answer.body, text: draft.text, base_sha: base }

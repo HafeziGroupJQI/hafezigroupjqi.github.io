@@ -115,6 +115,17 @@ export class GitRepo {
     return { path, sha: file.sha, size: file.size, bytes: fromBase64(content.replace(/\s/g, "")) }
   }
 
+  /** A blob's bytes by its sha (any version of a file the repository holds), or null. */
+  async blobBytes(sha: string): Promise<Uint8Array | null> {
+    try {
+      const blob = await this.call<{ content: string }>("GET", `/git/blobs/${sha}`)
+      return fromBase64(blob.content.replace(/\s/g, ""))
+    } catch (error) {
+      if (error instanceof RepoMissing || error instanceof RepoConflict) return null
+      throw error
+    }
+  }
+
   /** Every file and folder of a tree, by path. */
   async tree(sha: string): Promise<Map<string, TreeEntry>> {
     const listing = await this.call<{ tree: TreeEntry[]; truncated?: boolean }>(

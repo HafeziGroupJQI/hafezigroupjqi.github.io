@@ -20,6 +20,8 @@ import {
 } from "../uploads/drafts"
 import { DraftRepo, REPO_NAMES, type RepoName } from "../uploads/github"
 import { SENDS_PER_DAY, ownDraft, underLimit } from "../uploads/routes"
+import { baseText, checkSend, refusal } from "./conflicts"
+import { threeWay } from "./merge"
 import { readPage } from "./public"
 import { publishEdit } from "./publish"
 import {
@@ -202,6 +204,10 @@ export async function editRoutes(
         `you have ${EDIT_DRAFTS_MAX} page edits open; send or discard one first`,
       )
     await underLimit(env, session.login, ["edit.create", "edit.save"], SAVES_PER_DAY, "saves")
+    // The base is a version of a file the vault holds: main's, or an older one the member's
+    // page was built from. A made-up base would hide what changed since.
+    if ((await repo.file(file))?.sha !== base && !(await repo.blobBytes(base)))
+      throw new HttpError(409, "that isn't a version of this page; load it again")
     const report = checkEdit(name, file, text)
     const id = [...crypto.getRandomValues(new Uint8Array(6))]
       .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -296,8 +302,27 @@ export async function editRoutes(
         },
         409,
       )
-    if (base !== null && (await repoOf(row.repo).file(change.path))?.sha !== base)
-      throw new HttpError(409, "that isn't main's version of the page; load it again")
+    // Moving the base to main's version says the member took in what changed there. Whether
+    // their text is what a line-by-line merge gives is recorded (edit.rebase), so a change of
+    // someone else's that was dropped on the way shows in the audit log.
+    let rebase: { from: string | null; to: string; clean: boolean } | null = null
+    if (base !== null) {
+      const repo = repoOf(row.repo)
+      const main = await repo.file(change.path)
+      if (main?.sha !== base)
+        throw new HttpError(409, "that isn't main's version of the page; load it again")
+      if (base !== change.base_sha) {
+        const before = await baseText(env, repo, row, change)
+        const mine = await stagedText(env, row, change.path)
+        const merged =
+          before === null ? null : threeWay(before, decode(main.bytes, change.path), mine)
+        rebase = {
+          from: change.base_sha,
+          to: base,
+          clean: Boolean(merged?.clean) && (text ?? mine) === merged!.text,
+        }
+      }
+    }
     const statements: D1PreparedStatement[] = []
     let problems: string[] = []
     if (text !== null) {
@@ -330,6 +355,7 @@ export async function editRoutes(
     )
     await env.DB.batch(statements)
     record("edit.save", change.path, { draft: row.id, fields: Object.keys(body) })
+    if (rebase) record("edit.rebase", change.path, { draft: row.id, ...rebase })
     const [saved] = await changesOf(env, row.id)
     return json({
       ...(await view((await draftRow(env, row.id))!)),
@@ -354,19 +380,16 @@ export async function editRoutes(
     await underLimit(env, session.login, ["uploads.send", "edit.send"], SENDS_PER_DAY, "sends")
     const repo = repoOf(row.repo)
     const { display_name } = await navIdentity(env, session)
+    // Main as it is now: a page that changed there since the member loaded it comes back merged
+    // with their text, or with what changed for them to take in (conflicts.ts).
+    const check = await checkSend(env, repo, row, change, text, access)
+    if (check.kind !== "ok")
+      return json(refusal(check, row.repo === "vault" ? "publish" : "send"), 409)
+    if (check.mainText === text)
+      throw new HttpError(422, "nothing changed: the page is the same as on main")
     if (row.repo === "vault") {
       const author = plainName(display_name, session.login)
-      const refused = await publishEdit(env, repo, row, change, text, { ...access, author })
-      if (refused)
-        return json(
-          {
-            detail: refused.incoming
-              ? "the page changed on main since you started editing: look at what changed, take it into your version, then publish again"
-              : "the page was moved or deleted on main since you started editing",
-            incoming: refused.incoming,
-          },
-          409,
-        )
+      await publishEdit(env, repo, row, change, text, { ...access, author, base: check.mainText })
       const published = await view((await draftRow(env, row.id))!)
       record("edit.send", change.path, {
         draft: row.id,
@@ -376,21 +399,6 @@ export async function editRoutes(
       })
       return json(published)
     }
-    // Someone else's change to the page since the member loaded it comes back with the refusal,
-    // so the editor can show what changed.
-    const main = await repo.file(change.path)
-    if (main?.sha !== change.base_sha)
-      return json(
-        {
-          detail: main
-            ? "the page changed on main since you started editing: look at what changed, take it into your version, then send again"
-            : "the page was moved or deleted on main since you started editing",
-          incoming: main ? { sha: main.sha, text: decode(main.bytes, change.path) } : null,
-        },
-        409,
-      )
-    if (decode(main.bytes, change.path) === text)
-      throw new HttpError(422, "nothing changed: the page is the same as on main")
     await send(env, repo, row, changes, display_name)
     const sent = await view((await draftRow(env, row.id))!)
     record("edit.send", change.path, {

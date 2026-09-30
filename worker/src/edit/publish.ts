@@ -57,9 +57,9 @@ function refuse(problems: string[]): never {
 }
 
 /**
- * Publish a member's edit of a public page: checked against main, it goes in at the end of the
- * hour after this one. Returns main's version of the page instead when it changed there since the
- * member loaded it (their base), so the editor can show what changed.
+ * Publish a member's edit of a public page: checked against the vault at main, it goes in at the
+ * end of the hour after this one. `base` is the text the edit was made from, main's version of
+ * the page, which the route checked it against first (conflicts.ts).
  */
 export async function publishEdit(
   env: Env,
@@ -67,14 +67,9 @@ export async function publishEdit(
   row: DraftRow,
   change: ChangeRow,
   text: string,
-  { admin, author }: { admin: boolean; author: string },
+  { admin, author, base }: { admin: boolean; author: string; base: string },
   now = Date.now(),
-): Promise<{ incoming: { sha: string; text: string } | null } | null> {
-  const main = await repo.file(change.path)
-  if (!main || main.sha !== change.base_sha)
-    return { incoming: main && { sha: main.sha, text: decoder.decode(main.bytes) } }
-  const base = decoder.decode(main.bytes)
-  if (base === text) throw new HttpError(422, "nothing changed: the page is the same as on main")
+): Promise<void> {
   const local = pageProblems(text, base, admin)
   if (local.length) refuse(local)
   const tip = await repo.head()
@@ -103,7 +98,6 @@ export async function publishEdit(
       draftChanges(row, [change], { at: now, author, summary: title, pull: null }),
     ),
   ])
-  return null
 }
 
 export interface CommitResult {

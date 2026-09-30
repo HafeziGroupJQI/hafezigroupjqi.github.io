@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
-import { as } from "./helpers"
+import { as, auditRows } from "./helpers"
 import { vault } from "./worker"
 
 // Conflicts between members' edits of one page (src/edit/conflicts.ts), on the public vault.
@@ -52,6 +52,111 @@ const draft = (client: Client, text: string, summary = "an edit", path = PAGE) =
     text,
     summary,
   })
+
+const send = (client: Client, id: string) => post(client, `/api/edit/drafts/${id}/send`)
+const edit = (from: string, to: string, text = TEXT) => text.replace(from, to)
+
+describe("a page that changed on main since the member loaded it", () => {
+  it("merges changes to other lines, and sends once the member has looked it over", async () => {
+    const bob = await as("bob")
+    const base = vault.sha(PAGE)
+    const mine = edit("Fifth paragraph.", "Fifth, by Bob.")
+    const id = (await draft(bob, mine)).body.id
+    vault.push(PAGE, edit("First paragraph.", "First, by someone."))
+    const refused = await send(bob, id)
+    const merged = edit("First paragraph.", "First, by someone.", mine)
+    expect(refused).toMatchObject({
+      status: 409,
+      body: {
+        kind: "rebase",
+        incoming: { sha: vault.sha(PAGE), text: vault.text(PAGE) },
+        merged_text: merged,
+      },
+    })
+    expect((await bob.json(`/api/edit/drafts/${id}`)).body).toMatchObject({
+      status: "editing",
+      base_sha: base,
+    })
+    const saved = await put(bob, id, { base_sha: vault.sha(PAGE), text: merged })
+    expect(saved.body.base_sha).toBe(vault.sha(PAGE))
+    expect((await send(bob, id)).status).toBe(200)
+    expect(await auditRows("action = 'edit.rebase'")).toEqual([
+      expect.objectContaining({
+        login: "bob",
+        detail_json: JSON.stringify({ draft: id, from: base, to: vault.sha(PAGE), clean: true }),
+      }),
+    ])
+  })
+
+  it("gives back main's version and a merge that keeps the member's lines where both changed", async () => {
+    const bob = await as("bob")
+    const mine = edit("Third paragraph.", "Third, by Bob.")
+    const id = (await draft(bob, mine)).body.id
+    const theirs = edit("Third paragraph.", "Third, by someone.").replace("First", "1st")
+    vault.push(PAGE, theirs)
+    const refused = await send(bob, id)
+    expect(refused).toMatchObject({
+      status: 409,
+      body: {
+        kind: "main",
+        detail: expect.stringContaining("changed on main"),
+        incoming: { text: theirs },
+        base_text: TEXT,
+        proposed: mine.replace("First", "1st"),
+      },
+    })
+  })
+
+  it("records a base moved to main with someone else's lines dropped (a replayed stale base)", async () => {
+    const bob = await as("bob")
+    const base = vault.sha(PAGE)
+    const mine = edit("Fifth paragraph.", "Fifth, by Bob.")
+    const id = (await draft(bob, mine)).body.id
+    vault.push(PAGE, edit("First paragraph.", "First, by someone."))
+    // Bob claims main's version as his base without taking its change in.
+    expect((await put(bob, id, { base_sha: vault.sha(PAGE) })).status).toBe(200)
+    expect(await auditRows("action = 'edit.rebase'")).toEqual([
+      expect.objectContaining({
+        detail_json: JSON.stringify({ draft: id, from: base, to: vault.sha(PAGE), clean: false }),
+      }),
+    ])
+  })
+
+  it("treats a merge the page's checks refuse as a conflict, not a merge", async () => {
+    const bob = await as("bob")
+    // Each adds the same front matter key on a different line: fine apart, invalid together.
+    const mine = TEXT.replace("title: Engines\n", "title: Engines\nscope: mine\n")
+    const id = (await draft(bob, mine)).body.id
+    vault.push(PAGE, TEXT.replace("tags: [research]\n", "tags: [research]\nscope: theirs\n"))
+    const refused = await send(bob, id)
+    expect(refused).toMatchObject({ status: 409, body: { kind: "main" } })
+    expect(refused.body.merged_text).toBeUndefined()
+  })
+
+  it("says a page gone from main was moved or deleted", async () => {
+    const bob = await as("bob")
+    const id = (await draft(bob, TEXT + "More.\n")).body.id
+    vault.push(PAGE, null)
+    expect(await send(bob, id)).toMatchObject({
+      status: 409,
+      body: { kind: "moved", incoming: null, detail: expect.stringContaining("moved or deleted") },
+    })
+  })
+
+  it("refuses a draft whose base is no version of any file", async () => {
+    const bob = await as("bob")
+    const made = await post(bob, "/api/edit/drafts", {
+      repo: "vault",
+      path: PAGE,
+      base_sha: "0123456789abcdef0123456789abcdef01234567",
+      text: TEXT + "More.\n",
+    })
+    expect(made.status).toBe(409)
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM upload_drafts").first<any>())!.n).toBe(
+      0,
+    )
+  })
+})
 
 describe("one member, two devices", () => {
   it("refuses a save made over an older version, and keeps the newer text", async () => {

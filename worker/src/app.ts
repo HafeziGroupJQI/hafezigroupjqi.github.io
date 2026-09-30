@@ -12,6 +12,7 @@ import {
 import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
+import { editRoutes } from "./edit/routes"
 import type { DocsManifest, Env } from "./env"
 import type { AnthropicFetch } from "./gpt/chat"
 import { isLabGptPath, labGptRequest } from "./gpt/lab"
@@ -55,6 +56,7 @@ export const MEMBER_PAGES = [
   "/settings",
   "/uploads",
   "/recent",
+  "/edit",
 ]
 
 const SITE_PREFIX = "/api/site"
@@ -266,6 +268,11 @@ export function createHandler(
     if (profile) return profile
     const uploads = await uploadRoutes(request, url, env, session, record, privateVaultFetch)
     if (uploads) return uploads
+    const edit = await editRoutes(request, url, env, session, record, {
+      vault: vaultFetch,
+      "vault-private": privateVaultFetch,
+    })
+    if (edit) return edit
     return problem(404, "not found")
   }
 

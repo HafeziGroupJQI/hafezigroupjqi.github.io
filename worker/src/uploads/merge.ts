@@ -26,6 +26,9 @@ export interface MergeResult {
   closed: string[]
 }
 
+/** The audit log's word for a draft: uploads.merge, or edit.merge for a page edit (src/edit/). */
+const kind = (row: DraftRow) => (row.kind === "edit" ? "edit" : "uploads")
+
 /** Record where a draft stands, unless its author sent a new version meanwhile. */
 async function mark(env: Env, row: DraftRow, status: Status, detail: Detail): Promise<void> {
   await env.DB.prepare(
@@ -53,7 +56,7 @@ async function settleDraft(
   if (pull.merged) {
     // An admin merged it on GitHub.
     await settle(env, row.id, "merged", { merge: pull.merge_commit_sha })
-    await auditJob(env, row.login, "uploads.merge", row.id, {
+    await auditJob(env, row.login, `${kind(row)}.merge`, row.id, {
       pull: number,
       commit: pull.merge_commit_sha,
       on: "github",
@@ -64,7 +67,7 @@ async function settleDraft(
   if (pull.state === "closed") {
     if (row.branch) await repo.deleteBranch(row.branch)
     await settle(env, row.id, "discarded", { detail: { message: "closed on GitHub" } })
-    await auditJob(env, row.login, "uploads.closed", row.id, { pull: number })
+    await auditJob(env, row.login, `${kind(row)}.closed`, row.id, { pull: number })
     result.closed.push(row.id)
     return
   }
@@ -81,7 +84,7 @@ async function settleDraft(
       message: "its branch was changed on GitHub, so an admin merges it",
       url: pull.html_url,
     })
-    await auditJob(env, row.login, "uploads.review", row.id, { pull: number, head: sha })
+    await auditJob(env, row.login, `${kind(row)}.review`, row.id, { pull: number, head: sha })
     result.review.push(row.id)
     return
   }
@@ -96,7 +99,10 @@ async function settleDraft(
       message: `the validate check failed${check.description ? `: ${check.description}` : ""}`,
       url: check.url,
     })
-    await auditJob(env, row.login, "uploads.failed", row.id, { pull: number, check: check.url })
+    await auditJob(env, row.login, `${kind(row)}.failed`, row.id, {
+      pull: number,
+      check: check.url,
+    })
     result.failed.push(row.id)
     return
   }
@@ -107,7 +113,7 @@ async function settleDraft(
       message: "main changed the same files: send the draft again to rebuild it on main",
       url: pull.html_url,
     })
-    await auditJob(env, row.login, "uploads.conflict", row.id, { pull: number })
+    await auditJob(env, row.login, `${kind(row)}.conflict`, row.id, { pull: number })
     result.conflicts.push(row.id)
     return
   }
@@ -122,7 +128,7 @@ async function settleDraft(
       message: `checked; an admin merges it on GitHub, since something in it runs (${review.join("; ")})`,
       url: pull.html_url,
     })
-    await auditJob(env, row.login, "uploads.review", row.id, { pull: number })
+    await auditJob(env, row.login, `${kind(row)}.review`, row.id, { pull: number })
     result.review.push(row.id)
     return
   }
@@ -135,7 +141,10 @@ async function settleDraft(
   }
   if (row.branch) await repo.deleteBranch(row.branch)
   await settle(env, row.id, "merged", { merge: merged.merged })
-  await auditJob(env, row.login, "uploads.merge", row.id, { pull: number, commit: merged.merged })
+  await auditJob(env, row.login, `${kind(row)}.merge`, row.id, {
+    pull: number,
+    commit: merged.merged,
+  })
   result.merged.push(row.id)
 }
 

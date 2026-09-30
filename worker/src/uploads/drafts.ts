@@ -1,8 +1,9 @@
+import { editMessage, editTitle, freezeDir } from "../edit/rules"
 import type { Env } from "../env"
 import { HttpError } from "../http"
 import { dueAt } from "../profile/routes"
 import { RepoConflict, RepoMissing } from "../repo"
-import type { PrivateVault, RepoName } from "./github"
+import type { DraftRepo, RepoName } from "./github"
 
 // Members' upload drafts in D1 (upload_drafts, upload_changes) and R2 (uploads/<id>/<path>), and
 // what turns one into a pull request on vault-private: the routes (routes.ts), the hourly merge
@@ -110,6 +111,11 @@ export function draftView(repo: string, row: DraftRow, changes: ChangeRow[]) {
   return {
     id: row.id,
     login: row.login,
+    repo: row.repo,
+    kind: row.kind,
+    // An edit's page (its one change) and what its author said it changes.
+    path: row.kind === "edit" ? (changes[0]?.path ?? null) : null,
+    summary: row.summary,
     note: row.note,
     status: row.status,
     title: row.title,
@@ -182,7 +188,7 @@ export async function settle(
  */
 export async function discard(
   env: Env,
-  repo: PrivateVault,
+  repo: DraftRepo,
   row: DraftRow,
   message: string,
 ): Promise<void> {
@@ -254,19 +260,38 @@ const size = (bytes: number | null) =>
 
 /** The pull request's description: who, every file, the member's note, and when it merges. */
 export function pullBody(row: DraftRow, changes: ChangeRow[], name: string, due: number): string {
+  const edit = row.kind === "edit"
   const lines = changes.map((change) =>
     change.action === "rename"
       ? `- rename \`${change.from_path}\` to \`${change.path}\``
-      : `- ${change.action} \`${change.path}\`${size(change.size)}`,
+      : `- ${edit ? "edit" : change.action} \`${change.path}\`${size(change.size)}`,
   )
-  const note = row.note.trim()
+  const note = (edit ? (row.summary ?? "") : row.note).trim()
   const review = changes.filter((change) => change.review)
+  // A Quarto document whose code runs is run again by every members deploy until its frozen
+  // results are committed with it.
+  const frozen = changes.filter((change) => /\.qmd$/i.test(change.path) && change.review)
   return [
-    `uploaded from the members site by ${name.toLowerCase()} (${row.login.toLowerCase()}), draft ${row.id}:`,
+    edit
+      ? `edited in the members site's editor by ${name.toLowerCase()} (${row.login.toLowerCase()}), draft ${row.id}:`
+      : `uploaded from the members site by ${name.toLowerCase()} (${row.login.toLowerCase()}), draft ${row.id}:`,
     "",
     ...lines,
     // In a code block, so an @name in the note doesn't notify anyone.
-    ...(note ? ["", "their note:", "", "```text", note.replace(/```/g, "'''"), "```"] : []),
+    ...(note
+      ? [
+          "",
+          edit ? "their summary:" : "their note:",
+          "",
+          "```text",
+          note.replace(/```/g, "'''"),
+          "```",
+        ]
+      : []),
+    ...frozen.flatMap((change) => [
+      "",
+      `after merging, refresh \`${freezeDir(change.path)}\` (run \`quarto render ${change.path}\` in vault-private and commit \`_freeze\`), or every members deploy runs its code again.`,
+    ]),
     "",
     review.length
       ? `an admin merges this by hand once the validate check passes, since something in it runs: ${review.map((c) => `\`${c.path}\` (${c.review})`).join(", ")}. until then the member can revise it (a new commit replaces this one) or discard it from the site.`
@@ -284,7 +309,7 @@ export function pullBody(row: DraftRow, changes: ChangeRow[], name: string, due:
  */
 export async function send(
   env: Env,
-  repo: PrivateVault,
+  repo: DraftRepo,
   row: DraftRow,
   changes: ChangeRow[],
   displayName: string,
@@ -342,14 +367,18 @@ export async function send(
       entries.push({ path: change.path, sha: await repo.streamBlob(object.body, object.size) })
     }
   }
-  const title = uploadTitle(changes, name)
+  // An edit is one page, titled by what its author said it changes; an upload by its files.
+  const edit = row.kind === "edit"
+  const title = edit
+    ? editTitle(changes[0].path, name, row.summary ?? "")
+    : uploadTitle(changes, name)
   const commit = await repo.createCommit(
-    mergeTitle(title),
+    edit ? editMessage(title) : mergeTitle(title),
     await repo.createTree(tip.tree, entries),
     [tip.commit],
     { name, email: `${row.login}@users.noreply.github.com` },
   )
-  const branch = row.branch ?? `uploads/${row.login.toLowerCase()}/${row.id}`
+  const branch = row.branch ?? `${edit ? "edits" : "uploads"}/${row.login.toLowerCase()}/${row.id}`
   if (!row.branch) await repo.createBranch(branch, commit)
   else
     await repo.moveBranch(branch, commit, true).catch(async (error) => {

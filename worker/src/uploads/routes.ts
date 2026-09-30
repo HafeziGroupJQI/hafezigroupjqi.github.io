@@ -64,7 +64,13 @@ const DRAFT = /^\/api\/uploads\/drafts\/([0-9a-f]{12})(?:\/(file|changes|send))?
 
 const mb = (bytes: number) => `${bytes / 1024 / 1024} MB`
 
-async function underLimit(env: Env, login: string, actions: string[], max: number, what: string) {
+export async function underLimit(
+  env: Env,
+  login: string,
+  actions: string[],
+  max: number,
+  what: string,
+) {
   const row = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM audit_log WHERE login = ? AND at > ?
        AND action IN (SELECT value FROM json_each(?))`,
@@ -75,17 +81,27 @@ async function underLimit(env: Env, login: string, actions: string[], max: numbe
     throw new HttpError(429, `at most ${max} ${what} a day; try again tomorrow`)
 }
 
-/** A draft the member may see (their own; admins see every one), or may change (their own, live). */
-async function ownDraft(
+/**
+ * A draft the member may see (their own; admins see every one), or may change (their own, live).
+ * A page edit (src/edit/) changes from the editor; here it can only be looked at or discarded.
+ */
+export async function ownDraft(
   env: Env,
   id: string,
   session: Session,
-  { change = false } = {},
+  { change = false, kind = null }: { change?: boolean; kind?: DraftRow["kind"] | null } = {},
 ): Promise<DraftRow> {
   const row = await draftRow(env, id)
   const own = row?.login.toLowerCase() === session.login.toLowerCase()
   if (!row || (!own && (change || !(await isAdmin(env, session)))))
     throw new HttpError(404, "no such draft")
+  if (kind && row.kind !== kind)
+    throw new HttpError(
+      409,
+      row.kind === "edit"
+        ? "this draft is a page edit: open it in the editor"
+        : "this draft is an upload: open it on Uploads",
+    )
   if (change && !LIVE.includes(row.status))
     throw new HttpError(409, `this draft is ${row.status}; start a new one`)
   return row
@@ -206,7 +222,8 @@ export async function uploadRoutes(
     const body = (await readJson(request)) as { note?: unknown }
     const note = cleanNote(body.note)
     const open = await env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM upload_drafts WHERE login = ? COLLATE NOCASE AND ${LIVE_SQL}`,
+      `SELECT COUNT(*) AS n FROM upload_drafts
+       WHERE login = ? COLLATE NOCASE AND kind = 'upload' AND ${LIVE_SQL}`,
     )
       .bind(session.login)
       .first<{ n: number }>()
@@ -246,7 +263,7 @@ export async function uploadRoutes(
 
   if (!part && request.method === "PATCH") {
     requireMutation(request, env)
-    const row = await ownDraft(env, id, session, { change: true })
+    const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
     const body = (await readJson(request)) as { note?: unknown }
     await underLimit(env, session.login, EDITS, EDITS_PER_DAY, "changes to uploads")
     await env.DB.prepare("UPDATE upload_drafts SET note = ? WHERE id = ?")
@@ -261,7 +278,7 @@ export async function uploadRoutes(
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true })
     await discard(env, repo, row, "discarded by its author")
-    record("uploads.discard", row.id, { pull: row.pr_number })
+    record(`${row.kind === "edit" ? "edit" : "uploads"}.discard`, row.id, { pull: row.pr_number })
     return json(await view(row.id))
   }
 
@@ -289,7 +306,7 @@ export async function uploadRoutes(
   // Stage a file: a new one (mode=add, the default) or a new version of one (mode=replace).
   if (part === "file" && request.method === "PUT") {
     requireMutation(request, env)
-    const row = await ownDraft(env, id, session, { change: true })
+    const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
     const target = vaultPath(url.searchParams.get("path"))
     const replace = url.searchParams.get("mode") === "replace"
     const type = typeOf(target)
@@ -351,7 +368,7 @@ export async function uploadRoutes(
   // A rename (or move) or a deletion of a file on main.
   if (part === "changes" && request.method === "POST") {
     requireMutation(request, env)
-    const row = await ownDraft(env, id, session, { change: true })
+    const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
     const body = (await readJson(request)) as {
       action?: unknown
       path?: unknown
@@ -434,7 +451,7 @@ export async function uploadRoutes(
   // Take a change out of the draft.
   if (part === "changes" && request.method === "DELETE") {
     requireMutation(request, env)
-    const row = await ownDraft(env, id, session, { change: true })
+    const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
     const target = url.searchParams.get("path") ?? ""
     const change = (await changesOf(env, row.id)).find((c) => c.path === target)
     if (!change) throw new HttpError(404, `${target} isn't part of this draft`)
@@ -451,7 +468,7 @@ export async function uploadRoutes(
   // Send the draft to GitHub: its pull request is opened, or revised, and merges in the hour after.
   if (part === "send" && request.method === "POST") {
     requireMutation(request, env)
-    const row = await ownDraft(env, id, session, { change: true })
+    const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
     const changes = await changesOf(env, row.id)
     if (!changes.length) throw new HttpError(422, "add a file, a rename or a deletion first")
     await underLimit(env, session.login, ["uploads.send"], SENDS_PER_DAY, "sends")

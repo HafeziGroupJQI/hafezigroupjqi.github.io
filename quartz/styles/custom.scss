@@ -3085,26 +3085,17 @@ a.device-card:hover {
 .gpt-modal,
 .gpt-fab,
 .admin-transcript {
-  --gpt-bg: #fff;
-  --gpt-panel: #fafafa;
-  --gpt-soft: #f3f3f4;
-  --gpt-line: #e3e3e6;
-  --gpt-text: #1f1f22;
-  --gpt-muted: #5f5f66;
+  --gpt-bg: var(--light, #fff);
+  --gpt-panel: var(--c-surface-1, #fafafa);
+  --gpt-soft: var(--c-surface-2, #f3f3f4);
+  --gpt-line: var(--c-rule, #e3e3e6);
+  --gpt-text: var(--c-strong, #1f1f22);
+  --gpt-muted: var(--c-muted, #5f5f66);
   --gpt-accent: var(--jqi-red, #e21833);
-  --gpt-user: #f4f1ee;
-  --gpt-focus: #3987e5;
+  --gpt-user: var(--c-surface-2, #f4f1ee);
+  --gpt-focus: var(--c-focus, #3987e5);
   --gpt-radius: 10px;
   --gpt-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-[saved-theme="dark"] :is(.gpt-app, .gpt-modal, .gpt-fab, .admin-transcript) {
-  --gpt-bg: #17171a;
-  --gpt-panel: #1d1d21;
-  --gpt-soft: #26262b;
-  --gpt-line: #34343a;
-  --gpt-text: #ececef;
-  --gpt-muted: #a8a8b0;
-  --gpt-user: #2a2622;
 }
 
 .member-tools.dashboard.gpt-app {
@@ -3508,7 +3499,7 @@ a.gpt-chip:hover {
 a.gpt-cite:hover {
   background: var(--gpt-accent);
   border-color: var(--gpt-accent);
-  color: #fff !important;
+  color: var(--c-on-accent, #fff) !important;
 }
 .gpt-thinking {
   margin: 0 0 8px;
@@ -3540,7 +3531,7 @@ a.gpt-cite:hover {
   animation: gpt-spin 1s linear infinite;
 }
 .gpt-tool--error {
-  color: #b3261e;
+  color: var(--c-err, #b3261e);
 }
 .gpt-msg-body + .gpt-msg-foot {
   margin-top: 10px;
@@ -3658,7 +3649,7 @@ a.gpt-cite:hover {
   font-size: 0.88rem;
 }
 .gpt-error {
-  color: #b3261e;
+  color: var(--c-err, #b3261e);
   margin: 4px clamp(16px, 4vw, 48px);
   font-size: 0.88rem;
 }
@@ -3745,20 +3736,20 @@ a.gpt-cite:hover {
   margin: 0 !important;
 }
 .gpt-meter--over {
-  color: #b3261e;
+  color: var(--c-err, #b3261e);
 }
 .gpt-chat .gpt-send {
   padding: 6px 16px;
   border-radius: 8px;
   border: 1px solid var(--gpt-accent);
   background: var(--gpt-accent);
-  color: #fff;
+  color: var(--c-on-accent, #fff);
   cursor: pointer;
 }
 .gpt-chat .gpt-send.danger {
   background: var(--gpt-bg);
-  color: #b3261e;
-  border-color: #b3261e;
+  color: var(--c-err, #b3261e);
+  border-color: var(--c-err, #b3261e);
 }
 .gpt-popup {
   position: absolute;
@@ -3816,7 +3807,7 @@ a.gpt-cite:hover {
   text-decoration: underline;
 }
 .danger-text {
-  color: #b3261e !important;
+  color: var(--c-err, #b3261e) !important;
 }
 .gpt-meter-bar {
   height: 6px;
@@ -3878,7 +3869,7 @@ a.gpt-cite:hover {
   max-height: 260px;
   overflow-y: auto;
   padding: 8px;
-  border: 1px solid #e3e3e6;
+  border: 1px solid var(--c-rule, #e3e3e6);
   border-radius: 6px;
 }
 .gpt-dialog fieldset {
@@ -3906,7 +3897,7 @@ a.gpt-cite:hover {
   width: auto;
 }
 .gpt-dialog .gpt-skill {
-  border: 1px solid #e3e3e6;
+  border: 1px solid var(--c-rule, #e3e3e6);
   border-radius: 6px;
   padding: 8px 12px;
   margin-bottom: 8px;
@@ -3919,7 +3910,7 @@ a.gpt-cite:hover {
   max-height: 220px;
   overflow-y: auto;
   font-size: 0.8rem;
-  background: #f6f6f7;
+  background: var(--c-surface-1, #f6f6f7);
   padding: 8px;
   border-radius: 4px;
 }
@@ -3944,7 +3935,7 @@ a.gpt-cite:hover {
   border: 0;
   border-radius: 999px;
   background: var(--gpt-accent);
-  color: #fff;
+  color: var(--c-on-accent, #fff);
   font:
     500 0.9rem Roboto,
     system-ui,
@@ -4101,7 +4092,7 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   border: 1px solid var(--gpt-accent);
   border-radius: 6px;
   background: var(--gpt-accent);
-  color: #fff;
+  color: var(--c-on-accent, #fff);
   cursor: pointer;
 }
 .gpt-usage {

@@ -12,7 +12,7 @@ import { GOOGLE_CLIENT_ID } from "./config.js"
 import { DOC_LIMIT, articleHtml, docDocument } from "./doc.js"
 import { GOOGLE_DOC, colabUrl, driveToken, driveType, loadGis, uploadToDrive } from "./drive.js"
 import { exportItems, pageStem } from "./menu.js"
-import { preparePrint } from "./print.js"
+import { cleanup, fit, installPrint, prepare } from "./print.js"
 import { markdownToQmd } from "./quarto.js"
 import { save } from "./save.js"
 
@@ -213,9 +213,12 @@ export function mountPageExport(tools) {
     }
   }
   tools.append(menu(groups, run), status)
-  if (article) preparePrint(article)
 }
 
+// Printing: Ctrl+P readies the page (print.js), and the build's PDF renderer drives the same steps
+// (tools/render-pdfs.mjs).
+installPrint()
+window.hafeziPrint = { prepare, fit, cleanup }
 const tools = document.querySelector("[data-page-tools]")
 // Not where the page is a member tool (the calendar): it has nothing to export.
 if (tools && !document.querySelector(".page-body .member-tools")) mountPageExport(tools)

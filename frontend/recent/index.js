@@ -4,19 +4,30 @@
 // (a draft sent, merged, refused or discarded; a People page published from Settings), so it is
 // the site's recent changes, like MediaWiki's, and ?user=<login> is one member's contributions.
 // The build's list of the public vault's pages (tools/recent-changes.mjs) stays until this loads.
+// Its second tab, Contributions, is the leaderboard: each member's score for the week, the month or
+// all time (GET /api/changes/scores), each name linking to that member's contributions.
 
 import { h } from "../dashboard/dom.js"
 import {
   KINDS,
+  PERIODS,
   REPOS,
+  SCORE_COLUMNS,
+  SCORE_SENTENCE,
   STATES,
   dayLabel,
   describe,
   feedUrl,
   filtersOf,
   lineCounts,
+  scoreCells,
+  scoreNotes,
+  scoresUrl,
+  scoreTitle,
   searchOf,
   stateLabel,
+  viewOf,
+  viewSearch,
 } from "./model.js"
 
 /* global fetchData */
@@ -87,6 +98,51 @@ function select(name, options, value, label) {
   )
 }
 
+/** The leaderboard for a period: a table of members by score, or a line when there is none. */
+function scoreTable(board) {
+  if (!board.members.length)
+    return h("p", { class: "muted", text: "No changes went into the vault in this period." })
+  return h(
+    "div",
+    { class: "recent-scores" },
+    h(
+      "table",
+      {},
+      h(
+        "thead",
+        {},
+        h(
+          "tr",
+          {},
+          SCORE_COLUMNS.map((text) => h("th", { scope: "col", text })),
+        ),
+      ),
+      h(
+        "tbody",
+        {},
+        board.members.map((member) => {
+          const cells = scoreCells(member)
+          return h(
+            "tr",
+            {},
+            cells.map((text, index) =>
+              index === 1
+                ? h(
+                    "th",
+                    { scope: "row" },
+                    link(`/recent${searchOf({ user: member.login })}`, text, {
+                      title: `${text}'s contributions`,
+                    }),
+                  )
+                : h("td", index === 2 ? { title: scoreTitle(member), text } : { text }),
+            ),
+          )
+        }),
+      ),
+    ),
+  )
+}
+
 export async function mountRecent(root, { api }) {
   const fallback = [...root.childNodes]
   let filters = filtersOf(location.search)
@@ -111,6 +167,32 @@ export async function mountRecent(root, { api }) {
     select("state", STATES, filters.state, "State"),
     h("button", { type: "submit", text: "Show" }),
   )
+  // The two tabs: the feed of changes, and the leaderboard.
+  let { view, period } = viewOf(location.search)
+  const tab = (key, text) => h("button", { type: "button", role: "tab", "data-view": key, text })
+  const tabs = h(
+    "div",
+    { class: "recent-tabs", role: "tablist", "aria-label": "Recently modified" },
+    tab("changes", "Changes"),
+    tab("contributions", "Contributions"),
+  )
+  const periods = h(
+    "div",
+    { class: "recent-tabs recent-periods", role: "group", "aria-label": "Period" },
+    PERIODS.map(([key, text]) => h("button", { type: "button", "data-period": key, text })),
+  )
+  const board = h("div", {})
+  const scores = h(
+    "section",
+    { class: "recent-contributions", role: "tabpanel" },
+    h("p", { text: SCORE_SENTENCE }),
+    periods,
+    board,
+  )
+  const intro = h("p", {
+    class: "muted",
+    text: "Every change to the site's pages and files, newest first: members' edits, uploads and People pages as they send them, and each commit to either vault. Pick a member for their contributions.",
+  })
   let next = null
   let lastDay = null
   let loading = 0
@@ -167,16 +249,49 @@ export async function mountRecent(root, { api }) {
   more.addEventListener("click", () => show(true))
   more.hidden = true
   heading.textContent = filters.user ? `Contributions by ${filters.user}` : "All changes"
-  root.prepend(
-    h("p", {
-      class: "muted",
-      text: "Every change to the site's pages and files, newest first: members' edits, uploads and People pages as they send them, and each commit to either vault. Pick a member for their contributions.",
-    }),
-    form,
-    heading,
-    status,
-    list,
-    more,
-  )
-  await show()
+
+  const showScores = async () => {
+    const mine = ++loading
+    status.textContent = "Loading…"
+    try {
+      const result = await api(scoresUrl(period))
+      if (mine !== loading) return
+      board.replaceChildren(
+        scoreTable(result),
+        h("p", { class: "muted", text: scoreNotes(result.bulk_files) }),
+      )
+      status.textContent = ""
+      for (const node of fallback) node.remove()
+      fallback.length = 0
+    } catch (error) {
+      if (mine === loading) status.textContent = `The leaderboard didn't load: ${error.message}`
+    }
+  }
+  // Show one tab: its parts, its address, and its data.
+  const showView = () => {
+    const contributions = view === "contributions"
+    for (const button of tabs.children)
+      button.setAttribute("aria-selected", String(button.dataset.view === view))
+    for (const button of periods.children)
+      button.setAttribute("aria-pressed", String(button.dataset.period === period))
+    for (const node of [intro, form, heading, list]) node.hidden = contributions
+    scores.hidden = !contributions
+    if (contributions) more.hidden = true
+    history.replaceState(null, "", `${location.pathname}${viewSearch({ view, period }, filters)}`)
+    return contributions ? showScores() : show()
+  }
+  tabs.addEventListener("click", (event) => {
+    const chosen = event.target.closest("[data-view]")?.dataset.view
+    if (!chosen || chosen === view) return
+    view = chosen
+    showView()
+  })
+  periods.addEventListener("click", (event) => {
+    const chosen = event.target.closest("[data-period]")?.dataset.period
+    if (!chosen || chosen === period) return
+    period = chosen
+    showView()
+  })
+  root.prepend(tabs, intro, form, heading, scores, status, list, more)
+  await showView()
 }

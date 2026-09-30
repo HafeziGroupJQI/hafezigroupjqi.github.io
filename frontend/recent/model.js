@@ -126,3 +126,81 @@ export function dayLabel(at, now = Date.now(), locale = undefined) {
     ...(new Date(at).getFullYear() === new Date(now).getFullYear() ? {} : { year: "numeric" }),
   })
 }
+
+// ---- the Contributions tab: the leaderboard (worker/src/changes.ts, GET /api/changes/scores) ----
+
+/** The leaderboard's periods, as its URL carries them, with what each button says. */
+export const PERIODS = [
+  ["week", "This week"],
+  ["month", "This month"],
+  ["all", "All time"],
+]
+export const DEFAULT_PERIOD = "all"
+
+/** Which tab the address asks for (?view=contributions&period=week); unknown values are dropped. */
+export function viewOf(search) {
+  const query = new URLSearchParams(search)
+  const period = query.get("period") ?? ""
+  return {
+    view: query.get("view") === "contributions" ? "contributions" : "changes",
+    period: PERIODS.some(([key]) => key === period) ? period : DEFAULT_PERIOD,
+  }
+}
+
+/** The page's query string for a tab: the leaderboard's period, or the feed's filters. */
+export function viewSearch({ view, period }, filters = {}) {
+  if (view !== "contributions") return searchOf(filters)
+  const query = new URLSearchParams({ view })
+  if (period && period !== DEFAULT_PERIOD) query.set("period", period)
+  return `?${query}`
+}
+
+/** The Worker's leaderboard for a period. */
+export const scoresUrl = (period) => `/api/changes/scores?period=${encodeURIComponent(period)}`
+
+/** The score's formula with a member's own numbers, for the score's tooltip. */
+export function scoreTitle(member) {
+  const repeats = Math.max(0, member.changes - member.files)
+  return `${member.files} files + 2 × √${repeats} repeat changes = ${member.score}`
+}
+
+/** The formula, in one plain sentence for the page. */
+export const SCORE_SENTENCE =
+  "Score = the number of different files you changed, plus 2 × the square root of your further changes to those same files, so new work counts in full and repeat edits count less each time."
+/** What is counted, under the table. */
+export const scoreNotes = (bulkFiles = 50) =>
+  `Only changes that are in the vault count. A bulk import (one commit with more than ${bulkFiles} files) counts once for each folder it touched. Ratings of pages are not part of the score. The formula is the one MediaWiki's Contribution Scores uses.`
+
+/** A leaderboard row's cells, as text, in the order of SCORE_COLUMNS. */
+export const SCORE_COLUMNS = [
+  "Rank",
+  "Member",
+  "Score",
+  "Files",
+  "Changes",
+  "Pages created",
+  "Pages edited",
+  "Files added",
+  "Lines",
+  "Active days",
+  "Last change",
+]
+export function scoreCells(member, locale = undefined) {
+  return [
+    String(member.rank),
+    member.author || member.login,
+    String(member.score),
+    String(member.files),
+    String(member.changes),
+    String(member.pages_created),
+    String(member.pages_edited),
+    String(member.files_added),
+    `+${member.added} −${member.removed}`,
+    String(member.active_days),
+    new Date(member.last_at).toLocaleDateString(locale, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }),
+  ]
+}

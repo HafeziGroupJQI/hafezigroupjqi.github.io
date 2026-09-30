@@ -349,6 +349,53 @@ body {
   margin: 20px 0 4px;
   font-size: 1.15rem;
 }
+// Its tabs (Changes, Contributions) and the leaderboard's periods and table. A tab's parts are
+// hidden while the other shows.
+.recent [hidden] {
+  display: none;
+}
+.recent-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 16px 0;
+  button {
+    padding: 6px 14px;
+    border: 1px solid var(--jqi-rule);
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  button[aria-selected="true"],
+  button[aria-pressed="true"] {
+    border-color: currentColor;
+    font-weight: 600;
+  }
+}
+.recent-scores {
+  overflow-x: auto;
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  th,
+  td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--jqi-rule);
+    text-align: right;
+    white-space: nowrap;
+  }
+  th:nth-child(2) {
+    text-align: left;
+  }
+  thead th {
+    font-size: 0.85rem;
+    color: var(--jqi-muted);
+  }
+}
 .recent-feed {
   list-style: none;
   padding: 0;

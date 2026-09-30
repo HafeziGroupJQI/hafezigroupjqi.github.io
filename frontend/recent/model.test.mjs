@@ -7,8 +7,16 @@ import {
   filtersOf,
   lineCounts,
   pageHref,
+  scoreCells,
+  SCORE_COLUMNS,
+  SCORE_SENTENCE,
+  scoreNotes,
+  scoresUrl,
+  scoreTitle,
   searchOf,
   stateLabel,
+  viewOf,
+  viewSearch,
 } from "./model.js"
 
 test("reads the page's filters from its address and writes them back", () => {
@@ -87,4 +95,61 @@ test("groups changes by day", () => {
     dayLabel(new Date(2025, 11, 31).getTime(), now, "en-US"),
     "Wednesday, December 31, 2025",
   )
+})
+
+test("the address picks the tab and the leaderboard's period", () => {
+  assert.deepEqual(viewOf(""), { view: "changes", period: "all" })
+  assert.deepEqual(viewOf("?user=ada"), { view: "changes", period: "all" })
+  assert.deepEqual(viewOf("?view=contributions&period=week"), {
+    view: "contributions",
+    period: "week",
+  })
+  // Values the page doesn't offer are dropped.
+  assert.deepEqual(viewOf("?view=scores&period=year"), { view: "changes", period: "all" })
+  assert.equal(
+    viewSearch({ view: "contributions", period: "week" }),
+    "?view=contributions&period=week",
+  )
+  assert.equal(viewSearch({ view: "contributions", period: "all" }), "?view=contributions")
+  // The changes tab keeps the feed's filters.
+  assert.equal(viewSearch({ view: "changes", period: "week" }, filtersOf("?user=ada")), "?user=ada")
+  assert.equal(scoresUrl("month"), "/api/changes/scores?period=month")
+})
+
+test("a leaderboard row shows the score beside the numbers it comes from", () => {
+  const member = {
+    rank: 1,
+    login: "ada",
+    author: "Ada Lovelace",
+    score: 5.5,
+    files: 2,
+    changes: 5,
+    pages_created: 1,
+    pages_edited: 3,
+    files_added: 1,
+    added: 120,
+    removed: 7,
+    active_days: 4,
+    last_at: Date.UTC(2026, 8, 29, 16),
+  }
+  const cells = scoreCells(member, "en-US")
+  assert.equal(cells.length, SCORE_COLUMNS.length)
+  assert.deepEqual(cells.slice(0, 10), [
+    "1",
+    "Ada Lovelace",
+    "5.5",
+    "2",
+    "5",
+    "1",
+    "3",
+    "1",
+    "+120 −7",
+    "4",
+  ])
+  assert.match(cells[10], /Sep 29, 2026/)
+  assert.equal(scoreCells({ ...member, author: "" })[1], "ada")
+  assert.equal(scoreTitle(member), "2 files + 2 × √3 repeat changes = 5.5")
+  // The page says the formula in one sentence, and what counts.
+  assert.match(SCORE_SENTENCE, /^Score = [^.]+\.$/)
+  assert.match(scoreNotes(50), /more than 50 files/)
 })

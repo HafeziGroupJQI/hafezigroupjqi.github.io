@@ -20,6 +20,7 @@ import type { AnthropicFetch } from "./gpt/chat"
 import { isLabGptPath, labGptRequest } from "./gpt/lab"
 import { isLabAgentPath, labAgent } from "./gpt/lab-agent"
 import { gptRoutes } from "./gpt/routes"
+import { prefsRoutes } from "./prefs"
 import { navIdentity, profileRoutes } from "./profile/routes"
 import type { VaultFetch } from "./profile/vault"
 import type { RepoFetch } from "./repo"
@@ -277,6 +278,8 @@ export function createHandler(
     if (edit) return edit
     const changes = await changeRoutes(request, url, env)
     if (changes) return changes
+    const prefs = await prefsRoutes(request, url, env, session, record)
+    if (prefs) return prefs
     const history = await historyRoutes(request, url, env, ctx, upstream)
     if (history) return history
     return problem(404, "not found")

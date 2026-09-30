@@ -22,6 +22,8 @@ import {
   movedNotice,
   lineSeparator,
   othersNotice,
+  revertIntent,
+  revertNotice,
   besideNote,
   sendHint,
   sendLabel,
@@ -138,8 +140,31 @@ export async function mountEdit(root) {
   let draft = source.draft && { ...source.draft, conflict: source.conflict ?? null }
   let base = draft?.base_sha ?? source.main?.sha
   let saved = { text: draft?.text ?? source.main?.text ?? "", summary: draft?.summary ?? "" }
-  const start = startingText(source, browserCopy.read(key))
+  let start = startingText(source, browserCopy.read(key))
   let busy = false
+  // From the page's History: a version to restore or a change to undo, opened as a new draft
+  // (the Worker's /api/edit/revert). Nothing is saved until the member saves or sends it.
+  const wanted = revertIntent(intent)
+  let revert = null
+  let reverted = null
+  if (wanted && !draft) {
+    const answer = await call(
+      `/api/edit/revert?${new URLSearchParams({
+        repo: source.repo,
+        path: source.path,
+        rev: wanted.rev,
+        mode: wanted.mode,
+        ...(intent.from ? { from: intent.from } : {}),
+      })}`,
+    )
+    if (answer.ok) {
+      reverted = answer.body
+      revert = { rev: wanted.rev, mode: wanted.mode }
+      base = answer.body.base_sha
+      start = { text: answer.body.text, restored: false }
+    } else
+      reverted = { error: answer.body.detail ?? `That version didn't load (${answer.status}).` }
+  }
 
   title.textContent = `Edit ${fileName(source.path)}`
   const page = sitePath(intent.page)
@@ -214,7 +239,7 @@ export async function mountEdit(root) {
     "aria-label": "Summary of your change",
     disabled: !source.can_edit,
   })
-  summary.value = saved.summary
+  summary.value = revert ? reverted.summary : saved.summary
   const pane = h("div", { class: "edit-source" })
   // Pages are previewed beside their source (on phones, one or the other), a notebook as its
   // Markdown and code.
@@ -358,6 +383,31 @@ export async function mountEdit(root) {
     hint.hidden = sent && !dirty()
   }
   summary.addEventListener("input", refresh)
+  if (wanted && draft) notice("You already have a draft of this page. Finish or discard it first.")
+  else if (reverted?.error) notice(reverted.error)
+  else if (reverted) {
+    notice(revertNotice(reverted))
+    // What the revert changes on the page as it is now.
+    if (source.main && reverted.text !== source.main.text) {
+      editor.compareWith(source.main.text, { keep: "Keep this", take: "Take the current" })
+      comparing.hidden = false
+      comparing.replaceChildren(
+        h("p", { text: "The marks show what this changes on the page as it is now." }),
+        h(
+          "div",
+          { class: "editor-actions" },
+          h("button", {
+            type: "button",
+            text: "Stop comparing",
+            onclick: () => {
+              editor.compareWith(null)
+              comparing.hidden = true
+            },
+          }),
+        ),
+      )
+    }
+  }
   if (start.restored)
     notice(
       "This browser had unsaved changes to this file; they are back in the editor.",
@@ -403,6 +453,7 @@ export async function mountEdit(root) {
               base_sha: base,
               text,
               summary: summary.value,
+              ...(revert ? { revert } : {}),
             }),
           })
       if (answer.status === 409 && answer.body.kind === "stale") {

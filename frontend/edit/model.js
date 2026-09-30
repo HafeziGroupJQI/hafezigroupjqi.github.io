@@ -270,3 +270,20 @@ export function settleWords(detail, now = Date.now(), locale = undefined) {
         : `Only ${first && !mine ? `${first} or ` : ""}an admin can settle this.`,
   }
 }
+
+/** A revert the editor was opened for from a page's History, or null. */
+export function revertIntent(intent) {
+  const rev = intent.restore ?? intent.undo
+  if (!rev || !/^[0-9a-f]{40}$/.test(rev)) return null
+  return { rev, mode: intent.restore ? "restore" : "undo" }
+}
+
+/** What the editor says over a revert: what it holds, and that nothing is saved yet. */
+export function revertNotice({ mode, rev, clean }) {
+  const short = rev.slice(0, 7)
+  if (mode === "undo" && !clean)
+    return "This change can't be undone on its own, because later edits touch the same lines. Restore a version or edit by hand."
+  return mode === "undo"
+    ? `This is the page without the change made in ${short}. Nothing is saved until you save or send it.`
+    : `This is the page as it was at ${short}. Nothing is saved until you save or send it.`
+}

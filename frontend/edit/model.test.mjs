@@ -13,6 +13,8 @@ import {
   heldNotice,
   lineSeparator,
   movedNotice,
+  revertIntent,
+  revertNotice,
   othersNotice,
   sendHint,
   sendLabel,
@@ -322,5 +324,25 @@ test("editing on top of another's change, a moved page and changes beside each o
   assert.equal(
     besideNote([{ author: "Anish" }, { login: "eve" }]),
     " Anish and eve also changed this page, on other lines: both changes go in.",
+  )
+})
+
+test("a revert from the History is a full commit sha, restored or undone", () => {
+  const rev = "a".repeat(40)
+  assert.deepEqual(revertIntent(editIntent(`?restore=${rev}`)), { rev, mode: "restore" })
+  assert.deepEqual(revertIntent(editIntent(`?undo=${rev}`)), { rev, mode: "undo" })
+  assert.equal(revertIntent(editIntent("?restore=main")), null)
+  assert.equal(revertIntent(editIntent("")), null)
+  assert.match(
+    revertNotice({ mode: "restore", rev, clean: true }),
+    /^This is the page as it was at aaaaaaa\./,
+  )
+  assert.match(
+    revertNotice({ mode: "undo", rev, clean: true }),
+    /without the change made in aaaaaaa/,
+  )
+  assert.match(
+    revertNotice({ mode: "undo", rev, clean: false }),
+    /^This change can't be undone on its own/,
   )
 })

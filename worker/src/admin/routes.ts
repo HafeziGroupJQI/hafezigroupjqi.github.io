@@ -30,6 +30,50 @@ function memberParam(url: URL): string {
   return login
 }
 
+/** Code tab reads need owner access on, here as on the compute host. */
+function requireCodeAccess(env: Env): void {
+  if (env.COMPUTE_OWNER_ACCESS !== "true")
+    throw new HttpError(403, "reading members' code is off (COMPUTE_OWNER_ACCESS)")
+}
+
+/** An optional whole-number query parameter from `min` to `max`. */
+function intParam(url: URL, name: string, min: number, max: number): number | undefined {
+  const raw = url.searchParams.get(name)
+  if (raw === null || raw === "") return undefined
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < min || value > max)
+    throw new HttpError(422, `${name} must be a whole number from ${min} to ${max}`)
+  return value
+}
+
+/**
+ * A history read's paging, as the host takes it: `limit`, `since` (ms here, seconds there) and
+ * where the page before ended: IPython's "<session>:<line>", the shell history's byte offset, the
+ * file history's count of commits.
+ */
+function historyArgs(url: URL, view: "ipython" | "bash" | "files"): Record<string, unknown> {
+  const args: Record<string, unknown> = {}
+  const limit = intParam(url, "limit", 1, view === "files" ? 100 : 500)
+  if (limit !== undefined) args.limit = limit
+  const since = intParam(url, "since", 0, 8.64e15)
+  if (since !== undefined) args.since = Math.floor(since / 1000)
+  if (view === "files") {
+    const offset = intParam(url, "offset", 0, 100_000)
+    if (offset !== undefined) args.offset = offset
+  } else if (view === "bash") {
+    const before = intParam(url, "before", 0, Number.MAX_SAFE_INTEGER)
+    if (before !== undefined) args.before = before
+  } else {
+    const before = url.searchParams.get("before")
+    if (before) {
+      if (!/^\d{1,12}:\d{1,12}$/.test(before))
+        throw new HttpError(422, "before must be <session>:<line>")
+      args.before = before
+    }
+  }
+  return args
+}
+
 export interface AuditRow {
   id: number
   at: number
@@ -337,10 +381,37 @@ export async function adminRoutes(
 
   if (path === "/compute/sessions" && request.method === "GET") {
     const login = memberParam(url)
-    if (env.COMPUTE_OWNER_ACCESS !== "true")
-      throw new HttpError(403, "reading members' code is off (COMPUTE_OWNER_ACCESS)")
+    requireCodeAccess(env)
     record("admin.compute.sessions", login)
     return adminControl(env, session, login, "admin_sessions", {}, { timeout_ms: 20_000 })
+  }
+
+  // Their IPython inputs, terminal commands and Scratchpad file history, from their home and the
+  // data repo (the host's syncd), so a stopped server's history reads too.
+  const history = path.match(/^\/compute\/(ipython|bash|files)$/)
+  if (history && request.method === "GET") {
+    const view = history[1] as "ipython" | "bash" | "files"
+    const login = memberParam(url)
+    requireCodeAccess(env)
+    const args = historyArgs(url, view)
+    record(`admin.compute.${view}`, login, Object.keys(args).length ? args : null)
+    return adminControl(env, session, login, `admin_${view}`, args, { timeout_ms: 30_000 })
+  }
+
+  // One commit of their file history: what it changed in their files, as a diff.
+  const commit = path.match(/^\/compute\/files\/([0-9a-f]{7,40})$/)
+  if (commit && request.method === "GET") {
+    const login = memberParam(url)
+    requireCodeAccess(env)
+    record("admin.compute.files", login, { rev: commit[1] })
+    return adminControl(
+      env,
+      session,
+      login,
+      "admin_diff",
+      { rev: commit[1] },
+      { timeout_ms: 30_000 },
+    )
   }
 
   throw new HttpError(404, "not found")

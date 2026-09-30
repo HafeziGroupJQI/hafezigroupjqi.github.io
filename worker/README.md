@@ -45,7 +45,7 @@ lab PC ─ device key ─► /api/agent/*
 | `GET /api/experiments/:id[/datasets]`                   | one experiment (spec, generated script, status) and its dataset artifacts                                                                                                                                                                                                                                                                                                                             |
 | `GET /api/catalog`                                      | instrument families (ports, capabilities) for the builder                                                                                                                                                                                                                                                                                                                                             |
 | `POST /api/auth/logout`                                 | ends every session the member began before now, on every device: its bearers and the lab tickets issued from them are refused from then on (D1 `logouts`; the compute relay keeps a copy and closes the member's open lab sockets), and records the sign-out                                                                                                                                          |
-| `/api/admin/*`                                          | group admins only (org owners + the `admins` table): `audit` (paged, filtered), `audit.csv`, `admins` (promote/demote), `usage`, `budgets/:login`, `profile-claims` (members' claims of People pages, approved or turned down here). See [Audit log](#audit-log-and-admins)                                                                                                                           |
+| `/api/admin/*`                                          | group admins only (org owners + the `admins` table): `audit` (paged, filtered), `audit.csv`, `admins` (promote/demote), `usage`, `budgets/:login`, `profile-claims` (members' claims of People pages, approved or turned down here), `compute/*` (members' code). See [Audit log](#audit-log-and-admins)                                                                                              |
 | `/api/gpt/*`                                            | Hafezi GPT: projects, skills, uploads, chats, sharing, and `POST /api/gpt/conversations/:id/messages` (Server-Sent Events). See [Hafezi GPT](#hafezi-gpt)                                                                                                                                                                                                                                             |
 | any other `/api/*`                                      | requires the bearer token (401 without it)                                                                                                                                                                                                                                                                                                                                                            |
 | anything outside `/api/`                                | `302` to the same path on `PUBLIC_SITE_URL`                                                                                                                                                                                                                                                                                                                                                           |
@@ -78,6 +78,13 @@ A daily cron (`triggers.crons`) prunes rows older than 365 days.
 Group admins are the GitHub org owners plus anyone in the `admins` table; admins add and remove
 each other at `/admin`. The check reads D1 on every request, so changes apply immediately.
 `/api/session` reports `is_admin`, which reveals Tools → Admin in the header.
+
+Admins also read members' code (`/api/admin/compute/*`): a member's live sessions, kernels
+and terminals, their IPython and terminal history, and their Scratchpad file history with each
+commit's diff. The Worker gives the compute host an assertion naming that one
+member (`admin_read`), the host serves only read-only ops for it, and both sides need owner
+access on (`COMPUTE_OWNER_ACCESS`). Unlike Hafezi GPT conversations, every read is recorded
+(`admin.compute.sessions`, `.ipython`, `.bash`, `.files`).
 
 ## Hafezi GPT
 

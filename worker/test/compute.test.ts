@@ -1408,14 +1408,83 @@ describe("the admin console's Code tab: a member's code, read-only", { timeout: 
     expect(off.body.detail).toBe("reading members' code is off on the compute host")
   })
 
-  it("refuses a bad login, or owner access off, before asking the host or recording", async () => {
+  it("reads IPython, shell and file history and a commit's diff, and records each read", async () => {
     const ursula = await bearer("ursula", "owner")
-    expect((await get(ursula, "/api/admin/compute/sessions?login=../x")).status).toBe(422)
-    expect((await get(ursula, "/api/admin/compute/sessions")).status).toBe(422)
-    const off = await get(ursula, "/api/admin/compute/sessions?login=nell", false)
+    const cases = [
+      [
+        "ipython",
+        "limit=50&since=1790000000999&before=49:2",
+        { limit: 50, since: 1790000000, before: "49:2" },
+      ],
+      ["bash", "before=1234&limit=500", { limit: 500, before: 1234 }],
+      ["files", "offset=50&limit=25", { limit: 25, offset: 50 }],
+      ["files", "", {}],
+    ] as const
+    for (const [view, query, args] of cases) {
+      const asked = answer(`admin_${view}`, { login: "nell", entries: [] })
+      const { status, body } = await get(ursula, `/api/admin/compute/${view}?login=nell&${query}`)
+      expect(status).toBe(200)
+      expect(body).toEqual({ login: "nell", entries: [] })
+      const rpc = await asked
+      expect(rpc.args).toEqual({ ...args, login: "nell" })
+      expect(await verifyAssertion(rpc.assertion, vectors.secret)).toMatchObject({
+        login: "ursula",
+        role: "owner",
+        admin_read: "nell",
+      })
+    }
+    const rev = "0123456789abcdef0123456789abcdef01234567"
+    const diff = answer("admin_diff", { login: "nell", rev, diff: "diff --git a/x b/x" })
+    const shown = await get(ursula, `/api/admin/compute/files/${rev}?login=nell`)
+    expect(shown.body.diff).toBe("diff --git a/x b/x")
+    expect((await diff).args).toEqual({ rev, login: "nell" })
+    const rows = (await codeRows("ursula")).map((row) => [
+      row.action,
+      row.target,
+      JSON.parse(row.detail_json ?? "null"),
+    ])
+    expect(rows).toEqual([
+      ["admin.compute.ipython", "nell", { limit: 50, since: 1790000000, before: "49:2" }],
+      ["admin.compute.bash", "nell", { limit: 500, before: 1234 }],
+      ["admin.compute.files", "nell", { limit: 25, offset: 50 }],
+      ["admin.compute.files", "nell", null],
+      ["admin.compute.files", "nell", { rev }],
+    ])
+  })
+
+  it("refuses paging the host wouldn't take, before asking it", async () => {
+    const pat = await bearer("pat", "member")
+    for (const query of [
+      "ipython?login=nell&limit=0",
+      "ipython?login=nell&limit=501",
+      "ipython?login=nell&before=49",
+      "ipython?login=nell&since=yesterday",
+      "bash?login=nell&before=-1",
+      "bash?login=nell&before=1.5",
+      "files?login=nell&limit=101",
+      "files?login=nell&offset=-1",
+      "files?login=../nell",
+    ])
+      expect((await get(pat, `/api/admin/compute/${query}`)).status, query).toBe(422)
+    for (const rev of [
+      "HEAD",
+      "0123",
+      "0123456789ABCDEF",
+      "0123456789abcdef0123456789abcdef012345678",
+    ])
+      expect((await get(pat, `/api/admin/compute/files/${rev}?login=nell`)).status, rev).toBe(404)
+    expect((await get(pat, "/api/admin/compute/bash?login=nell", false)).status).toBe(403)
+    expect(controls()).toHaveLength(0)
+  })
+
+  it("refuses a bad login, or owner access off, before asking the host or recording", async () => {
+    const vera = await bearer("vera", "owner")
+    expect((await get(vera, "/api/admin/compute/sessions?login=../x")).status).toBe(422)
+    expect((await get(vera, "/api/admin/compute/sessions")).status).toBe(422)
+    const off = await get(vera, "/api/admin/compute/sessions?login=nell", false)
     expect(off.status).toBe(403)
     expect(off.body.detail).toContain("COMPUTE_OWNER_ACCESS")
     expect(controls()).toHaveLength(0)
-    expect(await codeRows("ursula")).toEqual([])
+    expect(await codeRows("vera")).toEqual([])
   })
 })

@@ -146,7 +146,9 @@ export function notebookToQmd(nb, title) {
   if (ks?.name) {
     head.push("jupyter:", "  kernelspec:", `    name: ${ks.name}`)
     head.push(`    display_name: ${JSON.stringify(ks.display_name ?? ks.name)}`)
-    head.push(`    language: ${ks.language ?? lang}`)
+    // Quarto runs the chunks whose language is the kernelspec's, so the two must be the same word:
+    // a Wolfram kernel's "Wolfram Language" would leave its ```{wolfram} cells as plain text.
+    head.push(`    language: ${lang}`)
   }
   head.push("---")
   const parts = [head.join("\n")]

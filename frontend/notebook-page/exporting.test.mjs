@@ -125,6 +125,28 @@ test("qmd has jupyter front matter and chunks, and no outputs", () => {
   assert.equal(stripAnsi("\u001b[1;31mred\u001b[0m"), "red")
 })
 
+test("qmd front matter names the kernel's language as its chunks do, so quarto runs them", () => {
+  const fenceOf = (q) => q.match(/^```\{([^}]+)\}$/m)[1]
+  const languageOf = (q) => q.match(/^ {4}language: (.*)$/m)[1]
+  const python = notebookToQmd(notebook(), "Session")
+  assert.equal(languageOf(python), "python")
+  assert.equal(languageOf(python), fenceOf(python))
+
+  const wolfram = notebookToQmd(
+    {
+      metadata: {
+        kernelspec: { name: "wolfram", display_name: "Wolfram", language: "Wolfram Language" },
+        language_info: { name: "Wolfram Language" },
+      },
+      cells: [{ cell_type: "code", source: "Manipulate[Plot[Sin[k x], {x, 0, 6}], {k, 1, 5}]" }],
+    },
+    "Waves",
+  )
+  assert.match(wolfram, /\n {4}language: wolfram\n/)
+  assert.match(wolfram, /\n```\{wolfram\}\nManipulate\[/)
+  assert.equal(languageOf(wolfram), fenceOf(wolfram))
+})
+
 test("figures are inlined as data: URLs, since a download is one file", () => {
   const svg = '<svg viewBox="0 0 1 1"><path transform="translate(1 2)" d="M0 0"/></svg>'
   const markdown = inlineFigures("![a](figures/x-1.png)\n\n![b](figures/x-2.svg)\n", [

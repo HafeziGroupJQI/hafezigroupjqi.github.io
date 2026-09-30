@@ -207,6 +207,24 @@ test("the title is the notebook's first heading, else the file's stem", () => {
     /^---\ntitle: "Results"\n/,
   )
 
+  // The heading a notebook opens with is the Quarto document's title, so it isn't repeated in the
+  // body; the rest of its cell stays. A heading further down stays where it is.
+  const ring = convertNotebook(JSON.stringify(notebook()), "qmd", "01_ring.ipynb").text
+  const body = ring.slice(ring.indexOf("\n---\n", 4) + 5)
+  assert.match(ring, /^---\ntitle: "Ring sweep"\n/)
+  assert.match(body, /^\nNotes\.\n\n```\{python\}\nx = 1/)
+  assert.doesNotMatch(body, /# Ring sweep/)
+  assert.match(convertNotebook(JSON.stringify(later), "qmd", "run.ipynb").text, /\n# Results\n/)
+  const alone = cells(["raw", "x"], ["markdown", ["# Only a title\n", "\n"]], ["code", "x = 1"])
+  assert.match(
+    convertNotebook(JSON.stringify(alone), "qmd", "run.ipynb").text,
+    /^---\ntitle: "Only a title"\n---\n\n```\{=html\}\nx\n```\n\n```\{python\}\nx = 1\n```\n$/,
+  )
+  const blankFirst = convertNotebook(JSON.stringify(opening), "qmd", "run.ipynb").text
+  assert.match(blankFirst, /^---\ntitle: "Ring sweep"\n/)
+  assert.match(blankFirst, /\n\nNotes\.\n$/)
+  assert.doesNotMatch(blankFirst, /## Ring sweep/)
+
   // A comment in a fenced block and a #tag are not headings; with none, the stem titles both.
   const none = cells(["markdown", "```bash\n# install\n```\n#tag"], ["code", "print(1)"])
   assert.equal(notebookHeading(none), null)

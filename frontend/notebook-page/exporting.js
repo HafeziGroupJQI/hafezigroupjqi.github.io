@@ -227,10 +227,32 @@ export function notebookHeading(nb) {
 }
 
 /**
+ * The notebook without the heading it opens with (see notebookHeading's `leading`), as a copy: the
+ * rest of that cell stays, and the cell goes when nothing else is in it.
+ */
+function withoutOpeningHeading(nb) {
+  const at = nb.cells.findIndex((cell) => cell.cell_type !== "raw" && join(cell.source).trim())
+  const cell = nb.cells[at]
+  if (cell?.cell_type !== "markdown") return nb
+  const lines = join(cell.source).split(/\r?\n/)
+  const line = lines.findIndex((text) => text.trim())
+  if (!HEADING.test(lines[line])) return nb
+  const rest = lines
+    .slice(line + 1)
+    .join("\n")
+    .replace(/^(?:[ \t]*\n)+/, "")
+  const cells = rest.trim()
+    ? nb.cells.map((other, i) => (i === at ? { ...other, source: rest } : other))
+    : nb.cells.filter((_, i) => i !== at)
+  return { ...nb, cells }
+}
+
+/**
  * A notebook's raw JSON text as a download in `format` (qmd or md), named after `fileName` as the
  * lab's Export names its files: {name, type, text}. The title is the notebook's first heading,
  * else the file's stem; the Markdown adds the stem as its heading only when the notebook doesn't
- * open with one of its own.
+ * open with one of its own, and the Quarto document leaves out the heading it opens with, which
+ * its title already shows.
  */
 export function convertNotebook(text, format, fileName) {
   const nb = JSON.parse(text)
@@ -238,8 +260,10 @@ export function convertNotebook(text, format, fileName) {
   const stem = fileName.replace(/\.[^./]+$/, "")
   const heading = notebookHeading(nb)
   const type = "text/markdown;charset=utf-8"
-  if (format === "qmd")
-    return { name: `${stem}.qmd`, type, text: notebookToQmd(nb, heading?.text ?? stem) }
+  if (format === "qmd") {
+    const body = heading?.leading ? withoutOpeningHeading(nb) : nb
+    return { name: `${stem}.qmd`, type, text: notebookToQmd(body, heading?.text ?? stem) }
+  }
   if (format === "md") {
     const title = heading?.leading ? undefined : stem
     const { markdown, files } = notebookToMarkdown(nb, { baseName: stem, title })

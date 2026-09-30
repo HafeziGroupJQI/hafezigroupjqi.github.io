@@ -4746,7 +4746,7 @@ dialog.page-history {
   .wl-out img,
   .wl-sprite,
   details.wl-expected img {
-    background-color: #fff;
+    background-color: #fff; // fixed: outputs drawn for a white page
     border-radius: 3px;
   }
 }

@@ -450,6 +450,11 @@ describe("the lab's coding agent endpoint", () => {
     expect(LAB_PROMPT).toContain('{"kernelId": "<that id>", "code": "…"}')
   })
 
+  it("tells the agent how a member gets a package or version the lab lacks: %pip install", () => {
+    expect(LAB_PROMPT).toContain("`%pip install name==version`")
+    expect(LAB_PROMPT).toContain("~/.local/hafezi")
+  })
+
   it("asks for math the lab's chat renders: dollar signs, not \\( or \\[", () => {
     // The agent wrote \[ … \], which the chat showed as "[ \int … ]".
     expect(LAB_PROMPT).toContain("$…$ inline and $$…$$")

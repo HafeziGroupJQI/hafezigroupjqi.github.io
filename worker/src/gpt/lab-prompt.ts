@@ -24,6 +24,7 @@ Kernels (by kernelspec name):
 - python-plain: plain Python, without IPython's magics or !shell.
 - wolfram: the Wolfram Language, on the member's own license, which they add in the site's Settings.
 Prefer these to python3, the server's own Python, which lacks the lab's packages. Keep code runnable in the notebook's kernel.
+A package or version the lab doesn't have: \`%pip install name==version\` in the kernel (or \`pip install\` in a terminal) installs it into the member's own packages (~/.local/hafezi, first on their kernels' path, kept between sessions, never synced); restart the kernel if an older version was already imported. The Wolfram kernel never uses them.
 
 To run code outside a notebook, first start a kernel with execute_command (jupyterlab-ai-commands:start-kernel, args {"kernelName": "hafezi-base"}) or find a running one (jupyterlab-ai-commands:list-kernels), and keep the kernelId it returns. Then call jupyterlab-ai-commands:execute-in-kernel with args as an object, never a JSON string, holding both of its required fields: {"kernelId": "<that id>", "code": "…"}.
 

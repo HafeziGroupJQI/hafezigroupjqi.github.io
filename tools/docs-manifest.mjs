@@ -62,14 +62,14 @@ const walk = (directory) =>
       })
     : []
 
-// Every committed document in the private vault, straight from git so the blob shas are the
-// ones GitHub serves. Dotted segments and the folders the build excludes are skipped.
-export function listTrackedDocuments(privateRoot, excluded = new Set()) {
+// Every committed file of the private vault, straight from git so the blob shas are the ones
+// GitHub serves. Dotted segments and the folders the build excludes are skipped.
+export function listTrackedFiles(privateRoot, excluded = new Set()) {
   const listing = execFileSync("git", ["-C", privateRoot, "ls-tree", "-r", "-l", "-z", "HEAD"], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   })
-  const documents = []
+  const files = []
   for (const entry of listing.split("\0")) {
     if (!entry) continue
     const [meta, file] = entry.split("\t")
@@ -77,11 +77,16 @@ export function listTrackedDocuments(privateRoot, excluded = new Set()) {
     if (type !== "blob") continue
     const segments = file.split("/")
     if (segments.some((segment) => segment.startsWith(".") || excluded.has(segment))) continue
-    if (!isDocument(file) && !isPageSource(file)) continue
-    documents.push({ path: file, sha, size: Number(size) })
+    files.push({ path: file, sha, size: Number(size) })
   }
-  return documents
+  return files
 }
+
+/** Every committed document in the private vault (and each Quarto page's source). */
+export const listTrackedDocuments = (privateRoot, excluded = new Set()) =>
+  listTrackedFiles(privateRoot, excluded).filter(
+    (file) => isDocument(file.path) || isPageSource(file.path),
+  )
 
 export const documentKey = (file, prefix = "resources") => slugifyFilePath(`${prefix}/${file}`)
 

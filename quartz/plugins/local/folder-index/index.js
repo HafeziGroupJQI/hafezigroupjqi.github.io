@@ -9,9 +9,11 @@ import { folderTitle } from "./names.js"
 // a page and has no index of its own. This wrapper keeps its match, layout and page generation,
 // and adds what the members site needs on those automatic pages:
 //   - a readable title ("group-meeting-2026-09-29" is "Group meeting 2026-09-29");
+//   - a page for a folder that holds only documents, from the build's folder map (SITE_FOLDERS,
+//     tools/folder-files.mjs), so every folder of the private vault can be browsed;
 //   - a listing of subfolders first, then pages A to Z, each page with its description and the date
 //     of its newest revision in the vault's history (SITE_HISTORY, tools/history.mjs), never the
-//     build's time.
+//     build's time; then the folder's documents as downloads.
 // A page with an index of its own is rendered by Quartz's FolderContent exactly as before.
 // The rows' markup is Quartz's PageList's (same package, MIT), so the site's listing styles apply.
 export const manifest = {
@@ -45,24 +47,46 @@ const cached = (variable) => {
   }
 }
 const siteHistory = cached("SITE_HISTORY")
+const siteFolders = cached("SITE_FOLDERS")
+
+/** A folder's entry in the build's folder map (tools/folder-files.mjs), by its slug. */
+export const folderEntry = (folders, folder) => folders?.[folder] ?? null
 
 /** The folder a folder page is for: "resources/notes/index" is "resources/notes". */
 export const folderOf = (slug) => String(slug).replace(/\/?index$/, "")
 
-/** Quartz's virtual folder pages, retitled and marked as automatic. */
-export function automaticPages(pages) {
-  return pages.map((page) => {
-    // A tag's folder (tags/role/) is the tag pages' own: left to Quartz as it was.
-    if (page.slug.startsWith("tags/")) return page
-    const title = folderTitle(page.title)
+/**
+ * The automatic pages: Quartz's, retitled, and one for each folder of the folder map that holds no
+ * page. `pages` are Quartz's virtual pages, `taken` the folders that already have an index.
+ */
+export function automaticPages(pages, taken = [], folders = {}) {
+  const auto = (slug, title) => {
+    const entry = folderEntry(folders, folderOf(slug))
     return {
-      slug: page.slug,
+      slug,
       title,
       data: {
-        frontmatter: { title, tags: [], folder_index: AUTO, socialImage: SOCIAL_IMAGE },
+        frontmatter: {
+          title,
+          tags: [],
+          folder_index: AUTO,
+          socialImage: SOCIAL_IMAGE,
+          ...(entry?.path ? { folder_path: entry.path } : {}),
+        },
       },
     }
-  })
+  }
+  // A tag's folder (tags/role/) is the tag pages' own: left to Quartz as it was.
+  const out = pages.map((page) =>
+    page.slug.startsWith("tags/") ? page : auto(page.slug, folderTitle(page.title)),
+  )
+  const seen = new Set([...taken, ...pages.map((page) => folderOf(page.slug))])
+  for (const [folder, entry] of Object.entries(folders).sort(([a], [b]) => a.localeCompare(b))) {
+    if (seen.has(folder)) continue
+    seen.add(folder)
+    out.push(auto(`${folder}/index`, folderTitle(entry?.name ?? folder.split("/").pop())))
+  }
+  return out
 }
 
 /** The day a page last changed in its vault ("2026-09-29"), or null when its history doesn't say. */
@@ -109,6 +133,20 @@ export function folderRows(slug, allFiles, histories = {}) {
   ]
 }
 
+/** A size as people read it: 31.6 MB. */
+export function formatSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return ""
+  if (bytes < 1000) return `${bytes} B`
+  const units = ["kB", "MB", "GB"]
+  let value = bytes / 1000
+  let unit = 0
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000
+    unit++
+  }
+  return `${value < 100 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
 // The day as the author's calendar had it, whatever zone the build runs in.
 function Day({ day, locale }) {
   const [year, month, date] = day.split("-").map(Number)
@@ -123,6 +161,7 @@ function Day({ day, locale }) {
 function Listing({ fileData, allFiles, cfg }) {
   const slug = fileData.slug
   const rows = folderRows(slug, allFiles, siteHistory())
+  const files = folderEntry(siteFolders(), folderOf(slug))?.files ?? []
   const locale = cfg?.locale ?? "en-US"
   return h(
     "div",
@@ -173,7 +212,41 @@ function Listing({ fileData, allFiles, cfg }) {
           ),
         ),
       ),
-    rows.length === 0 && h("p", null, "This folder has no pages yet."),
+    files.length > 0 &&
+      h(
+        Fragment,
+        null,
+        h("h2", { id: "files" }, "Files"),
+        h(
+          "ul",
+          { class: "section-ul folder-files" },
+          files.map((file) =>
+            h(
+              "li",
+              { class: "section-li" },
+              h(
+                "div",
+                { class: "section" },
+                h(
+                  "p",
+                  { class: "meta" },
+                  [file.type, formatSize(file.size)].filter(Boolean).join(", "),
+                ),
+                h(
+                  "div",
+                  { class: "desc" },
+                  h(
+                    "a",
+                    { href: file.href, class: "internal", "data-no-popover": "true" },
+                    file.name,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    rows.length === 0 && files.length === 0 && h("p", null, "This folder has no pages yet."),
   )
 }
 
@@ -182,7 +255,12 @@ export default (options) => {
   return {
     ...quartz,
     generate(args) {
-      return automaticPages(quartz.generate(args))
+      const taken = args.content
+        .map(([, file]) => file.data?.slug)
+        .filter((slug) => typeof slug === "string" && slug.endsWith("/index"))
+        .map(folderOf)
+      // Only the members edition has a folder map; the public site's folders all have an index.
+      return automaticPages(quartz.generate(args), taken, siteFolders())
     },
     body() {
       const QuartzFolderContent = quartz.body()

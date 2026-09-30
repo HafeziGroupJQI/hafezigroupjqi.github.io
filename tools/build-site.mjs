@@ -21,6 +21,7 @@ import { writeAuthPages } from "./members-pages.mjs"
 import { DEFAULT_API, bundleMembers } from "./members-bundles.mjs"
 import { writeGptSkills } from "./gpt-manifest.mjs"
 import { pageHistories } from "./history.mjs"
+import { vaultFolders } from "./folder-files.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
 // The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
@@ -61,6 +62,14 @@ fs.writeFileSync(
     ),
   ),
 )
+// The private vault's folders and each one's documents, for the member edition's automatic folder
+// pages (quartz/plugins/local/folder-index/): a folder without an index lists them as downloads.
+const foldersFile = path.join(stage, "folders.json")
+if (options.mode === "internal")
+  fs.writeFileSync(
+    foldersFile,
+    JSON.stringify(vaultFolders(fs.realpathSync(options.content), { excluded })),
+  )
 const config = yaml.parse(fs.readFileSync(options.config, "utf8"))
 if (options.mode === "internal") {
   const index = config.plugins.find((plugin) => plugin.source === "@quartz-community/content-index")
@@ -77,6 +86,7 @@ const env = {
   SITE_MODE: options.mode,
   QUARTZ_CONFIG_PATH: generatedConfig,
   SITE_HISTORY: historyFile,
+  ...(options.mode === "internal" ? { SITE_FOLDERS: foldersFile } : {}),
   ...(options.quartzBaseUrl ? { QUARTZ_BASE_URL: options.quartzBaseUrl } : {}),
 }
 try {

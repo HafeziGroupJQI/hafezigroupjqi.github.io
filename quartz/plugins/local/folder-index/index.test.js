@@ -5,7 +5,13 @@ import path from "node:path"
 import test from "node:test"
 import { render } from "preact-render-to-string"
 import { h } from "preact"
-import FolderIndex, { automaticPages, folderOf, folderRows, modifiedDay } from "./index.js"
+import FolderIndex, {
+  automaticPages,
+  folderOf,
+  folderRows,
+  formatSize,
+  modifiedDay,
+} from "./index.js"
 import { folderTitle } from "./names.js"
 
 const page = (slug, frontmatter = {}, extra = {}) => [
@@ -184,4 +190,87 @@ test("an automatic page shows the listing; a page with its own index is quartz's
     else process.env.SITE_HISTORY = saved
     fs.rmSync(directory, { recursive: true, force: true })
   }
+})
+
+const folders = {
+  "resources/files": { name: "files", path: "files", files: [] },
+  "resources/files/equipment": { name: "equipment", path: "files/equipment", files: [] },
+  "resources/files/equipment/laser-2": {
+    name: "Laser 2",
+    path: "files/equipment/Laser 2",
+    files: [
+      {
+        name: "Manual.pdf",
+        href: "/resources/files/equipment/laser-2/manual.pdf",
+        size: 31_600_000,
+        type: "PDF",
+      },
+    ],
+  },
+  "resources/files/rc26/nonlinear-code": {
+    name: "Nonlinear code",
+    path: "files/rc26/Nonlinear code",
+    files: [],
+  },
+  "resources/notes": { name: "notes", path: "notes", files: [] },
+}
+
+test("a folder that holds only documents gets a page too", () => {
+  const quartz = [
+    { slug: "resources/files/index", title: "files", data: {} },
+    { slug: "resources/files/rc26/nonlinear-code/index", title: "nonlinear-code", data: {} },
+  ]
+  const pages = automaticPages(quartz, ["resources/notes", "resources"], folders)
+  assert.deepEqual(
+    pages.map((entry) => [entry.slug, entry.title, entry.data.frontmatter.folder_path]),
+    [
+      ["resources/files/index", "Files", "files"],
+      // Quartz's page, with the folder's own path in the vault for its tools.
+      ["resources/files/rc26/nonlinear-code/index", "Nonlinear code", "files/rc26/Nonlinear code"],
+      ["resources/files/equipment/index", "Equipment", "files/equipment"],
+      ["resources/files/equipment/laser-2/index", "Laser 2", "files/equipment/Laser 2"],
+    ],
+  )
+  // A folder with an index of its own (notes) gets none, and neither does any without the map.
+  assert.equal(automaticPages(quartz, [], {}).length, 2)
+  assert.equal(automaticPages(quartz, [], {})[0].data.frontmatter.folder_path, undefined)
+})
+
+test("an automatic page lists the folder's documents as downloads, with type and size", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "folder-index-"))
+  const saved = process.env.SITE_FOLDERS
+  try {
+    process.env.SITE_FOLDERS = path.join(directory, "folders.json")
+    fs.writeFileSync(process.env.SITE_FOLDERS, JSON.stringify(folders))
+    const Body = FolderIndex().body()
+    const html = render(
+      h(Body, {
+        fileData: {
+          slug: "resources/files/equipment/laser-2/index",
+          frontmatter: { title: "Laser 2", folder_index: "auto" },
+        },
+        allFiles: [],
+        cfg: { locale: "en-US" },
+        tree: { type: "root", children: [] },
+      }),
+    )
+    assert.match(html, /<h2 id="files">Files<\/h2>/)
+    assert.match(
+      html,
+      /<p class="meta">PDF, 31\.6 MB<\/p><div class="desc"><a href="\/resources\/files\/equipment\/laser-2\/manual\.pdf" class="internal" data-no-popover="true">Manual\.pdf<\/a>/,
+    )
+    assert.doesNotMatch(html, /no pages yet/)
+    // The generator reads the same map.
+    const pages = FolderIndex().generate({ content: [], cfg: {} })
+    assert.ok(pages.some((entry) => entry.slug === "resources/files/equipment/laser-2/index"))
+  } finally {
+    if (saved === undefined) delete process.env.SITE_FOLDERS
+    else process.env.SITE_FOLDERS = saved
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+  assert.equal(formatSize(999), "999 B")
+  assert.equal(formatSize(2048), "2.0 kB")
+  assert.equal(formatSize(31_600_000), "31.6 MB")
+  assert.equal(formatSize(316_000_000), "316 MB")
+  assert.equal(formatSize(1_500_000_000), "1.5 GB")
 })

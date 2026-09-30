@@ -23,6 +23,7 @@ import { DraftRepo, REPO_NAMES, type RepoName, repoFullName } from "../uploads/g
 import { SENDS_PER_DAY, ownDraft, underLimit } from "../uploads/routes"
 import { draftChanges, recordChanges, unsentChanges } from "../changes"
 import {
+  CLAIM_MS,
   CONFLICTS_OPEN_MAX,
   CONFLICT_SELECT,
   type ConflictRow,
@@ -36,6 +37,7 @@ import {
   mergeable,
   refusal,
   sentText,
+  UNCLAIMED,
   unsentAfter,
 } from "./conflicts"
 import { gitBlobSha, threeWay } from "./merge"
@@ -837,22 +839,26 @@ async function conflictRoutes(
     // One settles it: a second answer (another admin, the first editor) finds it taken.
     const claim = async () => {
       const claimed = await env.DB.prepare(
-        `UPDATE edit_conflicts SET resolved_by = ? WHERE id = ? AND state = 'open'
-           AND resolved_by IS NULL`,
+        `UPDATE edit_conflicts SET resolved_by = ?, resolved_at = ? WHERE id = ? AND state = 'open'
+           AND ${UNCLAIMED}`,
       )
-        .bind(session.login, row.id)
+        .bind(session.login, now, row.id, now - CLAIM_MS)
         .run()
       if (!claimed.meta.changes) throw new HttpError(409, "this conflict is settled already")
     }
     const release = () =>
-      env.DB.prepare("UPDATE edit_conflicts SET resolved_by = NULL WHERE id = ? AND state = 'open'")
-        .bind(row.id)
+      // Only this settlement's own mark, not one a later settlement made after it lapsed.
+      env.DB.prepare(
+        `UPDATE edit_conflicts SET resolved_by = NULL, resolved_at = NULL
+         WHERE id = ? AND state = 'open' AND resolved_by = ? AND resolved_at = ?`,
+      )
+        .bind(row.id, session.login, now)
         .run()
     const finish = (state: "resolved" | "rejected") =>
       env.DB.prepare(
         `UPDATE edit_conflicts SET state = ?, resolution = ?, resolved_at = ?
-         WHERE id = ? AND state = 'open' AND resolved_by = ?`,
-      ).bind(state, choice, now, row.id, session.login)
+         WHERE id = ? AND state = 'open' AND resolved_by = ? AND resolved_at = ?`,
+      ).bind(state, choice, now, row.id, session.login, now)
 
     if (choice === "first") {
       await claim()
@@ -991,8 +997,8 @@ async function conflictRoutes(
     const [closed] = await env.DB.batch([
       env.DB.prepare(
         `UPDATE edit_conflicts SET state = 'withdrawn', resolved_by = ?, resolved_at = ?
-         WHERE id = ? AND state = 'open' AND resolved_by IS NULL`,
-      ).bind(session.login, now, row.id),
+         WHERE id = ? AND state = 'open' AND ${UNCLAIMED}`,
+      ).bind(session.login, now, row.id, now - CLAIM_MS),
       env.DB.prepare(
         `UPDATE upload_drafts SET status = 'editing', detail_json = NULL, updated_at = ?
          WHERE id = ? AND status = 'conflict'

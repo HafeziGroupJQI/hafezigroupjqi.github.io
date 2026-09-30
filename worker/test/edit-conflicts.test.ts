@@ -792,13 +792,18 @@ describe("settling a queued conflict", () => {
   it("can't be withdrawn or discarded while it is being settled, nor settled once withdrawn", async () => {
     const { ada, bob, second, conflict } = await queued()
     // Ada's settlement has claimed it and is under way.
-    await env.DB.prepare("UPDATE edit_conflicts SET resolved_by = 'ada' WHERE id = ?")
-      .bind(conflict)
+    await env.DB.prepare(
+      "UPDATE edit_conflicts SET resolved_by = 'ada', resolved_at = ? WHERE id = ?",
+    )
+      .bind(Date.now(), conflict)
       .run()
     expect((await post(bob, `/api/edit/conflicts/${conflict}/withdraw`)).status).toBe(409)
     expect((await bob.json(`/api/edit/drafts/${second}`, { method: "DELETE" })).status).toBe(409)
     expect((await conflicts())[0]).toMatchObject({ state: "open", resolved_by: "ada" })
     expect(await statusOf(second)).toBe("conflict")
+    // Nor settled by someone else meanwhile.
+    const owner = await as("olivia", "owner")
+    expect((await resolve(owner, conflict, { choice: "first" })).status).toBe(409)
     // A draft no longer held (taken back meanwhile) isn't sent by a settlement.
     await env.DB.batch([
       env.DB.prepare("UPDATE edit_conflicts SET resolved_by = NULL WHERE id = ?").bind(conflict),
@@ -807,6 +812,49 @@ describe("settling a queued conflict", () => {
     expect((await resolve(ada, conflict, { choice: "second" })).status).toBe(409)
     expect(await statusOf(second)).toBe("editing")
     expect((await conflicts())[0]).toMatchObject({ state: "open", resolved_by: null })
+  })
+
+  it("lets go of a settlement's mark after five minutes, so a settlement that died can't pin it", async () => {
+    const { bob, second, conflict } = await queued()
+    const mark = (ago: number) =>
+      env.DB.prepare("UPDATE edit_conflicts SET resolved_by = 'ada', resolved_at = ? WHERE id = ?")
+        .bind(Date.now() - ago, conflict)
+        .run()
+    // Four minutes old: still being settled.
+    await mark(4 * 60_000)
+    expect((await post(bob, `/api/edit/conflicts/${conflict}/withdraw`)).status).toBe(409)
+    // Six minutes old: the settlement died. Another admin may settle it...
+    await mark(6 * 60_000)
+    const owner = await as("olivia", "owner")
+    expect((await resolve(owner, conflict, { choice: "first" })).status).toBe(200)
+    expect((await conflicts())[0]).toMatchObject({ state: "rejected", resolved_by: "olivia" })
+    // ...and its author may withdraw it, discard it, or the daily run expire it.
+    const again = async () => {
+      await env.DB.prepare("UPDATE upload_drafts SET status = 'conflict' WHERE id = ?")
+        .bind(second)
+        .run()
+      await env.DB.prepare(
+        `INSERT INTO edit_conflicts (id, repo, path, draft_id, login, first_login, reason,
+           resolved_by, opened_at, resolved_at, expires_at)
+         VALUES (?, 'vault', ?, ?, 'bob', 'ada', 'pending', 'ada', 0, ?, 0)`,
+      )
+        .bind(
+          `${Math.random().toString(16).slice(2, 14).padEnd(12, "0")}`,
+          PAGE,
+          second,
+          Date.now() - 6 * 60_000,
+        )
+        .run()
+      return (await conflicts()).find((row) => row.state === "open").id as string
+    }
+    const withdrawn = await again()
+    expect((await post(bob, `/api/edit/conflicts/${withdrawn}/withdraw`)).status).toBe(200)
+    await again()
+    const { expireConflicts } = await import("../src/edit/conflicts")
+    expect((await expireConflicts(env as any)).expired).toHaveLength(1)
+    await again()
+    expect((await bob.json(`/api/edit/drafts/${second}`, { method: "DELETE" })).status).toBe(200)
+    expect((await conflicts()).filter((row) => row.state === "open")).toEqual([])
   })
 
   it("settles against the first editor's newest sent text", async () => {

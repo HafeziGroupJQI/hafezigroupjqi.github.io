@@ -37,6 +37,17 @@ export async function baseText(
   return bytes && decoder.decode(bytes)
 }
 
+/**
+ * How long a settlement's mark on a conflict (resolved_by, with resolved_at its time, while the
+ * conflict is open) holds it: a Worker that died while settling can't pin the conflict for good.
+ * After this, the conflict can be withdrawn, discarded, expired or settled again.
+ */
+export const CLAIM_MS = 5 * 60_000
+
+/** SQL for "nobody is settling this conflict now", its one `?` the time before which a mark has
+ *  lapsed (now − CLAIM_MS). */
+export const UNCLAIMED = "(resolved_by IS NULL OR resolved_at IS NULL OR resolved_at < ?)"
+
 /** How long an unsettled conflict stays open before its draft goes back to its author. */
 export const CONFLICT_DAYS = 14
 
@@ -421,9 +432,9 @@ export async function expireConflicts(env: Env, now = Date.now()) {
   for (const conflict of conflicts) {
     const [closed] = await env.DB.batch([
       env.DB.prepare(
-        `UPDATE edit_conflicts SET state = 'expired', resolved_at = ?
-         WHERE id = ? AND state = 'open' AND resolved_by IS NULL`,
-      ).bind(now, conflict.id),
+        `UPDATE edit_conflicts SET state = 'expired', resolved_by = NULL, resolved_at = ?
+         WHERE id = ? AND state = 'open' AND ${UNCLAIMED}`,
+      ).bind(now, conflict.id, now - CLAIM_MS),
       env.DB.prepare(
         `UPDATE upload_drafts SET status = 'editing', detail_json = ?, updated_at = ?
          WHERE id = ? AND status = 'conflict'

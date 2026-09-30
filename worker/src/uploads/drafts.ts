@@ -3,6 +3,7 @@ import { editMessage, editTitle, freezeDir } from "../edit/rules"
 import type { Env } from "../env"
 import { HttpError } from "../http"
 import { dueAt } from "../profile/routes"
+import { CLAIM_MS, UNCLAIMED } from "../edit/conflicts"
 import { RepoConflict, RepoMissing } from "../repo"
 import { type DraftRepo, type RepoName, repoFullName } from "./github"
 
@@ -213,9 +214,9 @@ export async function discard(
   if (
     row.kind === "edit" &&
     (await env.DB.prepare(
-      "SELECT 1 FROM edit_conflicts WHERE draft_id = ? AND state = 'open' AND resolved_by IS NOT NULL",
+      `SELECT 1 FROM edit_conflicts WHERE draft_id = ? AND state = 'open' AND NOT ${UNCLAIMED}`,
     )
-      .bind(row.id)
+      .bind(row.id, Date.now() - CLAIM_MS)
       .first())
   )
     throw new HttpError(409, "this change is being settled right now: try again in a moment")
@@ -234,10 +235,10 @@ export async function discard(
   // A page edit held in a conflict (src/edit/conflicts.ts) is taken back with it.
   if (row.kind === "edit")
     await env.DB.prepare(
-      `UPDATE edit_conflicts SET state = 'withdrawn', resolved_at = ?
-       WHERE draft_id = ? AND state = 'open' AND resolved_by IS NULL`,
+      `UPDATE edit_conflicts SET state = 'withdrawn', resolved_by = NULL, resolved_at = ?
+       WHERE draft_id = ? AND state = 'open' AND ${UNCLAIMED}`,
     )
-      .bind(Date.now(), row.id)
+      .bind(Date.now(), row.id, Date.now() - CLAIM_MS)
       .run()
   await settle(env, row.id, "discarded", { detail: { message } })
 }

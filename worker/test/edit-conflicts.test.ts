@@ -1,7 +1,9 @@
 import { env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
+import { commitDue } from "../src/edit/publish"
+import { mergeDue } from "../src/uploads/merge"
 import { as, auditRows } from "./helpers"
-import { vault } from "./worker"
+import { privateVault, vault } from "./worker"
 
 // Conflicts between members' edits of one page (src/edit/conflicts.ts), on the public vault.
 
@@ -35,6 +37,13 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM upload_changes").run()
   await env.DB.prepare("DELETE FROM upload_drafts").run()
   await env.DB.prepare("DELETE FROM changes").run()
+  await env.DB.prepare("DELETE FROM admins").run()
+  privateVault.reset({
+    "notes/meeting.md": TEXT.replace(
+      "type: research\ntags: [research]",
+      "type: note\ntags: [internal, notes]",
+    ),
+  })
   await env.DB.prepare("DELETE FROM audit_log WHERE action LIKE 'edit.%'").run()
   const staged = await env.ARTIFACTS.list({ prefix: "uploads/" })
   if (staged.objects.length) await env.ARTIFACTS.delete(staged.objects.map((o) => o.key))
@@ -191,5 +200,230 @@ describe("one member, two devices", () => {
     // The one that lost left no text behind.
     const staged = await env.ARTIFACTS.list({ prefix: "uploads/" })
     expect(staged.objects.map((o) => o.key)).toEqual([`uploads/${results[0].id}/${PAGE}`])
+  })
+})
+
+const conflicts = async () =>
+  (await env.DB.prepare("SELECT * FROM edit_conflicts ORDER BY opened_at").all<any>()).results
+const statusOf = async (id: string) =>
+  (await env.DB.prepare("SELECT status FROM upload_drafts WHERE id = ?").bind(id).first<any>())!
+    .status
+const ADA_LINE = edit("Third paragraph.", "Third, as Ada has it.")
+const BOB_LINE = edit("Third paragraph.", "Third, as Bob has it.")
+
+/** Ada publishes a change of the third paragraph; Bob changes the same one. */
+async function overlapping() {
+  const ada = await as("ada")
+  const bob = await as("bob")
+  const first = (await draft(ada, ADA_LINE, "ada's third")).body.id
+  const published = await send(ada, first)
+  expect(published.status).toBe(200)
+  const second = (await draft(bob, BOB_LINE, "bob's third")).body.id
+  return { ada, bob, first, second, due: published.body.due_at as number }
+}
+
+describe("another member's sent change to the same page", () => {
+  it("stops a send that touches the same lines, naming them and showing their change", async () => {
+    const { bob, first, second, due } = await overlapping()
+    const refused = await send(bob, second)
+    expect(refused).toMatchObject({
+      status: 409,
+      body: {
+        kind: "pending",
+        with: { draft: first, login: "ada", author: "ada", due_at: due },
+        base_text: TEXT,
+        their_text: ADA_LINE,
+        proposed: BOB_LINE,
+      },
+    })
+    expect(refused.body.with.sent_at).toEqual(expect.any(Number))
+    // Not queued: Bob chooses what happens.
+    expect(await statusOf(second)).toBe("editing")
+    expect(await conflicts()).toEqual([])
+  })
+
+  it("lets a change to other lines go in beside theirs, and says so", async () => {
+    const { ada, bob, first, due } = await overlapping()
+    const cy = await as("cy")
+    const other = (await draft(cy, edit("Fifth paragraph.", "Fifth, by Cy."), "cy")).body.id
+    const sent = await send(cy, other)
+    expect(sent.status).toBe(200)
+    expect(sent.body.beside).toEqual([expect.objectContaining({ draft: first, login: "ada" })])
+    // Both go in with the run, Ada's first.
+    expect(await commitDue(env as any, vault.fetch, due + 3_600_000)).toMatchObject({
+      merged: [first, other],
+    })
+    expect(vault.text(PAGE)).toBe(edit("Fifth paragraph.", "Fifth, by Cy.", ADA_LINE))
+    expect(ada && bob).toBeTruthy()
+  })
+
+  it("never lets an unsent draft hold a page", async () => {
+    const ada = await as("ada")
+    const bob = await as("bob")
+    await draft(ada, ADA_LINE)
+    const second = (await draft(bob, BOB_LINE)).body.id
+    expect((await send(bob, second)).status).toBe(200)
+    // Bob sees Ada's name only, not her draft or its text.
+    const seen = (await bob.json(`/api/edit/source?repo=vault&path=${PAGE}`)).body.others
+    expect(seen).toEqual([
+      {
+        login: "ada",
+        kind: "edit",
+        status: "editing",
+        sent_at: null,
+        due_at: null,
+        author: null,
+        draft: null,
+      },
+    ])
+  })
+
+  it("queues the second change for review: held, recorded, and left alone by the runs", async () => {
+    const { bob, first, second, due } = await overlapping()
+    const queued = await post(bob, `/api/edit/drafts/${second}/queue`)
+    expect(queued.status).toBe(200)
+    expect(queued.body).toMatchObject({
+      draft: { id: second, status: "conflict" },
+      conflict: {
+        draft: second,
+        login: "bob",
+        first_draft: first,
+        first_login: "ada",
+        reason: "pending",
+        state: "open",
+        can_settle: false,
+        can_withdraw: true,
+      },
+    })
+    expect(await auditRows("action = 'edit.conflict.queue'")).toEqual([
+      expect.objectContaining({ login: "bob", target: PAGE }),
+    ])
+    const { results } = await env.DB.prepare("SELECT state, author FROM changes WHERE draft_id = ?")
+      .bind(second)
+      .all()
+    expect(results).toEqual([{ state: "conflict", author: "bob" }])
+    // Ada's goes in on schedule; Bob's waits.
+    expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ merged: [first] })
+    expect(await commitDue(env as any, vault.fetch, due + 7_200_000)).toMatchObject({ merged: [] })
+    expect(await statusOf(second)).toBe("conflict")
+    expect(vault.text(PAGE)).toBe(ADA_LINE)
+    // Held: Bob can't change or send it until he withdraws it.
+    expect((await put(bob, second, { text: TEXT + "x\n" })).status).toBe(409)
+    expect((await send(bob, second)).status).toBe(409)
+    // Ada sees it on the page, to settle; Bob sees his own, waiting.
+    const ada = await as("ada")
+    const hers = (await ada.json(`/api/edit/source?repo=vault&path=${PAGE}`)).body
+    expect(hers.to_settle).toEqual([expect.objectContaining({ draft: second, you_first: true })])
+    const his = (await bob.json(`/api/edit/source?repo=vault&path=${PAGE}`)).body
+    expect(his.conflict).toMatchObject({ draft: second, can_withdraw: true })
+    expect(his.to_settle).toEqual([])
+  })
+
+  it("won't queue a change nothing conflicts with, nor more than five at once", async () => {
+    const bob = await as("bob")
+    const alone = (await draft(bob, BOB_LINE, "mine")).body.id
+    expect(await post(bob, `/api/edit/drafts/${alone}/queue`)).toMatchObject({
+      status: 409,
+      body: { detail: expect.stringContaining("nothing conflicts") },
+    })
+    expect(await statusOf(alone)).toBe("editing")
+    await bob.json(`/api/edit/drafts/${alone}`, { method: "DELETE" })
+    // Five held already, on other pages.
+    for (let i = 0; i < 5; i++) {
+      const path = `content/research/topic-${i}.md`
+      vault.push(path, TEXT)
+      const id = (await draft(bob, TEXT + `${i}\n`, "mine", path)).body.id
+      await env.DB.batch([
+        env.DB.prepare("UPDATE upload_drafts SET status = 'conflict' WHERE id = ?").bind(id),
+        env.DB.prepare(
+          `INSERT INTO edit_conflicts (id, repo, path, draft_id, login, reason, opened_at, expires_at)
+           VALUES (?, 'vault', ?, ?, 'bob', 'main', 0, 9e15)`,
+        ).bind(`00000000000${i}`, path, id),
+      ])
+    }
+    const { second } = await overlapping()
+    expect((await post(bob, `/api/edit/drafts/${second}/queue`)).status).toBe(429)
+    expect(await statusOf(second)).toBe("editing")
+  })
+
+  it("lets the second editor withdraw a held change, and discarding it withdraws it too", async () => {
+    const { bob, second } = await overlapping()
+    const { conflict } = (await post(bob, `/api/edit/drafts/${second}/queue`)).body
+    const ada = await as("ada")
+    // Only Bob withdraws it.
+    expect((await post(ada, `/api/edit/conflicts/${conflict.id}/withdraw`)).status).toBe(403)
+    const eve = await as("eve")
+    expect((await post(eve, `/api/edit/conflicts/${conflict.id}/withdraw`)).status).toBe(404)
+    const back = await post(bob, `/api/edit/conflicts/${conflict.id}/withdraw`)
+    expect(back.body).toMatchObject({
+      conflict: { state: "withdrawn" },
+      draft: { status: "editing" },
+    })
+    expect((await post(bob, `/api/edit/conflicts/${conflict.id}/withdraw`)).status).toBe(409)
+    expect((await bob.json(`/api/edit/drafts/${second}`)).body.text).toBe(BOB_LINE)
+    // Queued again, then discarded.
+    await post(bob, `/api/edit/drafts/${second}/queue`)
+    await bob.json(`/api/edit/drafts/${second}`, { method: "DELETE" })
+    expect((await conflicts()).map((row) => row.state)).toEqual(["withdrawn", "withdrawn"])
+    expect(await auditRows("action = 'edit.conflict.withdraw'")).toHaveLength(1)
+  })
+
+  it("treats any other edit of a notebook as a conflict", async () => {
+    const path = "notes/fit.ipynb"
+    const notebook = (source: string) =>
+      JSON.stringify(
+        {
+          cells: [{ cell_type: "markdown", metadata: {}, source }],
+          metadata: {},
+          nbformat: 4,
+          nbformat_minor: 5,
+        },
+        null,
+        1,
+      ) + "\n"
+    privateVault.push(path, notebook("a\nb\nc\nd\ne"))
+    const ada = await as("ada")
+    const bob = await as("bob")
+    const create = (client: Client, text: string) =>
+      post(client, "/api/edit/drafts", {
+        repo: "vault-private",
+        path,
+        base_sha: privateVault.sha(path),
+        text,
+        summary: "cells",
+      })
+    const first = (await create(ada, notebook("A\nb\nc\nd\ne"))).body.id
+    expect((await send(ada, first)).status).toBe(200)
+    const second = (await create(bob, notebook("a\nb\nc\nd\nE"))).body.id
+    expect(await send(bob, second)).toMatchObject({ status: 409, body: { kind: "pending" } })
+  })
+
+  it("reads a private page's first change from its branch, and holds a queued one with no pull request", async () => {
+    const path = "notes/meeting.md"
+    const base = privateVault.text(path)!
+    const ada = await as("ada")
+    const bob = await as("bob")
+    const create = (client: Client, text: string) =>
+      post(client, "/api/edit/drafts", {
+        repo: "vault-private",
+        path,
+        base_sha: privateVault.sha(path),
+        text,
+        summary: "a change",
+      })
+    const first = (await create(ada, base.replace("Third paragraph.", "Ada's third."))).body.id
+    const sentFirst = await send(ada, first)
+    expect(sentFirst.body).toMatchObject({ pull: { number: 1 } })
+    const second = (await create(bob, base.replace("Third paragraph.", "Bob's third."))).body.id
+    expect(await send(bob, second)).toMatchObject({
+      status: 409,
+      body: { kind: "pending", their_text: base.replace("Third paragraph.", "Ada's third.") },
+    })
+    expect((await post(bob, `/api/edit/drafts/${second}/queue`)).status).toBe(200)
+    expect(privateVault.pulls.size).toBe(1)
+    privateVault.report(privateVault.refs.get(`edits/ada/${first}`)!, "success")
+    const run = await mergeDue(env as any, privateVault.fetch, sentFirst.body.due_at)
+    expect(run.merged).toEqual([first])
+    expect(await statusOf(second)).toBe("conflict")
   })
 })

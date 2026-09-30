@@ -1,6 +1,6 @@
 import type { Env } from "../env"
 import type { RepoBlob } from "../repo"
-import type { ChangeRow, DraftRow } from "../uploads/drafts"
+import { type ChangeRow, type DraftRow, publishedKey } from "../uploads/drafts"
 import type { DraftRepo } from "../uploads/github"
 import { threeWay } from "./merge"
 import { pageProblems, readPage } from "./public"
@@ -9,8 +9,11 @@ import { contentReport } from "./rules"
 // When edits of one page meet. A send is checked against main: a page that changed there since
 // the member loaded it is merged with their text line by line (merge.ts). Changes to different
 // lines go together and the member looks the result over; changes to the same lines are a
-// conflict, which the member settles in the editor on top of main's version. Nothing anyone else
-// wrote is replaced without the member seeing it.
+// conflict, which the member settles in the editor on top of main's version. It is then checked
+// against other members' sent changes to the page that haven't gone in yet: one that touches the
+// same lines is shown to the member (only then, and only its sent text), who edits on top of it,
+// queues theirs for the first editor or an admin to settle, or discards it. An unsent draft never
+// holds a page. Nothing anyone else wrote is replaced without someone seeing it.
 
 const decoder = new TextDecoder()
 
@@ -124,7 +127,7 @@ export function mergedProblems(
 export const mergeable = (path: string) => !/\.ipynb$/i.test(path)
 
 export type SendCheck =
-  | { kind: "ok"; main: RepoBlob; mainText: string }
+  | { kind: "ok"; main: RepoBlob; mainText: string; beside: Other[] }
   /** The page is gone from main: moved or deleted. */
   | { kind: "moved" }
   /** Main changed other lines: the merged text, for the member to look over. */
@@ -136,8 +139,70 @@ export type SendCheck =
       base_text: string | null
       proposed: string
     }
+  /** Another member's sent change touches the same lines: theirs, from the version both began
+   *  with, and a merge with the member's lines where both changed. */
+  | {
+      kind: "pending"
+      with: Other
+      base_text: string
+      their_text: string
+      proposed: string
+    }
 
-/** Check a draft about to be sent against main as it is now. */
+/** Another member's sent change to the page, as the conflict dialog names it. */
+export interface Other {
+  draft: string
+  login: string
+  author: string
+  sent_at: number | null
+  due_at: number | null
+}
+
+const otherOf = (row: DraftRow): Other => ({
+  draft: row.id,
+  login: row.login,
+  author: row.author || row.login,
+  sent_at: row.sent_at,
+  due_at: row.due_at,
+})
+
+/** Other members' sent edits of a page that haven't gone in yet, the first sent first. */
+export async function sentOthers(
+  env: Env,
+  row: Pick<DraftRow, "id" | "login" | "repo">,
+  path: string,
+): Promise<DraftRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT d.* FROM upload_drafts d JOIN upload_changes c ON c.draft_id = d.id
+     WHERE d.repo = ? AND c.path = ? AND d.kind = 'edit' AND d.id != ?
+       AND d.login != ? COLLATE NOCASE AND d.status IN ('open', 'review')
+       AND d.sent_at IS NOT NULL
+     ORDER BY d.sent_at LIMIT 5`,
+  )
+    .bind(row.repo, path, row.id, row.login)
+    .all<DraftRow>()
+  return results
+}
+
+/** A sent draft's text as it was sent: a public page's as published, a private one's on its
+ *  branch. null when it is gone. */
+export async function sentText(
+  env: Env,
+  repo: DraftRepo,
+  row: DraftRow,
+  path: string,
+): Promise<string | null> {
+  if (row.repo === "vault") {
+    const object = await env.ARTIFACTS.get(publishedKey(row.id, path))
+    return object ? object.text() : null
+  }
+  if (!row.branch) return null
+  const file = await repo.file(path, row.branch)
+  return file && decoder.decode(file.bytes)
+}
+
+/** Check a draft about to be sent against main as it is now, then against other members' sent
+ *  changes to the page. */
 export async function checkSend(
   env: Env,
   repo: DraftRepo,
@@ -149,7 +214,8 @@ export async function checkSend(
   const main = await repo.file(change.path)
   if (!main) return { kind: "moved" }
   const mainText = decoder.decode(main.bytes)
-  if (main.sha === change.base_sha) return { kind: "ok", main, mainText }
+  if (main.sha === change.base_sha)
+    return pendingCheck(env, repo, row, change, text, mainText, main, admin)
   const incoming = { sha: main.sha, text: mainText }
   const base = await baseText(env, repo, row, change)
   if (base !== null && mergeable(change.path)) {
@@ -159,6 +225,44 @@ export async function checkSend(
     return { kind: "main", incoming, base_text: base, proposed: merged.text }
   }
   return { kind: "main", incoming, base_text: base, proposed: text }
+}
+
+/** The member's text against each other member's sent change to the page: the first that
+ *  touches the same lines stops the send. */
+async function pendingCheck(
+  env: Env,
+  repo: DraftRepo,
+  row: DraftRow,
+  change: ChangeRow,
+  text: string,
+  mainText: string,
+  main: RepoBlob,
+  admin: boolean,
+): Promise<SendCheck> {
+  const beside: Other[] = []
+  for (const other of await sentOthers(env, row, change.path)) {
+    const theirs = await sentText(env, repo, other, change.path)
+    if (theirs === null) continue
+    // Both began from main's version, or the member began from theirs (edit on top).
+    const base = row.after_draft === other.id ? await baseText(env, repo, row, change) : mainText
+    if (base === null || theirs === base || theirs === text) continue
+    const merged = mergeable(change.path) ? threeWay(base, theirs, text) : null
+    if (
+      merged?.clean &&
+      !mergedProblems(row.repo, change.path, merged.text, theirs, admin).length
+    ) {
+      beside.push(otherOf(other))
+      continue
+    }
+    return {
+      kind: "pending",
+      with: otherOf(other),
+      base_text: base,
+      their_text: theirs,
+      proposed: merged?.text ?? text,
+    }
+  }
+  return { kind: "ok", main, mainText, beside }
 }
 
 /** The refusal (409) a send answers with, for the editor. `incoming` is main's version. */
@@ -180,5 +284,58 @@ export function refusal(check: Exclude<SendCheck, { kind: "ok" }>, verb: "send" 
         ...check,
         detail: `the page changed on main since you started editing: look at what changed, take it into your version, then ${verb} again`,
       }
+    case "pending":
+      return {
+        ...check,
+        detail: `${check.with.author} sent a change to this page that touches the same lines as yours: edit on top of theirs, queue yours for review, or discard it`,
+      }
   }
 }
+
+/** A conflict as the members site shows it, to `viewer`. */
+export function conflictView(
+  row: ConflictRow & { author?: string | null; summary?: string | null; kind?: string | null },
+  viewer: { login: string; admin: boolean },
+) {
+  const me = viewer.login.toLowerCase()
+  const second = row.login.toLowerCase() === me
+  const first = row.first_login?.toLowerCase() === me
+  return {
+    id: row.id,
+    repo: row.repo,
+    path: row.path,
+    kind: row.path.split(".").pop()!.toLowerCase(),
+    draft: row.draft_id,
+    login: row.login,
+    author: row.author || row.login,
+    summary: row.summary ?? null,
+    first_draft: row.first_draft_id,
+    first_login: row.first_login,
+    first_author: row.first_author || row.first_login,
+    reason: row.reason,
+    state: row.state,
+    resolution: row.resolution,
+    resolved_by: row.resolved_by,
+    opened_at: row.opened_at,
+    resolved_at: row.resolved_at,
+    expires_at: row.expires_at,
+    you_first: first,
+    // Settled by its first editor or an admin, never by its second editor alone.
+    can_settle: row.state === "open" && (first || (viewer.admin && !second) || (second && first)),
+    can_withdraw: row.state === "open" && second,
+  }
+}
+
+/** Conflicts with the name and summary of the held draft. */
+export const CONFLICT_SELECT = `SELECT x.*, d.author, d.summary FROM edit_conflicts x
+  JOIN upload_drafts d ON d.id = x.draft_id`
+
+/** A draft's open conflict, if it is held in one. */
+export async function openConflictOf(env: Env, draft: string) {
+  return env.DB.prepare(`${CONFLICT_SELECT} WHERE x.draft_id = ? AND x.state = 'open'`)
+    .bind(draft)
+    .first<ConflictRow & { author: string | null; summary: string | null }>()
+}
+
+/** Open conflicts at most this many per member at once. */
+export const CONFLICTS_OPEN_MAX = 5

@@ -271,7 +271,13 @@ describe("public pages: publishing", () => {
     const one = (await draft(ada, path, RESEARCH + "Ada's line.\n")).body.id
     const two = (await draft(bob, path, RESEARCH + "Bob's line.\n")).body.id
     const due = (await publish(ada, one)).body.due_at
+    // Sent before sends were checked against each other (rows from before, say): Ada's draft
+    // stood aside while Bob's was published.
+    const aside = (status: string) =>
+      env.DB.prepare("UPDATE upload_drafts SET status = ? WHERE id = ?").bind(status, one).run()
+    await aside("editing")
     expect((await publish(bob, two)).status).toBe(200)
+    await aside("open")
     const run = await commitDue(env as any, vault.fetch, due)
     expect(run).toMatchObject({ merged: [one], conflicts: [two] })
     // Ada's change is on the page; Bob's is a conflict with his text kept, and he is told.
@@ -534,6 +540,8 @@ describe("public pages: what the vault's check would refuse", () => {
     const later = (await draft(ada, "content/research/engines.md", withHtml + "Typo fixed.\n")).body
       .id
     expect((await publish(ada, later)).status).toBe(200)
+    // (Taken back, so the next edit of the same lines doesn't wait for it.)
+    await ada.json(`/api/edit/drafts/${later}`, { method: "DELETE" })
     // Links the page already had are its own business; an edit is judged by what it adds.
     vault.push("content/research/engines.md", RESEARCH + "[[research/legacy-title]]\n")
     const kept = RESEARCH + "[[research/legacy-title]]\nMore.\n"

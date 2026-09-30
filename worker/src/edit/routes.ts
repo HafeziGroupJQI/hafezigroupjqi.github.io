@@ -1,4 +1,4 @@
-import type { Auditor } from "../audit"
+import { type Auditor, isAdmin } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
 import { HttpError, json, readJson } from "../http"
@@ -18,9 +18,21 @@ import {
   send,
   stagedKey,
 } from "../uploads/drafts"
-import { DraftRepo, REPO_NAMES, type RepoName } from "../uploads/github"
+import { DraftRepo, REPO_NAMES, type RepoName, repoFullName } from "../uploads/github"
 import { SENDS_PER_DAY, ownDraft, underLimit } from "../uploads/routes"
-import { baseText, checkSend, refusal } from "./conflicts"
+import { draftChanges, recordChanges, unsentChanges } from "../changes"
+import {
+  CONFLICTS_OPEN_MAX,
+  CONFLICT_SELECT,
+  type ConflictRow,
+  baseText,
+  checkSend,
+  conflictView,
+  newId,
+  openConflict,
+  openConflictOf,
+  refusal,
+} from "./conflicts"
 import { threeWay } from "./merge"
 import { readPage } from "./public"
 import { publishEdit } from "./publish"
@@ -31,6 +43,7 @@ import {
   contentReport,
   editAccess,
   editText,
+  editTitle,
   editablePath,
 } from "./rules"
 
@@ -50,7 +63,8 @@ export const EDIT_DRAFTS_MAX = 10
 /** Saves of edits (new drafts and new versions of one) per member in 24 hours. */
 export const SAVES_PER_DAY = 500
 
-const DRAFT = /^\/api\/edit\/drafts\/([0-9a-f]{12})(?:\/(send))?$/
+const DRAFT = /^\/api\/edit\/drafts\/([0-9a-f]{12})(?:\/(send|queue))?$/
+const CONFLICT = /^\/api\/edit\/conflicts\/([0-9a-f]{12})(?:\/(withdraw|resolve))?$/
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
 
 const CONTENT_TYPES: Record<EditKind, string> = {
@@ -95,18 +109,34 @@ async function liveEdit(
   return change ? { row, change } : null
 }
 
-/** Other members' live drafts of a file: "others are editing this page". */
+/**
+ * Other members' live drafts of a file: "others are editing this page". Who sent one and when
+ * shows; an unsent draft is a name and nothing else.
+ */
 async function othersEditing(env: Env, login: string, repo: RepoName, path: string) {
   const { results } = await env.DB.prepare(
-    `SELECT d.login, d.kind, d.status, d.sent_at, d.due_at FROM upload_drafts d
+    `SELECT d.id, d.login, d.author, d.kind, d.status, d.sent_at, d.due_at FROM upload_drafts d
      JOIN upload_changes c ON c.draft_id = d.id
      WHERE d.repo = ? AND (c.path = ? OR c.from_path = ?) AND d.login != ? COLLATE NOCASE
        AND d.${LIVE_SQL}
      ORDER BY d.updated_at DESC LIMIT 10`,
   )
     .bind(repo, path, path, login)
-    .all<Pick<DraftRow, "login" | "kind" | "status" | "sent_at" | "due_at">>()
-  return results
+    .all<Pick<DraftRow, "id" | "login" | "author" | "kind" | "status" | "sent_at" | "due_at">>()
+  return results.map(({ id, author, ...other }) => {
+    const sent = other.sent_at !== null && (other.status === "open" || other.status === "review")
+    return { ...other, author: sent ? author || other.login : null, draft: sent ? id : null }
+  })
+}
+
+/** Refuse to change a draft held in a conflict: its author withdraws it first. */
+async function notHeld(env: Env, row: DraftRow) {
+  if (row.status !== "conflict") return
+  if (await openConflictOf(env, row.id))
+    throw new HttpError(
+      409,
+      "this change is waiting to be settled: withdraw it first to change it yourself",
+    )
 }
 
 /**
@@ -146,11 +176,21 @@ export async function editRoutes(
     const name = repoParam(url.searchParams.get("repo"))
     const { path: file, kind } = editablePath(name, url.searchParams.get("path"))
     const repo = repoOf(name)
-    const [main, mine, others] = await Promise.all([
+    const [main, mine, others, admin] = await Promise.all([
       repo.file(file),
       liveEdit(env, session.login, name, file),
       othersEditing(env, session.login, name, file),
+      isAdmin(env, session),
     ])
+    const viewer = { login: session.login, admin }
+    // Open conflicts on this page: the member's own draft held in one, and those they may settle.
+    const { results: open } = await env.DB.prepare(
+      `${CONFLICT_SELECT} WHERE x.repo = ? AND x.path = ? AND x.state = 'open'
+       ORDER BY x.opened_at LIMIT 20`,
+    )
+      .bind(name, file)
+      .all<ConflictRow & { author: string | null; summary: string | null }>()
+    const conflicts = open.map((row) => conflictView(row, viewer))
     if (!main && !mine) throw new HttpError(404, `${file} isn't in the vault`)
     const text = main ? decode(main.bytes, file) : null
     return json({
@@ -170,6 +210,8 @@ export async function editRoutes(
           }
         : null,
       others,
+      conflict: conflicts.find((conflict) => conflict.draft === mine?.row.id) ?? null,
+      to_settle: conflicts.filter((conflict) => conflict.can_settle),
       // When a draft sent now would go in: the end of the hour after this one.
       due_at: dueAt(Date.now()),
       github_url: `https://github.com/${repo.repo}/blob/main/${encodePath(file)}`,
@@ -254,6 +296,9 @@ export async function editRoutes(
     return json({ ...(await view(row)), base_sha: base, problems: report.problems }, 201)
   }
 
+  const conflictMatch = path.match(CONFLICT)
+  if (conflictMatch) return conflictRoutes(request, env, session, record, conflictMatch)
+
   const match = path.match(DRAFT)
   if (!match) throw new HttpError(404, "not found")
   const [, id, part] = match
@@ -276,6 +321,7 @@ export async function editRoutes(
   if (!part && request.method === "PUT") {
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
+    await notHeld(env, row)
     const [change] = await changesOf(env, row.id)
     const body = (await readJson(request)) as Record<string, unknown>
     const access = await editAccess(env, session, row.repo, change.path)
@@ -369,6 +415,7 @@ export async function editRoutes(
   if (part === "send" && request.method === "POST") {
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
+    await notHeld(env, row)
     const changes = await changesOf(env, row.id)
     const [change] = changes
     if (!row.summary) throw new HttpError(422, "say in a line what you changed, then send it")
@@ -397,7 +444,7 @@ export async function editRoutes(
         due_at: published.due_at,
         revision: row.sent_at !== null,
       })
-      return json(published)
+      return json({ ...published, beside: check.beside })
     }
     await send(env, repo, row, changes, display_name)
     const sent = await view((await draftRow(env, row.id))!)
@@ -407,7 +454,109 @@ export async function editRoutes(
       due_at: sent.due_at,
       revision: row.sent_at !== null,
     })
-    return json(sent)
+    return json({ ...sent, beside: check.beside })
+  }
+
+  // Queue the draft for review: it conflicts with another member's sent change (or with main),
+  // and waits, held, until the first editor or an admin settles it. The Worker finds the overlap
+  // itself; nothing in the request says what it conflicts with. A private draft's pull request, if
+  // it has one, closes meanwhile: settling it sends it again.
+  if (part === "queue" && request.method === "POST") {
+    requireMutation(request, env)
+    const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
+    await notHeld(env, row)
+    const [change] = await changesOf(env, row.id)
+    if (!row.summary) throw new HttpError(422, "say in a line what you changed, then queue it")
+    const access = await editAccess(env, session, row.repo, change.path)
+    if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
+    const text = await stagedText(env, row, change.path)
+    const report = checkEdit(row.repo, change.path, text)
+    if (report.problems.length) throw new HttpError(422, report.problems.join("; "))
+    await underLimit(
+      env,
+      session.login,
+      ["uploads.send", "edit.send", "edit.conflict.queue"],
+      SENDS_PER_DAY,
+      "sends",
+    )
+    const held = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM edit_conflicts WHERE login = ? COLLATE NOCASE AND state = 'open'",
+    )
+      .bind(session.login)
+      .first<{ n: number }>()
+    if ((held?.n ?? 0) >= CONFLICTS_OPEN_MAX)
+      throw new HttpError(
+        429,
+        `you have ${CONFLICTS_OPEN_MAX} changes waiting to be settled; withdraw one first`,
+      )
+    const repo = repoOf(row.repo)
+    const check = await checkSend(env, repo, row, change, text, access)
+    if (check.kind !== "pending" && check.kind !== "main")
+      throw new HttpError(
+        409,
+        check.kind === "moved"
+          ? "the page was moved or deleted on main: there is nothing to settle it with"
+          : "nothing conflicts with this change now: send it",
+      )
+    const { display_name } = await navIdentity(env, session)
+    const author = plainName(display_name, session.login)
+    if (row.pr_number) {
+      const pull = await repo.pull(row.pr_number)
+      if (pull.state === "open") await repo.updatePull(row.pr_number, { state: "closed" })
+    }
+    if (row.branch) await repo.deleteBranch(row.branch)
+    const now = Date.now()
+    const conflict = newId()
+    const first =
+      check.kind === "pending"
+        ? { id: check.with.draft, login: check.with.login, author: check.with.author }
+        : null
+    const title = editTitle(change.path, author, row.summary)
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE upload_drafts SET status = 'conflict', title = ?, author = ?, detail_json = ?,
+           branch = NULL, pr_number = NULL, head_sha = NULL, updated_at = ?
+         WHERE id = ?`,
+      ).bind(
+        title,
+        author,
+        JSON.stringify({
+          message: `waiting to be settled by ${first ? `${first.author} or ` : ""}an admin`,
+        }),
+        now,
+        row.id,
+      ),
+      openConflict(env, {
+        id: conflict,
+        repo: row.repo,
+        path: change.path,
+        draft: row.id,
+        login: session.login,
+        first,
+        blob: check.kind === "main" ? check.incoming.sha : null,
+        reason: check.kind,
+        now,
+      }),
+      // The site's recent changes (src/changes.ts): the page's change, waiting to be settled.
+      unsentChanges(env, row.id),
+      recordChanges(
+        env,
+        draftChanges(row, [change], { at: now, author, summary: title, pull: null }).map(
+          (item) => ({ ...item, state: "conflict" as const }),
+        ),
+      ),
+    ])
+    record("edit.conflict.queue", change.path, {
+      draft: row.id,
+      conflict,
+      reason: check.kind,
+      first: first?.login ?? null,
+    })
+    const held2 = await openConflictOf(env, row.id)
+    return json({
+      draft: await view((await draftRow(env, row.id))!),
+      conflict: held2 && conflictView(held2, { login: session.login, admin: access.admin }),
+    })
   }
 
   // Take the draft back: its pull request (if any) closes and its text is dropped.
@@ -419,5 +568,56 @@ export async function editRoutes(
     return json(await view((await draftRow(env, row.id))!))
   }
 
+  throw new HttpError(405, "method not allowed")
+}
+
+/** A conflict the viewer may see: its two editors and admins. Anyone else is told it isn't there. */
+async function visibleConflict(env: Env, session: Session, id: string) {
+  const row = await env.DB.prepare(`${CONFLICT_SELECT} WHERE x.id = ?`)
+    .bind(id)
+    .first<ConflictRow & { author: string | null; summary: string | null }>()
+  const admin = await isAdmin(env, session)
+  const me = session.login.toLowerCase()
+  if (!row || (!admin && row.login.toLowerCase() !== me && row.first_login?.toLowerCase() !== me))
+    throw new HttpError(404, "no such conflict")
+  return { row, admin, view: conflictView(row, { login: session.login, admin }) }
+}
+
+async function conflictRoutes(
+  request: Request,
+  env: Env,
+  session: Session,
+  record: Auditor,
+  [, id, part]: RegExpMatchArray,
+): Promise<Response> {
+  // The second editor takes their change back: it is their draft again, unsent.
+  if (part === "withdraw" && request.method === "POST") {
+    requireMutation(request, env)
+    const { row, view } = await visibleConflict(env, session, id)
+    if (row.login.toLowerCase() !== session.login.toLowerCase())
+      throw new HttpError(403, "only the member who sent this change can withdraw it")
+    if (row.state !== "open") throw new HttpError(409, "this conflict is settled already")
+    const now = Date.now()
+    const [closed] = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE edit_conflicts SET state = 'withdrawn', resolved_by = ?, resolved_at = ?
+         WHERE id = ? AND state = 'open'`,
+      ).bind(session.login, now, row.id),
+      env.DB.prepare(
+        `UPDATE upload_drafts SET status = 'editing', detail_json = NULL, updated_at = ?
+         WHERE id = ? AND status = 'conflict'
+           AND EXISTS (SELECT 1 FROM edit_conflicts WHERE id = ? AND state = 'withdrawn'
+                         AND resolved_at = ?)`,
+      ).bind(now, row.draft_id, row.id, now),
+      unsentChanges(env, row.draft_id),
+    ])
+    if (!closed.meta.changes) throw new HttpError(409, "this conflict is settled already")
+    record("edit.conflict.withdraw", row.path, { conflict: row.id, draft: row.draft_id })
+    const draft = (await draftRow(env, row.draft_id))!
+    return json({
+      conflict: { ...view, state: "withdrawn", can_settle: false, can_withdraw: false },
+      draft: draftView(repoFullName(env, draft.repo), draft, await changesOf(env, draft.id)),
+    })
+  }
   throw new HttpError(405, "method not allowed")
 }

@@ -221,6 +221,14 @@ export async function discard(
     if (pull?.state === "open") await repo.updatePull(row.pr_number, { state: "closed" })
   }
   if (row.branch) await repo.deleteBranch(row.branch)
+  // A page edit held in a conflict (src/edit/conflicts.ts) is taken back with it.
+  if (row.kind === "edit")
+    await env.DB.prepare(
+      `UPDATE edit_conflicts SET state = 'withdrawn', resolved_at = ?
+       WHERE draft_id = ? AND state = 'open'`,
+    )
+      .bind(Date.now(), row.id)
+      .run()
   await settle(env, row.id, "discarded", { detail: { message } })
 }
 

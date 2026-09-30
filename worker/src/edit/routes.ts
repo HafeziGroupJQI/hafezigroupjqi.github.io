@@ -897,9 +897,17 @@ async function conflictRoutes(
       const after = stacked ? on.draft : null
       await env.DB.batch([
         env.DB.prepare(
-          `UPDATE upload_changes SET base_sha = ?, size = ?, staged_at = ?
+          `UPDATE upload_changes SET base_sha = ?, size = ?, review = ?, staged_at = ?
            WHERE draft_id = ? AND path = ?`,
-        ).bind(base, new TextEncoder().encode(text).length, now, second.id, row.path),
+        ).bind(
+          base,
+          new TextEncoder().encode(text).length,
+          // Why an admin merges it, for the text as settled: the hourly run trusts this.
+          checkEdit(row.repo, row.path, text).review,
+          now,
+          second.id,
+          row.path,
+        ),
         env.DB.prepare(
           `UPDATE upload_drafts SET after_draft = ?, edited_at = ?, version = version + 1
            WHERE id = ?`,

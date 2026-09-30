@@ -682,6 +682,39 @@ describe("settling a queued conflict", () => {
     expect(await base!.text()).toBe(newer)
   })
 
+  it("leaves a settled private text with something that runs to an admin", async () => {
+    const path = "notes/meeting.md"
+    const base = privateVault.text(path)!
+    const create = (client: Client, text: string) =>
+      post(client, "/api/edit/drafts", {
+        repo: "vault-private",
+        path,
+        base_sha: privateVault.sha(path),
+        text,
+        summary: "a change",
+      })
+    const ada = await as("ada")
+    const bob = await as("bob")
+    const first = (await create(ada, base.replace("Third paragraph.", "Ada's third."))).body.id
+    await send(ada, first)
+    const second = (await create(bob, base.replace("Third paragraph.", "Bob's third."))).body.id
+    const { conflict } = (await post(bob, `/api/edit/drafts/${second}/queue`)).body
+    const shown = (await ada.json(`/api/edit/conflicts/${conflict.id}`)).body
+    const text = base.replace("Third paragraph.", "Both.\n\n<script>run()</script>")
+    const settled = await resolve(ada, conflict.id, {
+      choice: "merged",
+      text,
+      first_sha: shown.first_sha,
+    })
+    expect(settled.status).toBe(200)
+    // Checked again: the hourly run leaves it for an admin to merge.
+    expect(settled.body.draft.review).toEqual([expect.stringContaining(path)])
+    const change = await env.DB.prepare("SELECT review FROM upload_changes WHERE draft_id = ?")
+      .bind(second)
+      .first<any>()
+    expect(change.review).toEqual(expect.any(String))
+  })
+
   it("sends a settled private change as a pull request again, after the first", async () => {
     const path = "notes/meeting.md"
     const base = privateVault.text(path)!

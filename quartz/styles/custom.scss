@@ -2968,6 +2968,248 @@ a.device-card:hover {
   }
 }
 
+// Appearance (frontend/settings/theme.js): the dark mode switch, a sample of the site in the
+// colors showing now, and the two theme pickers.
+.theme-mode {
+  border: 0;
+  padding: 0;
+  margin: 12px 0 6px;
+  legend {
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+}
+.theme-mode__options {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--gray, #b8b8b8);
+  border-radius: 6px;
+  overflow: hidden;
+  label {
+    position: relative;
+  }
+  input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  span {
+    display: block;
+    padding: 8px 18px;
+    border-right: 1px solid var(--gray, #b8b8b8);
+  }
+  label:last-child span {
+    border-right: 0;
+  }
+  input:checked + span {
+    background: var(--secondary, #e21833);
+    color: var(--c-on-accent, #fff);
+    font-weight: 600;
+  }
+  input:focus-visible + span {
+    outline: 3px solid var(--c-focus, #e21833);
+    outline-offset: -3px;
+  }
+}
+.theme-summary {
+  margin: 4px 0 16px;
+}
+.theme-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 23rem) minmax(0, 1fr);
+  gap: 16px 24px;
+  align-items: start;
+  margin: 8px 0 20px;
+}
+.theme-sample {
+  border: 1px solid var(--jqi-rule);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.9rem;
+  background: var(--light, #fff);
+  color: var(--darkgray, #454545);
+  p {
+    margin: 6px 0;
+    color: inherit;
+  }
+  a {
+    color: var(--secondary, #e21833);
+    text-decoration: underline;
+  }
+}
+.theme-sample__band {
+  padding: 6px 12px;
+  background: var(--c-band, #454545);
+  color: var(--c-on-band, #fff);
+  font-weight: 700;
+}
+.theme-sample__body {
+  padding: 10px 12px 12px;
+}
+.theme-sample__title {
+  color: var(--dark, #222);
+  font-size: 1.05rem;
+}
+.theme-sample__muted {
+  color: var(--jqi-muted);
+}
+.theme-sample__code {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 4px;
+  background: var(--c-surface-1, #f7f7f7);
+  color: var(--darkgray, #454545);
+  font:
+    0.8rem/1.5 var(--codeFont),
+    monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+.theme-sample__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.theme-sample__button {
+  padding: 3px 12px;
+  border-radius: 4px;
+  background: var(--secondary, #e21833);
+  color: var(--c-on-accent, #fff);
+  font-weight: 600;
+}
+.theme-sample__chip {
+  padding: 1px 8px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 999px;
+  background: var(--c-surface-2, #f1f1f1);
+  color: var(--jqi-muted);
+  font-size: 0.78rem;
+}
+.theme-figures {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 3px 0 0;
+    accent-color: var(--secondary, #e21833);
+    appearance: auto;
+  }
+}
+.theme-search {
+  width: 100%;
+  max-width: 24rem;
+  margin: 8px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--gray, #b8b8b8);
+  border-radius: 4px;
+  background: var(--light, #fff);
+  color: inherit;
+  font: inherit;
+}
+.theme-picker {
+  h3 {
+    margin: 18px 0 2px;
+    font-size: 1.1rem;
+  }
+  > .muted {
+    margin: 0 0 4px;
+  }
+}
+.theme-group h4,
+.theme-more summary {
+  margin: 12px 0 6px;
+  color: var(--jqi-muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.theme-more summary {
+  cursor: pointer;
+}
+// Families side by side, each its cards in a row; the long tail folded under them.
+.theme-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
+}
+.theme-more {
+  flex: 1 0 100%;
+}
+.theme-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.theme-card {
+  width: 9.5rem;
+}
+.theme-card {
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 8px;
+  background: var(--light, #fff);
+  cursor: pointer;
+  &:hover {
+    border-color: var(--gray, #b8b8b8);
+  }
+  &.is-chosen {
+    border-color: var(--secondary, #e21833);
+    box-shadow: 0 0 0 1px var(--secondary, #e21833);
+  }
+  &:has(input:focus-visible) {
+    outline: 3px solid var(--c-focus, #e21833);
+    outline-offset: 2px;
+  }
+}
+.theme-card__name {
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+.theme-swatch {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  height: 58px;
+  padding: 8px;
+  border: 1px solid;
+  border-radius: 5px;
+}
+.theme-swatch__text {
+  width: 80%;
+  height: 5px;
+  border-radius: 3px;
+}
+.theme-swatch__text--short {
+  width: 50%;
+}
+.theme-swatch__dots {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .theme-swatch__accent {
+    width: 18px;
+    border-radius: 5px;
+  }
+}
+@media (max-width: 600px) {
+  .theme-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
 // A private page's Replace and Move tools, under its title (frontend/member-tools.js).
 .page-file-tools {
   display: flex;

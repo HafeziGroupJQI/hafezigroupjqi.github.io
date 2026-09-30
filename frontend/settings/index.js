@@ -1,9 +1,10 @@
-// /settings: a member's own settings. Their People page (linked once to their GitHub login, then
-// edited through the public vault: saving queues the edit, and the Worker's hourly update commits
-// it, src/profile/), their photo, and the Wolfram Engine license their Wolfram code runs on
-// (activated on the compute host: the Worker's /api/compute/wolfram/license, the host's
-// hafezi_compute/wolfram/licenses.py).
+// /settings: a member's own settings. How the site looks for them (./theme.js), their People
+// page (linked once to their GitHub login, then edited through the public vault: saving queues the
+// edit, and the Worker's hourly update commits it, src/profile/), their photo, and the Wolfram
+// Engine license their Wolfram code runs on (activated on the compute host: the Worker's
+// /api/compute/wolfram/license, the host's hafezi_compute/wolfram/licenses.py).
 import { h } from "../dashboard/dom.js"
+import { showAppearance } from "./theme.js"
 import {
   FIELDS,
   avatarFor,
@@ -33,9 +34,15 @@ export function mountSettings(root, { api, session }) {
       }),
     ),
   )
+  const appearance = h("section", {
+    class: "settings-section",
+    id: "appearance",
+    "aria-labelledby": "settings-appearance",
+  })
   const profile = h("section", { class: "settings-section", "aria-labelledby": "settings-profile" })
   const wolfram = h("section", { class: "settings-section", "aria-labelledby": "settings-wolfram" })
-  root.append(profile, wolfram)
+  root.append(appearance, profile, wolfram)
+  void showAppearance(appearance, api)
   void showProfile(profile, api)
   void showWolfram(wolfram, api)
 }

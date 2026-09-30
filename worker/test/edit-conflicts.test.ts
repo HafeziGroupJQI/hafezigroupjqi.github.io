@@ -653,6 +653,36 @@ describe("settling a queued conflict", () => {
     expect((await resolve(owner, conflict, { choice: "second" })).status).toBe(409)
   })
 
+  it("checks a settled text with the settler's own rights, not the second editor's", async () => {
+    const ada = await as("ada")
+    const first = (await draft(ada, ADA_LINE, "ada's third")).body.id
+    await send(ada, first)
+    // Dave is an admin; his change adds HTML that runs, which only an admin may add.
+    await env.DB.prepare(
+      "INSERT INTO admins (login, added_by, added_at) VALUES ('dave', 'olivia', 0)",
+    ).run()
+    const dave = await as("dave")
+    const second = (
+      await draft(dave, BOB_LINE + '<iframe src="https://example.com/x"></iframe>\n', "dave's")
+    ).body.id
+    const { conflict } = (await post(dave, `/api/edit/drafts/${second}/queue`)).body
+    const shown = (await ada.json(`/api/edit/conflicts/${conflict.id}`)).body
+    const settled = await resolve(ada, conflict.id, {
+      choice: "second",
+      first_sha: shown.first_sha,
+    })
+    expect(settled).toMatchObject({
+      status: 422,
+      body: { detail: expect.stringContaining("admin") },
+    })
+    await unchanged(conflict.id)
+    // An admin may settle it so.
+    const owner = await as("olivia", "owner")
+    expect(
+      (await resolve(owner, conflict.id, { choice: "second", first_sha: shown.first_sha })).status,
+    ).toBe(200)
+  })
+
   it("checks a merged text as any edit of the page, and leaves the conflict open if it fails", async () => {
     const { ada, conflict } = await queued()
     const merged = edit("Third paragraph.", "Third, merged.")

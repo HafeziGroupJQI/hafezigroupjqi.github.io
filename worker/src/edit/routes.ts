@@ -864,10 +864,9 @@ async function conflictRoutes(
 
     const { second, change, on, texts } = await conflictTexts(env, repo, row)
     const text = choice === "second" ? texts.proposed : editText(body.text)
-    // Checked as any edit of the page is, with the second editor's rights unless an admin
-    // settles it: a settled text adds nothing its author couldn't.
-    const rights =
-      admin || (await isAdmin(env, { login: second.login, role: "member", lab: undefined }))
+    // Checked as any edit of the page is, against the first change's text, with the settler's
+    // own rights: a member who settles adds nothing only an admin may add, whoever wrote it.
+    const rights = admin
     const problems =
       row.repo === "vault-private"
         ? contentReport(row.path, text).problems

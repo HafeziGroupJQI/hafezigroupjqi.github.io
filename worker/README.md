@@ -79,9 +79,9 @@ Group admins are the GitHub org owners plus anyone in the `admins` table; admins
 each other at `/admin`. The check reads D1 on every request, so changes apply immediately.
 `/api/session` reports `is_admin`, which reveals Tools → Admin in the header.
 
-Admins also read members' code (`/api/admin/compute/*`): a member's live sessions, kernels
-and terminals, their IPython and terminal history, and their Scratchpad file history with each
-commit's diff. The Worker gives the compute host an assertion naming that one
+Admins also read members' code at `/admin` → Code (`/api/admin/compute/*`): a member's live
+sessions, kernels and terminals, their IPython and terminal history, and their Scratchpad file
+history with each commit's diff. The Worker gives the compute host an assertion naming that one
 member (`admin_read`), the host serves only read-only ops for it, and both sides need owner
 access on (`COMPUTE_OWNER_ACCESS`). Unlike Hafezi GPT conversations, every read is recorded
 (`admin.compute.sessions`, `.ipython`, `.bash`, `.files`).

@@ -2625,6 +2625,81 @@ a.device-card:hover {
   overflow: visible;
   padding: 8px 0;
 }
+// Code tab: a member's live sessions, IPython and terminal history, and file history (read-only).
+.admin-console .code-notice {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--jqi-red, #e21833);
+  background: var(--dash-surface-2);
+  font-size: 0.9rem;
+}
+.admin-console .admin-code h3 {
+  margin: 18px 0 8px;
+  font-size: 1rem;
+}
+.admin-console .code-entries {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-console .code-entry {
+  display: grid;
+  grid-template-columns: minmax(7ch, max-content) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.admin-console .code-gutter {
+  padding-top: 7px;
+  color: var(--jqi-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.admin-console .code-block {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 4px;
+  overflow-x: auto;
+  background: transparent;
+  font:
+    0.82rem/1.45 "IBM Plex Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  white-space: pre;
+}
+.admin-console .code-files {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+// A diff line by line: each at least the block's width, so its colour spans the line.
+.admin-console .diff span {
+  display: block;
+  width: fit-content;
+  min-width: 100%;
+  min-height: 1.45em;
+}
+.admin-console .diff .diff-add {
+  background: rgba(0, 131, 0, 0.14);
+}
+.admin-console .diff .diff-del {
+  background: rgba(227, 73, 72, 0.16);
+}
+.admin-console .diff .diff-hunk {
+  color: var(--viz-1);
+}
+.admin-console .diff .diff-file {
+  margin-top: 10px;
+  font-weight: 600;
+}
+.admin-console .diff :is(.diff-meta, .diff-stat) {
+  color: var(--jqi-muted);
+}
 
 // ---- Settings (/settings): a member's People page, photo and Wolfram license ----
 .settings-page {

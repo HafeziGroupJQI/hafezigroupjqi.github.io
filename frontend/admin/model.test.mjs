@@ -4,9 +4,12 @@ import {
   nextTab,
   auditParams,
   budgetUsed,
+  codeQuery,
   describe,
+  diffLines,
   formatTokens,
   parseBudget,
+  sessionRuns,
   tabUrl,
   usageByDay,
   usageLabel,
@@ -117,4 +120,93 @@ test("a month's usage by day: a column per model and source, the latest day firs
   )
   assert.equal(rows[1].cells[columns[1].key].cost_usd, 0.25)
   assert.equal(usageLabel({ model: "offline", source: "chat" }), "offline · Site chat")
+})
+
+test("the Code tab's deep link stays on it, and a member stays chosen between member tabs", () => {
+  const deep = "https://site.example/admin?tab=code&member=ada&view=files&commit=abc1234"
+  assert.equal(tabUrl(deep, "code"), deep)
+  assert.equal(tabUrl(deep, "audit"), "https://site.example/admin?tab=audit")
+  assert.equal(
+    tabUrl(deep, "conversations"),
+    "https://site.example/admin?tab=conversations&member=ada",
+  )
+  assert.equal(
+    tabUrl("https://site.example/admin?tab=conversations&member=ada&c=c_1", "code"),
+    "https://site.example/admin?tab=code&member=ada",
+  )
+})
+
+test("a Code tab read's query: the member, then its paging", () => {
+  assert.equal(codeQuery("ada"), "login=ada")
+  const q = new URLSearchParams(
+    codeQuery("ada", { since: "2026-09-01", before: "49:2", limit: 200 }),
+  )
+  assert.equal(q.get("since"), String(new Date("2026-09-01T00:00:00").getTime()))
+  assert.equal(q.get("before"), "49:2")
+  assert.equal(q.get("limit"), "200")
+  assert.equal(codeQuery("ada", { before: 0, offset: 50 }), "login=ada&before=0&offset=50")
+})
+
+test("IPython inputs group into runs of one session", () => {
+  const runs = sessionRuns([
+    { session: 49, line: 2, at: 10 },
+    { session: 49, line: 1, at: 10 },
+    { session: 46, line: 1, at: 5 },
+  ])
+  assert.deepEqual(
+    runs.map((run) => [run.session, run.at, run.entries.map((e) => e.line)]),
+    [
+      [49, 10, [2, 1]],
+      [46, 5, [1]],
+    ],
+  )
+  assert.deepEqual(sessionRuns([]), [])
+})
+
+test("a diff reads line by line: stat, file headers, hunks, additions, removals", () => {
+  const diff = [
+    " notes/rings.py | 2 +-",
+    " 1 file changed, 1 insertion(+), 1 deletion(-)",
+    "",
+    "diff --git a/members/ada/notes/rings.py b/members/ada/notes/rings.py",
+    "index 1..2 100644",
+    "--- a/members/ada/notes/rings.py",
+    "+++ b/members/ada/notes/rings.py",
+    "@@ -1 +1 @@",
+    "-q = 1",
+    "--- a removed line that looks like a header",
+    "+q = 2",
+    " context",
+    "\\ No newline at end of file",
+    "",
+  ].join("\n")
+  assert.deepEqual(
+    diffLines(diff).map((line) => line.kind),
+    [
+      "stat",
+      "stat",
+      "stat",
+      "file",
+      "meta",
+      "meta",
+      "meta",
+      "hunk",
+      "del",
+      "del",
+      "add",
+      "context",
+      "meta",
+    ],
+  )
+})
+
+test("admins' code reads read as sentences", () => {
+  assert.equal(
+    describe({ action: "admin.compute.ipython", target: "ada" }),
+    "read the IPython history of ada",
+  )
+  assert.equal(
+    describe({ action: "admin.compute.files", target: "ada", detail: { rev: "0123456789abcdef" } }),
+    "read the file history of ada · commit 0123456",
+  )
 })

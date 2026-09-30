@@ -1,18 +1,24 @@
 // /admin: the group-admin console. Audit log (who signed in when, what they did), the admin
 // allow-list (org owners are always admins), members' claims of People pages, members' upload
-// drafts, and Hafezi GPT usage + monthly budgets. The Worker
-// enforces admin access on every /api/admin/* call; this page just shows a notice to non-admins.
-import { h } from "../dashboard/dom.js"
+// drafts, Hafezi GPT usage + monthly budgets, members' Hafezi GPT conversations, and members' code
+// (their live sessions, IPython and terminal history and file history; every view is audited).
+// The Worker enforces admin access on every /api/admin/* call; this page just shows a notice to
+// non-admins.
+import { h, present } from "../dashboard/dom.js"
 import {
   ACTION_GROUPS,
+  CODE_VIEWS,
   auditParams,
   budgetUsed,
+  codeQuery,
   describe,
+  diffLines,
   formatTokens,
   formatUsd,
   formatWhen,
   nextTab,
   parseBudget,
+  sessionRuns,
   tabUrl,
   USAGE_SOURCES,
   usageByDay,
@@ -26,6 +32,7 @@ const TABS = [
   ["uploads", "Uploads"],
   ["usage", "Usage & budgets"],
   ["conversations", "Conversations"],
+  ["code", "Code"],
 ]
 
 export function mountAdmin(root, { api, session }) {
@@ -37,7 +44,7 @@ export function mountAdmin(root, { api, session }) {
     h("h1", { class: "dash-title", text: "Admin" }),
     h("p", {
       class: "dash-summary",
-      text: "Sign-ins, member activity, admins, People page claims, uploads and Hafezi GPT usage",
+      text: "Sign-ins, member activity, admins, People page claims, uploads, Hafezi GPT usage and members' code",
     }),
   )
   root.append(header)
@@ -105,6 +112,35 @@ export function mountAdmin(root, { api, session }) {
     banner.textContent = error.message
   }
 
+  // Deep links of the member views (Conversations, Code): the keys given are set or, when empty,
+  // dropped; the others stay.
+  const setQuery = (values) => {
+    const url = new URL(location.href)
+    for (const [key, value] of Object.entries(values))
+      value ? url.searchParams.set(key, value) : url.searchParams.delete(key)
+    history.replaceState(history.state, "", url)
+  }
+  const back = (text, onclick) => h("button", { type: "button", class: "link", text, onclick })
+  const table = (heads, rows) =>
+    h(
+      "div",
+      { class: "table-scroll" },
+      h(
+        "table",
+        { class: "bases-table" },
+        h(
+          "thead",
+          {},
+          h(
+            "tr",
+            {},
+            heads.map((t) => h("th", { text: t })),
+          ),
+        ),
+        h("tbody", {}, rows),
+      ),
+    )
+
   function show(id) {
     tab = id
     banner.hidden = true
@@ -121,6 +157,7 @@ export function mountAdmin(root, { api, session }) {
       uploads: uploadsTab,
       usage: usageTab,
       conversations: conversationsTab,
+      code: codeTab,
     })
       [id](panel)
       .catch(fail)
@@ -250,7 +287,7 @@ export function mountAdmin(root, { api, session }) {
         { class: "muted" },
         "Owners of the ",
         h("code", { text: data.org }),
-        " GitHub organization are always admins. Admins can see the audit log and members' Hafezi GPT conversations, add or remove admins, and set Hafezi GPT budgets.",
+        " GitHub organization are always admins. Admins can see the audit log, members' Hafezi GPT conversations and members' code (their sessions and history, each view recorded in the audit log), add or remove admins, and set Hafezi GPT budgets.",
       ),
       form,
       list,
@@ -623,32 +660,6 @@ export function mountAdmin(root, { api, session }) {
     const view = h("div", { class: "admin-conversations" })
     panel.append(view)
     // Deep links: ?tab=conversations&member=<login>&c=<conversation id>.
-    const setQuery = (values) => {
-      const url = new URL(location.href)
-      for (const [key, value] of Object.entries(values))
-        value ? url.searchParams.set(key, value) : url.searchParams.delete(key)
-      history.replaceState(history.state, "", url)
-    }
-    const back = (text, onclick) => h("button", { type: "button", class: "link", text, onclick })
-    const table = (heads, rows) =>
-      h(
-        "div",
-        { class: "table-scroll" },
-        h(
-          "table",
-          { class: "bases-table" },
-          h(
-            "thead",
-            {},
-            h(
-              "tr",
-              {},
-              heads.map((t) => h("th", { text: t })),
-            ),
-          ),
-          h("tbody", {}, rows),
-        ),
-      )
 
     async function members() {
       setQuery({ member: null, c: null })
@@ -799,6 +810,425 @@ export function mountAdmin(root, { api, session }) {
     const id = query.get("c")
     if (login && id) await transcript(login, id)
     else if (login) await chats(login)
+    else await members()
+  }
+
+  // ---- members' code: live sessions, IPython and terminal history, file history ----
+  // Read-only, from the compute host; the Worker records every read in the audit log.
+  async function codeTab(panel) {
+    const view = h("div", { class: "admin-code" })
+    panel.append(
+      h(
+        "p",
+        { class: "code-notice", role: "note" },
+        "Read-only. Every view here is recorded in the audit log (",
+        h("code", { text: "admin.compute.*" }),
+        ") with your login, the member and the time.",
+      ),
+      view,
+    )
+    // Deep links: ?tab=code&member=<login>&view=<live|ipython|bash|files>&commit=<sha>.
+    const when = (iso) => (iso ? formatWhen(Date.parse(iso)) : "—")
+    const loading = () => h("p", { class: "muted", text: "Loading…" })
+
+    async function members() {
+      setQuery({ member: null, view: null, commit: null })
+      const data = await api("/api/admin/compute/members")
+      view.replaceChildren(
+        ...present(
+          data.access
+            ? null
+            : h("p", {
+                class: "dash-error",
+                text: "Reading members' code is off: COMPUTE_OWNER_ACCESS isn't on in the Worker.",
+              }),
+          data.members.length
+            ? table(
+                ["Member", "Last started a server", "Last signed in"],
+                data.members.map((m) =>
+                  h(
+                    "tr",
+                    {},
+                    h(
+                      "td",
+                      {},
+                      h("button", {
+                        type: "button",
+                        class: "link mono",
+                        text: m.login,
+                        onclick: () => member(m.login).catch(fail),
+                      }),
+                    ),
+                    h("td", { text: m.last_start ? formatWhen(m.last_start) : "—" }),
+                    h("td", { text: m.last_login ? formatWhen(m.last_login) : "—" }),
+                  ),
+                ),
+              )
+            : h("p", { class: "dash-empty", text: "No one has signed in yet." }),
+        ),
+      )
+    }
+
+    async function member(login, which = "live", commit = null) {
+      setQuery({ member: login, view: which, commit })
+      const body = h("div", { class: "code-body", "aria-live": "polite" }, loading())
+      view.replaceChildren(
+        h(
+          "div",
+          { class: "dash-toolbar" },
+          back("← All members", () => members().catch(fail)),
+          h("h2", { class: "mono", text: login }),
+          h(
+            "div",
+            { class: "seg", role: "radiogroup", "aria-label": `What of ${login}'s to show` },
+            CODE_VIEWS.map(([id, label]) =>
+              h("button", {
+                type: "button",
+                role: "radio",
+                "aria-checked": String(id === which),
+                text: label,
+                onclick: () => member(login, id).catch(fail),
+              }),
+            ),
+          ),
+          h("a", {
+            href: `?tab=conversations&member=${encodeURIComponent(login)}`,
+            text: "Hafezi GPT conversations →",
+            onclick: (event) => {
+              event.preventDefault()
+              show("conversations")
+            },
+          }),
+        ),
+        body,
+      )
+      const views = { live: liveView, ipython: ipythonView, bash: bashView, files: filesView }
+      try {
+        await views[which](login, body, commit)
+      } catch (error) {
+        body.replaceChildren(h("p", { class: "dash-empty", text: error.message }))
+      }
+    }
+
+    /** A history view's frame: a since filter, the list, and Show older (the page's `next`). */
+    function historyFrame(body, load) {
+      const form = h(
+        "form",
+        { class: "dash-toolbar admin-filters" },
+        h("label", { class: "dash-field" }, "Since", h("input", { name: "since", type: "date" })),
+        h("button", { type: "submit", text: "Show" }),
+      )
+      const list = h("div", { class: "code-history" })
+      const more = h("button", { type: "button", hidden: true, text: "Show older" })
+      form.onsubmit = (event) => {
+        event.preventDefault()
+        load(true).catch(fail)
+      }
+      more.onclick = () => load(false).catch(fail)
+      body.replaceChildren(form, list, more)
+      return { list, more, since: () => form.elements.namedItem("since").value }
+    }
+
+    async function liveView(login, body) {
+      const data = await api(`/api/admin/compute/sessions?${codeQuery(login)}`)
+      const state =
+        data.server === "pending"
+          ? data.pending === "stop"
+            ? "stopping"
+            : "starting"
+          : data.server
+      const facts = [
+        data.profile && `profile ${data.profile}`,
+        data.status?.started && `started ${when(data.status.started)}`,
+        data.status?.last_activity && `last active ${when(data.status.last_activity)}`,
+      ].filter(Boolean)
+      body.replaceChildren(
+        h(
+          "div",
+          { class: "dash-toolbar" },
+          h("span", {
+            class: `status status-${state === "running" ? "running" : state === "stopped" ? "stopped" : "pending"}`,
+            text: state,
+          }),
+          h("span", { class: "muted", text: facts.join(" · ") }),
+          h("button", {
+            type: "button",
+            text: "Refresh",
+            onclick: () => liveView(login, body).catch(fail),
+          }),
+        ),
+      )
+      if (data.server !== "running") {
+        body.append(
+          h("p", {
+            class: "dash-empty",
+            text: `${login}'s server is ${state}, so nothing is running. Their IPython, terminal and file history still show.`,
+          }),
+        )
+        return
+      }
+      const none = (text) => h("p", { class: "muted", text })
+      if (data.truncated)
+        body.append(none("Only part of these lists is shown: they're too long to send whole."))
+      body.append(
+        h("h3", { text: "Notebooks and consoles" }),
+        data.sessions.length
+          ? table(
+              ["Path", "Type", "Kernel", "State", "Last activity"],
+              data.sessions.map((s) =>
+                h(
+                  "tr",
+                  {},
+                  h("td", { class: "mono", text: s.path ?? "—" }),
+                  h("td", { text: s.type ?? "—" }),
+                  h("td", { class: "mono", text: s.kernel?.name ?? "—" }),
+                  h("td", { text: s.kernel?.execution_state ?? "—" }),
+                  h("td", { text: when(s.kernel?.last_activity) }),
+                ),
+              ),
+            )
+          : none("None open."),
+        h("h3", { text: "Kernels" }),
+        data.kernels.length
+          ? table(
+              ["Kernel", "Id", "State", "Connections", "Last activity"],
+              data.kernels.map((k) =>
+                h(
+                  "tr",
+                  {},
+                  h("td", { class: "mono", text: k.name ?? "—" }),
+                  h("td", { class: "mono", text: (k.id ?? "").slice(0, 8) }),
+                  h("td", { text: k.execution_state ?? "—" }),
+                  h("td", { text: String(k.connections ?? "—") }),
+                  h("td", { text: when(k.last_activity) }),
+                ),
+              ),
+            )
+          : none("No kernels running."),
+        h("h3", { text: "Terminals" }),
+        data.terminals.length
+          ? table(
+              ["Terminal", "Last activity"],
+              data.terminals.map((t) =>
+                h(
+                  "tr",
+                  {},
+                  h("td", { class: "mono", text: t.name ?? "—" }),
+                  h("td", { text: when(t.last_activity) }),
+                ),
+              ),
+            )
+          : none("No terminals open."),
+      )
+    }
+
+    async function ipythonView(login, body) {
+      let before = null
+      let last = null // the last session shown, so a run split across pages stays one
+      const frame = historyFrame(body, load)
+      async function load(reset) {
+        if (reset) {
+          before = last = null
+          frame.list.replaceChildren(loading())
+        }
+        const page = await api(
+          `/api/admin/compute/ipython?${codeQuery(login, { since: frame.since(), before, limit: 200 })}`,
+        )
+        if (reset) frame.list.replaceChildren()
+        if (reset && !page.entries.length)
+          frame.list.append(
+            h("p", {
+              class: "dash-empty",
+              text: page.missing ? `${login} has no IPython history yet.` : "No inputs since then.",
+            }),
+          )
+        for (const run of sessionRuns(page.entries)) {
+          const inputs = run.entries.map((entry) =>
+            h(
+              "li",
+              { class: "code-entry" },
+              h("span", { class: "code-gutter mono", text: `In [${entry.line}]` }),
+              h(
+                "div",
+                {},
+                h("pre", { class: "code-block" }, h("code", { text: entry.source })),
+                entry.truncated ? h("span", { class: "muted", text: "(cut short)" }) : null,
+              ),
+            ),
+          )
+          if (last?.session === run.session) last.list.append(...inputs)
+          else {
+            const list = h("ol", { class: "code-entries" }, inputs)
+            frame.list.append(
+              h(
+                "section",
+                { class: "code-session" },
+                h(
+                  "h3",
+                  {},
+                  `Session ${run.session}`,
+                  h("span", {
+                    class: "muted",
+                    text: run.at ? ` · started ${formatWhen(run.at * 1000)}` : "",
+                  }),
+                ),
+                list,
+              ),
+            )
+            last = { session: run.session, list }
+          }
+        }
+        before = page.next
+        frame.more.hidden = before == null
+      }
+      await load(true)
+    }
+
+    async function bashView(login, body) {
+      let before = null
+      const frame = historyFrame(body, load)
+      body.insertBefore(
+        h("p", {
+          class: "muted",
+          text: "A terminal's commands show as it runs them, with their times; a shell started before the compute host was updated for this adds its commands only when it exits, without times.",
+        }),
+        frame.list,
+      )
+      const commands = h("ol", { class: "code-entries" })
+      async function load(reset) {
+        if (reset) {
+          before = null
+          frame.list.replaceChildren(loading())
+        }
+        const page = await api(
+          `/api/admin/compute/bash?${codeQuery(login, { since: frame.since(), before, limit: 200 })}`,
+        )
+        if (reset) {
+          commands.replaceChildren()
+          frame.list.replaceChildren(
+            page.entries.length
+              ? commands
+              : h("p", {
+                  class: "dash-empty",
+                  text: page.missing
+                    ? `${login} has no terminal history yet.`
+                    : "No commands since then.",
+                }),
+          )
+        }
+        for (const entry of page.entries)
+          commands.append(
+            h(
+              "li",
+              { class: "code-entry" },
+              h("time", {
+                class: "code-gutter mono",
+                text: entry.at ? formatWhen(entry.at * 1000) : "—",
+              }),
+              h(
+                "div",
+                {},
+                h("pre", { class: "code-block" }, h("code", { text: entry.command })),
+                entry.truncated ? h("span", { class: "muted", text: "(cut short)" }) : null,
+              ),
+            ),
+          )
+        before = page.next
+        frame.more.hidden = before == null
+      }
+      await load(true)
+    }
+
+    async function filesView(login, body, commit) {
+      if (commit) return diffView(login, body, commit)
+      let offset = 0
+      const frame = historyFrame(body, load)
+      const commits = h("ol", { class: "activity-list" })
+      async function load(reset) {
+        if (reset) {
+          offset = 0
+          frame.list.replaceChildren(loading())
+        }
+        const page = await api(
+          `/api/admin/compute/files?${codeQuery(login, { since: frame.since(), offset, limit: 50 })}`,
+        )
+        if (reset) {
+          commits.replaceChildren()
+          frame.list.replaceChildren(
+            page.commits.length
+              ? commits
+              : h("p", { class: "dash-empty", text: `No saved versions of ${login}'s files.` }),
+          )
+        }
+        for (const c of page.commits)
+          commits.append(
+            h(
+              "li",
+              { class: "cmd-card" },
+              h(
+                "header",
+                {},
+                h("time", { class: "mono muted", text: formatWhen(c.time * 1000) }),
+                h("button", {
+                  type: "button",
+                  class: "link",
+                  text: c.subject,
+                  onclick: () => diffView(login, body, c.rev).catch(fail),
+                }),
+                h("span", { class: "muted", text: c.author }),
+              ),
+              h(
+                "ul",
+                { class: "code-files mono" },
+                c.files.map((f) => h("li", { text: `${f.status}  ${f.path}` })),
+                c.more_files ? h("li", { class: "muted", text: `and ${c.more_files} more` }) : null,
+              ),
+            ),
+          )
+        offset = page.next ?? offset
+        frame.more.hidden = page.next == null
+      }
+      await load(true)
+    }
+
+    async function diffView(login, body, rev) {
+      setQuery({ commit: rev })
+      body.replaceChildren(loading())
+      const data = await api(
+        `/api/admin/compute/files/${encodeURIComponent(rev)}?${codeQuery(login)}`,
+      )
+      body.replaceChildren(
+        h(
+          "div",
+          { class: "dash-toolbar" },
+          back("← All saved versions", () => {
+            setQuery({ commit: null })
+            filesView(login, body).catch(fail)
+          }),
+          h("strong", { text: data.subject }),
+          h("span", {
+            class: "muted",
+            text: `${data.author} · ${formatWhen(data.time * 1000)} · ${data.rev.slice(0, 10)}`,
+          }),
+        ),
+        h(
+          "pre",
+          { class: "code-block diff" },
+          diffLines(data.diff).map((line) =>
+            h("span", { class: `diff-${line.kind}`, text: line.text }),
+          ),
+        ),
+        ...present(
+          data.truncated ? h("p", { class: "muted", text: "The diff is cut short here." }) : null,
+        ),
+      )
+    }
+
+    const query = new URLSearchParams(location.search)
+    const login = query.get("member")
+    const which = CODE_VIEWS.some(([id]) => id === query.get("view")) ? query.get("view") : "live"
+    const commit = /^[0-9a-f]{7,40}$/.test(query.get("commit") ?? "") ? query.get("commit") : null
+    if (login) await member(login, which, which === "files" ? commit : null)
     else await members()
   }
 

@@ -8,6 +8,7 @@ export const ACTION_GROUPS = [
   ["doc", "Private documents"],
   ["uploads", "Uploads"],
   ["admin", "Admin changes"],
+  ["admin.compute", "Admins reading members' code"],
   ["api", "Other writes"],
 ]
 
@@ -56,6 +57,10 @@ const LABELS = {
   "uploads.review": "had upload draft left for an admin:",
   "uploads.closed": "had upload draft closed on GitHub:",
   "admin.uploads.discard": "discarded the upload draft",
+  "admin.compute.sessions": "looked at the live sessions of",
+  "admin.compute.ipython": "read the IPython history of",
+  "admin.compute.bash": "read the terminal history of",
+  "admin.compute.files": "read the file history of",
   "gpt.message": "asked Hafezi GPT in",
   "gpt.share": "shared chat",
   "gpt.unshare": "unshared chat",
@@ -85,6 +90,8 @@ export function describe(row) {
   if (row.action === "uploads.rename" && detail.to) text += ` to ${detail.to}`
   if (row.action === "uploads.send" && detail.pull) text += ` as pull request #${detail.pull}`
   if (row.action === "admin.uploads.discard" && detail.login) text += ` of ${detail.login}`
+  if (row.action === "admin.compute.files" && detail.rev)
+    text += ` · commit ${detail.rev.slice(0, 7)}`
   if (row.action.startsWith("api.") && row.status) text += ` → ${row.status}`
   return text
 }
@@ -163,12 +170,70 @@ export function parseBudget(text) {
   return Math.round(Number(m[1]) * (m[2] === "m" ? 1e6 : m[2] === "k" ? 1e3 : 1))
 }
 
-/** The page URL for a tab: a Conversations deep link (member, c) is dropped on leaving that tab. */
+// The deep-link keys each tab keeps: Conversations ?member=&c=, Code ?member=&view=&commit=.
+const DEEP_LINKS = { conversations: ["member", "c"], code: ["member", "view", "commit"] }
+
+/** The page URL for a tab: deep-link keys of other tabs are dropped (a member stays selected
+ *  between Conversations and Code). */
 export function tabUrl(href, tab) {
   const url = new URL(href)
   url.searchParams.set("tab", tab)
-  if (tab !== "conversations") for (const key of ["member", "c"]) url.searchParams.delete(key)
+  const keep = DEEP_LINKS[tab] ?? []
+  for (const key of ["member", "c", "view", "commit"])
+    if (!keep.includes(key)) url.searchParams.delete(key)
   return url.toString()
+}
+
+/** The Code tab's views of a member (?view=), in order. */
+export const CODE_VIEWS = [
+  ["live", "Live"],
+  ["ipython", "IPython"],
+  ["bash", "Terminal"],
+  ["files", "Files"],
+]
+
+/** Query string of a Code tab read: the member, then the paging (since: a local day, YYYY-MM-DD). */
+export function codeQuery(login, { since = "", before = null, offset = 0, limit = null } = {}) {
+  const params = new URLSearchParams({ login })
+  if (limit != null) params.set("limit", String(limit))
+  if (since) params.set("since", String(new Date(`${since}T00:00:00`).getTime()))
+  if (before != null) params.set("before", String(before))
+  if (offset) params.set("offset", String(offset))
+  return params.toString()
+}
+
+/** IPython inputs, newest first, in runs of one session each (a heading per run). */
+export function sessionRuns(entries) {
+  const runs = []
+  for (const entry of entries) {
+    const last = runs.at(-1)
+    if (last && last.session === entry.session) last.entries.push(entry)
+    else runs.push({ session: entry.session, at: entry.at, entries: [entry] })
+  }
+  return runs
+}
+
+/** A commit's diff line by line, each with what it is: the stat, a file's header lines, a hunk
+ *  heading, an added or removed line, or context. */
+export function diffLines(text) {
+  const lines = text.split("\n")
+  if (lines.at(-1) === "") lines.pop()
+  let part = "stat"
+  return lines.map((line) => {
+    if (line.startsWith("diff --git ")) {
+      part = "header"
+      return { kind: "file", text: line }
+    }
+    if (part !== "stat" && line.startsWith("@@")) {
+      part = "hunk"
+      return { kind: "hunk", text: line }
+    }
+    if (part === "stat") return { kind: "stat", text: line }
+    if (part === "header" || line.startsWith("\\")) return { kind: "meta", text: line }
+    if (line.startsWith("+")) return { kind: "add", text: line }
+    if (line.startsWith("-")) return { kind: "del", text: line }
+    return { kind: "context", text: line }
+  })
 }
 
 /** The tab a key moves to in a tab list (Left/Right wrap, Home/End), or null for other keys. */

@@ -5,6 +5,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { tokenize } from "./themes/tokenize.mjs"
 
 const SITE = "https://hafezi.jqi.umd.edu"
 const OUT = fileURLToPath(new URL("../quartz/static/theme/", import.meta.url))
@@ -45,6 +46,11 @@ console.log(`vendored ${fontUrls.length} font files`)
 // The live stylesheet's orange accent (dividers, hover bars, blockquote rules) is
 // replaced by the site's red so no stray orange lines appear anywhere.
 css = css.replaceAll(/#e68320|#ff8129/gi, "#e21833")
+// Every color onto the site's color tokens (tools/themes/tokenize.mjs), so members' themes reach it.
+css = tokenize(css, {
+  unknown: (color, property) =>
+    console.warn(`no token for ${property}: ${color}; add it to tools/themes/tokenize.mjs`),
+})
 await fs.writeFile(SCSS, css.replaceAll("url(fonts/", "url(static/theme/fonts/"))
 
 // 3. logos + favicon used by header/footer

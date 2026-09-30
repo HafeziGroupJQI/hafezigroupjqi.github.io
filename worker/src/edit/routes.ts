@@ -517,7 +517,15 @@ export async function editRoutes(
         throw new HttpError(409, "that isn't a sent change to this page")
       const their = await sentText(env, repoOf(row.repo), first, change.path)
       if (their === null) throw new HttpError(409, "that change's text is gone")
-      stacked = { on: first.id, text: their, sha: await gitBlobSha(their) }
+      // The member built on the version they were shown: if its author sent a new one since,
+      // this draft would drop what that one added.
+      const sha = await gitBlobSha(their)
+      if (body.stack_sha !== sha)
+        throw new HttpError(
+          409,
+          "they changed their version since you looked: send yours again to see their new one",
+        )
+      stacked = { on: first.id, text: their, sha }
     }
     const statements: D1PreparedStatement[] = []
     let problems: string[] = []
@@ -790,7 +798,13 @@ async function conflictRoutes(
     const { row, view } = await visibleConflict(env, session, id)
     if (row.state !== "open") return json({ conflict: view, due_at: null })
     const { texts } = await conflictTexts(env, repoOf(row.repo), row)
-    return json({ conflict: view, ...texts, due_at: dueAt(Date.now()) })
+    return json({
+      conflict: view,
+      ...texts,
+      // A settlement names the first change's version it was made against (first_sha).
+      first_sha: await gitBlobSha(texts.first_text),
+      due_at: dueAt(Date.now()),
+    })
   }
 
   // Settle it: keep the first change (the second goes back to its author), take the second
@@ -863,6 +877,13 @@ async function conflictRoutes(
     }
 
     const { second, change, on, texts } = await conflictTexts(env, repo, row)
+    // Settled against the first change's version the settler saw: if its author sent a new one
+    // since, a merged text made from the old one would drop what the new one added.
+    if (body.first_sha !== (await gitBlobSha(texts.first_text)))
+      throw new HttpError(
+        409,
+        "the first change is different now: load the conflict again to see its newest version",
+      )
     const text = choice === "second" ? texts.proposed : editText(body.text)
     // Checked as any edit of the page is, against the first change's text, with the settler's
     // own rights: a member who settles adds nothing only an admin may add, whoever wrote it.

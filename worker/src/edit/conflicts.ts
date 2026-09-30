@@ -4,7 +4,7 @@ import { auditJob } from "../audit"
 import { unsentChanges } from "../changes"
 import { type ChangeRow, type DraftRow, publishedKey, settle } from "../uploads/drafts"
 import type { DraftRepo } from "../uploads/github"
-import { threeWay } from "./merge"
+import { gitBlobSha, threeWay } from "./merge"
 import { pageProblems, readPage } from "./public"
 import { contentReport } from "./rules"
 
@@ -148,6 +148,8 @@ export type SendCheck =
       with: Other
       base_text: string
       their_text: string
+      /** The git blob sha of their text: an edit on top of it names it (routes.ts stack_on). */
+      their_sha: string
       proposed: string
     }
 
@@ -299,6 +301,7 @@ async function pendingCheck(
       with: otherOf(other),
       base_text: base,
       their_text: theirs,
+      their_sha: await gitBlobSha(theirs),
       proposed: merged?.text ?? text,
     }
   }

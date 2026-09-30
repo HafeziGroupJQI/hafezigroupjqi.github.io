@@ -68,7 +68,12 @@ export async function mountSettle(root, id) {
     say("Settling…")
     const answer = await call(`/api/edit/conflicts/${encodeURIComponent(id)}/resolve`, {
       method: "POST",
-      body: JSON.stringify(choice === "merged" ? { choice, text: editor.getText() } : { choice }),
+      // The first change's version this page showed: refused if it changed since.
+      body: JSON.stringify({
+        choice,
+        first_sha: detail.first_sha,
+        ...(choice === "merged" ? { text: editor.getText() } : {}),
+      }),
     })
     if (!answer.ok) {
       for (const button of buttons.querySelectorAll("button")) button.disabled = false

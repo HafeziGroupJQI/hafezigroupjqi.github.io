@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
+import { gitBlobSha } from "../src/edit/merge"
 import { commitDue } from "../src/edit/publish"
 import { mergeDue } from "../src/uploads/merge"
 import { as, auditRows } from "./helpers"
@@ -432,7 +433,11 @@ describe("editing on top of another member's sent change", () => {
   it("goes in after theirs, with both changes, and never before it", async () => {
     const { ada, bob, first, second, due } = await overlapping()
     const both = edit("Third paragraph.", "Third, as Ada has it, and Bob too.")
-    const stacked = await put(bob, second, { stack_on: first, text: both })
+    const stacked = await put(bob, second, {
+      stack_on: first,
+      stack_sha: await gitBlobSha(ADA_LINE),
+      text: both,
+    })
     expect(stacked.status).toBe(200)
     const row = await env.DB.prepare("SELECT after_draft FROM upload_drafts WHERE id = ?")
       .bind(second)
@@ -460,9 +465,31 @@ describe("editing on top of another member's sent change", () => {
     expect(vault.text(PAGE)).toBe(both + "\nAda's afterthought.\n")
   })
 
+  it("is refused when the first editor sent a new version since the member saw theirs", async () => {
+    const { ada, bob, first, second } = await overlapping()
+    const shown = (await send(bob, second)).body
+    expect(shown.their_sha).toBe(await gitBlobSha(ADA_LINE))
+    await put(ada, first, { text: ADA_LINE.replace("First paragraph.", "First, newer.") })
+    await send(ada, first)
+    const stacked = await put(bob, second, {
+      stack_on: first,
+      stack_sha: shown.their_sha,
+      text: edit("Third paragraph.", "Third, as Ada has it, and Bob too."),
+    })
+    expect(stacked.status).toBe(409)
+    const row = await env.DB.prepare("SELECT after_draft FROM upload_drafts WHERE id = ?")
+      .bind(second)
+      .first<any>()
+    expect(row.after_draft).toBeNull()
+  })
+
   it("holds the second when the first is taken back, and says why", async () => {
     const { ada, bob, first, second, due } = await overlapping()
-    await put(bob, second, { stack_on: first, text: BOB_LINE })
+    await put(bob, second, {
+      stack_on: first,
+      stack_sha: await gitBlobSha(ADA_LINE),
+      text: BOB_LINE,
+    })
     expect((await send(bob, second)).status).toBe(200)
     await ada.json(`/api/edit/drafts/${first}`, { method: "DELETE" })
     expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ conflicts: [second] })
@@ -510,7 +537,16 @@ describe("editing on top of another member's sent change", () => {
     const due = (await send(ada, first)).body.due_at
     const second = (await create(bob, base.replace("Third paragraph.", "Bob's third."))).body.id
     const both = base.replace("Third paragraph.", "Ada's third, and Bob's.")
-    expect((await put(bob, second, { stack_on: first, text: both })).status).toBe(200)
+    const theirs = base.replace("Third paragraph.", "Ada's third.")
+    expect(
+      (
+        await put(bob, second, {
+          stack_on: first,
+          stack_sha: await gitBlobSha(theirs),
+          text: both,
+        })
+      ).status,
+    ).toBe(200)
     const sent = await send(bob, second)
     expect(sent.status).toBe(200)
     for (const branch of [`edits/ada/${first}`, `edits/bob/${second}`])
@@ -535,8 +571,14 @@ describe("settling a queued conflict", () => {
     const { conflict } = (await post(setup.bob, `/api/edit/drafts/${setup.second}/queue`)).body
     return { ...setup, conflict: conflict.id as string }
   }
-  const resolve = (client: Client, id: string, body: unknown) =>
-    post(client, `/api/edit/conflicts/${id}/resolve`, body)
+  const resolve = async (client: Client, id: string, body: Record<string, unknown>) => {
+    // The first change's version as the settler was shown it, unless the test names one.
+    const shown = (await client.json(`/api/edit/conflicts/${id}`)).body
+    return post(client, `/api/edit/conflicts/${id}/resolve`, {
+      first_sha: shown.first_sha,
+      ...body,
+    })
+  }
   const unchanged = async (id: string) => {
     const [row] = await conflicts()
     expect(row).toMatchObject({ id, state: "open", resolved_by: null })
@@ -697,6 +739,22 @@ describe("settling a queued conflict", () => {
     await unchanged(conflict)
     expect((await resolve(ada, conflict, { choice: "merged", text: merged })).status).toBe(200)
     expect((await conflicts())[0]).toMatchObject({ state: "resolved", resolution: "merged" })
+  })
+
+  it("won't settle against a first change that changed since the settler saw it", async () => {
+    const { ada, first, conflict } = await queued()
+    const shown = (await ada.json(`/api/edit/conflicts/${conflict}`)).body
+    await put(ada, first, { text: ADA_LINE.replace("First paragraph.", "First, newer.") })
+    await send(ada, first)
+    const merged = edit("Third paragraph.", "Third, merged.")
+    expect(
+      (await resolve(ada, conflict, { choice: "merged", text: merged, first_sha: shown.first_sha }))
+        .status,
+    ).toBe(409)
+    expect(
+      (await resolve(ada, conflict, { choice: "merged", text: merged, first_sha: "x" })).status,
+    ).toBe(409)
+    await unchanged(conflict)
   })
 
   it("settles against the first editor's newest sent text", async () => {

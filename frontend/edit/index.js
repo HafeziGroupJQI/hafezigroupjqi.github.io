@@ -544,7 +544,9 @@ export async function mountEdit(root) {
             const answer = await call(`/api/edit/drafts/${draft.id}`, {
               method: "PUT",
               body: JSON.stringify({
-                ...(stack ? { stack_on: stack.draft } : { base_sha: incoming.sha }),
+                ...(stack
+                  ? { stack_on: stack.draft, stack_sha: stack.sha }
+                  : { base_sha: incoming.sha }),
                 text,
                 summary: summary.value,
                 version: draft.version,
@@ -635,7 +637,7 @@ export async function mountEdit(root) {
     if (choice === "stack")
       return compare(
         { sha: null, text: body.their_text },
-        { text: body.proposed ?? null, stack: body.with },
+        { text: body.proposed ?? null, stack: { ...body.with, sha: body.their_sha } },
       )
     busy = true
     refresh()

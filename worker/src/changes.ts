@@ -219,15 +219,124 @@ function oneOf<T extends string>(raw: string | null, known: T[], what: string): 
   return values.length ? (values as T[]) : null
 }
 
+// ---- contributions: each member's score, for the leaderboard on /recent ----
+// The score is the formula of MediaWiki's Contribution Scores extension
+// (https://www.mediawiki.org/wiki/Extension:Contribution_Scores): pages + 2 × √(changes − pages),
+// so every distinct file counts in full and repeat changes to the same file count less and less.
+// Its reports are 7 days, 30 days and all time, as here. That extension is GPL-2.0-or-later, so
+// only its published formula is used: none of its code is copied; this query and code are our own.
+// A "page" is a distinct file of either vault and a "change" is a merged row. A bulk commit (more
+// than BULK_FILES files at once, an import) counts once per folder it touched, not once per file.
+// Rows without a member (login NULL: the site's own commits, unknown authors) never rank.
+
+export type ScorePeriod = "week" | "month" | "all"
+export const SCORE_PERIODS: ScorePeriod[] = ["week", "month", "all"]
+const DAY = 86_400_000
+const PERIOD_DAYS: Record<ScorePeriod, number | null> = { week: 7, month: 30, all: null }
+/** A commit with more files than this is a bulk import. */
+export const BULK_FILES = 50
+/** How long a leaderboard is kept before D1 is asked again. */
+export const SCORES_TTL = 5 * 60_000
+
+/** The Contribution Scores formula, to one decimal: files + 2 × √(changes − files). */
+export function contributionScore(files: number, changes: number): number {
+  return Math.round((files + 2 * Math.sqrt(Math.max(0, changes - files))) * 10) / 10
+}
+
+export interface ScoreRow {
+  login: string
+  author: string
+  changes: number
+  files: number
+  pages_created: number
+  pages_edited: number
+  files_added: number
+  added: number
+  removed: number
+  active_days: number
+  last_at: number
+}
+
+/** Members by score, best first, ties sharing a rank (1, 1, 3); a tie goes by name. */
+export function rankScores(rows: ScoreRow[]) {
+  const scored = rows
+    .map((row) => ({ ...row, score: contributionScore(row.files, row.changes) }))
+    .sort((a, b) => b.score - a.score || a.author.localeCompare(b.author))
+  return scored.map((row) => ({
+    rank: scored.findIndex((other) => other.score === row.score) + 1,
+    ...row,
+  }))
+}
+
+// One query: every merged change of a member since `?1`, a bulk commit's files folded into the
+// folders they are in (rtrim drops the file's name from its path).
+const SCORES_SQL = `
+  WITH merged AS (
+    SELECT login, author, at, repo, path, slug, kind, added, removed, commit_sha,
+           rtrim(path, replace(path, '/', '')) AS folder,
+           CASE WHEN commit_sha IS NULL THEN 1
+                ELSE COUNT(*) OVER (PARTITION BY repo, commit_sha) END AS commit_files
+    FROM changes
+    WHERE state = 'merged' AND login IS NOT NULL AND at >= ?1
+  )
+  SELECT login,
+         MAX(author) AS author,
+         SUM(commit_files <= ?2)
+           + COUNT(DISTINCT CASE WHEN commit_files > ?2
+                                 THEN repo || ':' || commit_sha || ':' || folder END) AS changes,
+         COUNT(DISTINCT CASE WHEN commit_files > ?2 THEN repo || ':' || folder
+                             ELSE repo || ':' || path END) AS files,
+         SUM(kind = 'new' AND slug IS NOT NULL) AS pages_created,
+         SUM(kind IN ('edit', 'profile') AND slug IS NOT NULL) AS pages_edited,
+         SUM(kind = 'upload' OR (kind = 'new' AND slug IS NULL)) AS files_added,
+         SUM(COALESCE(added, 0)) AS added,
+         SUM(COALESCE(removed, 0)) AS removed,
+         COUNT(DISTINCT at / ${DAY}) AS active_days,
+         MAX(at) AS last_at
+  FROM merged
+  GROUP BY login`
+
+const scoresCache = new Map<ScorePeriod, { at: number; body: string }>()
+/** Forget the kept leaderboards (tests). */
+export const resetScores = () => scoresCache.clear()
+
+/**
+ * GET /api/changes/scores?period=week|month|all: the leaderboard, one D1 query, kept for
+ * SCORES_TTL in this isolate, so a busy page costs D1 little. Like every API answer, the browser
+ * never stores it (withPrivateHeaders).
+ */
+async function scoreRoutes(url: URL, env: Env, now = Date.now()): Promise<Response> {
+  const raw = url.searchParams.get("period") ?? "all"
+  if (!SCORE_PERIODS.includes(raw as ScorePeriod))
+    throw new HttpError(422, `period must be one of ${SCORE_PERIODS.join(", ")}`)
+  const period = raw as ScorePeriod
+  const headers = { "Content-Type": "application/json; charset=utf-8" }
+  const kept = scoresCache.get(period)
+  if (kept && now - kept.at < SCORES_TTL) return new Response(kept.body, { headers })
+  const days = PERIOD_DAYS[period]
+  const since = days === null ? 0 : now - days * DAY
+  const { results } = await env.DB.prepare(SCORES_SQL).bind(since, BULK_FILES).all<ScoreRow>()
+  const body = JSON.stringify({
+    period,
+    since: days === null ? null : since,
+    generated_at: now,
+    bulk_files: BULK_FILES,
+    members: rankScores(results),
+  })
+  scoresCache.set(period, { at: now, body })
+  return new Response(body, { headers })
+}
+
 /**
  * GET /api/changes: the newest changes first, `limit` at a time (PAGE, at most PAGE_MAX), and the
  * cursor of the next page (`before`). Filters: login (a member's contributions), repo, path (one
  * file), kind and state (comma lists). One D1 query.
  */
 export async function changeRoutes(request: Request, url: URL, env: Env): Promise<Response | null> {
-  if (url.pathname !== "/api/changes") return null
+  if (url.pathname !== "/api/changes" && url.pathname !== "/api/changes/scores") return null
   if (request.method !== "GET" && request.method !== "HEAD")
     throw new HttpError(405, "method not allowed")
+  if (url.pathname === "/api/changes/scores") return scoreRoutes(url, env)
   const query = url.searchParams
   const where: string[] = []
   const binds: (string | number)[] = []

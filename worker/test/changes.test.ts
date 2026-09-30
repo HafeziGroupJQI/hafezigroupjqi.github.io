@@ -1,6 +1,14 @@
 import { SELF, env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
-import { draftChanges, recordChanges, settleChanges, unsentChanges } from "../src/changes"
+import {
+  contributionScore,
+  draftChanges,
+  rankScores,
+  recordChanges,
+  resetScores,
+  settleChanges,
+  unsentChanges,
+} from "../src/changes"
 import importSql from "./fixtures/changes-import.sql?raw"
 import { ORIGIN, SITE, as } from "./helpers"
 
@@ -74,6 +82,7 @@ const feed = async (query = "") => {
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM changes").run()
+  resetScores()
 })
 
 describe("changes: the members' feed", () => {
@@ -334,5 +343,134 @@ describe("changes: what the site records as members act", () => {
       )[0]
     expect(edit("replace")).toMatchObject({ kind: "edit", repo: "vault", state: "sent" })
     expect(edit("add").kind).toBe("new")
+  })
+})
+
+describe("changes: contribution scores", () => {
+  const HOUR = 60 * MINUTE
+  const DAY = 24 * HOUR
+  const scores = async (query = "") => {
+    const { status, body } = await (await as("ada")).json(`/api/changes/scores${query}`)
+    expect(status).toBe(200)
+    return body as { period: string; since: number | null; members: any[] }
+  }
+  const page = (at: number, login: string, name: string, extra: Partial<Seed> = {}): Seed => ({
+    at,
+    login,
+    author: login?.toLowerCase() === "ada" ? "Ada Lovelace" : "Grace Hopper",
+    repo: "vault-private",
+    path: `notes/${name}.md`,
+    slug: `resources/notes/${name}`,
+    ...extra,
+  })
+
+  it("is for signed-in members only, and knows its periods", async () => {
+    const response = await SELF.fetch(`${ORIGIN}/api/changes/scores`, { headers: { origin: SITE } })
+    expect(response.status).toBe(401)
+    expect((await (await as("ada")).json("/api/changes/scores?period=year")).status).toBe(422)
+  })
+
+  it("scores files in full and repeat changes less: files + 2 × √(changes − files)", () => {
+    expect(contributionScore(1, 1)).toBe(1)
+    expect(contributionScore(3, 7)).toBe(7)
+    expect(contributionScore(2, 5)).toBe(5.5)
+    expect(contributionScore(10, 10)).toBe(10)
+    // Ties share a rank, and the next one skips it.
+    const row = { added: 0, removed: 0, active_days: 1, last_at: 1, files_added: 0 }
+    const created = { pages_created: 0, pages_edited: 0 }
+    const ranked = rankScores([
+      { login: "c", author: "Cy", files: 1, changes: 1, ...row, ...created },
+      { login: "b", author: "Bo", files: 3, changes: 7, ...row, ...created },
+      { login: "a", author: "Al", files: 7, changes: 7, ...row, ...created },
+    ])
+    expect(ranked.map((member) => [member.rank, member.login, member.score])).toEqual([
+      [1, "a", 7],
+      [1, "b", 7],
+      [3, "c", 1],
+    ])
+  })
+
+  it("ranks members by week, month and all time, and leaves out changes without a member", async () => {
+    const now = Date.now()
+    await seed(
+      // Ada: three files this week, one of them changed three times; one more last month.
+      page(now - HOUR, "ada", "a", { kind: "new" }),
+      page(now - 2 * HOUR, "ada", "a"),
+      page(now - 3 * DAY, "Ada", "a"),
+      page(now - 2 * DAY, "ada", "b", { kind: "new" }),
+      { ...page(now - 2 * DAY, "ada", "c"), path: "notes/c.pdf", slug: null, kind: "upload" },
+      page(now - 20 * DAY, "ada", "d"),
+      // Grace: one file this month, long ago two more.
+      page(now - 10 * DAY, "grace", "g"),
+      page(now - 90 * DAY, "grace", "h", { kind: "new" }),
+      page(now - 90 * DAY, "grace", "i", { kind: "new" }),
+      // Never ranked: the site's own commit, and work that isn't in the vault.
+      page(now - HOUR, null as unknown as string, "x", { author: "hafezi members site" }),
+      page(now - HOUR, "grace", "y", { state: "sent" }),
+      page(now - HOUR, "grace", "z", { state: "discarded" }),
+    )
+    const week = await scores("?period=week")
+    expect(week.period).toBe("week")
+    expect(week.members).toHaveLength(1)
+    expect(week.members[0]).toMatchObject({
+      rank: 1,
+      login: "ada",
+      author: "Ada Lovelace",
+      changes: 5,
+      files: 3,
+      score: contributionScore(3, 5),
+      pages_created: 2,
+      pages_edited: 2,
+      files_added: 1,
+    })
+    expect(week.members[0].active_days).toBeGreaterThanOrEqual(2)
+    expect(week.members[0].last_at).toBe(now - HOUR)
+    const month = await scores("?period=month")
+    expect(month.members.map((m) => [m.rank, m.login, m.files, m.changes])).toEqual([
+      [1, "ada", 4, 6],
+      [2, "grace", 1, 1],
+    ])
+    const all = await scores()
+    expect(all.period).toBe("all")
+    expect(all.since).toBeNull()
+    expect(all.members.map((m) => [m.login, m.files, m.changes, m.score])).toEqual([
+      ["ada", 4, 6, contributionScore(4, 6)],
+      ["grace", 3, 3, 3],
+    ])
+    expect(JSON.stringify(all)).not.toContain("hafezi members site")
+  })
+
+  it("counts a bulk commit once per folder, not once per file", async () => {
+    const now = Date.now()
+    const bulk = "b".repeat(40)
+    const rows: Seed[] = []
+    // One import of 60 files into two folders, and an ordinary commit of two files.
+    for (let i = 0; i < 60; i++)
+      rows.push({
+        at: now - DAY,
+        login: "grace",
+        author: "Grace Hopper",
+        repo: "vault-private",
+        path: `files/equipment/${i < 40 ? "laser" : "scope"}/manual-${i}.pdf`,
+        kind: "new",
+        commit_sha: bulk,
+      })
+    for (const name of ["a", "b"])
+      rows.push(page(now - HOUR, "grace", name, { commit_sha: "c".repeat(40) }))
+    await seed(...rows)
+    const [grace] = (await scores("?period=week")).members
+    expect(grace).toMatchObject({ files: 4, changes: 4, score: 4, files_added: 60 })
+  })
+
+  it("keeps a leaderboard for five minutes without asking the database again", async () => {
+    const now = Date.now()
+    await seed(page(now - HOUR, "ada", "a"))
+    expect((await scores("?period=week")).members).toHaveLength(1)
+    await seed(page(now - HOUR, "grace", "g"))
+    expect((await scores("?period=week")).members).toHaveLength(1)
+    // Another period is its own, and a fresh look sees the new change.
+    expect((await scores("?period=month")).members).toHaveLength(2)
+    resetScores()
+    expect((await scores("?period=week")).members).toHaveLength(2)
   })
 })

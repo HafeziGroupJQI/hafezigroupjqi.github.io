@@ -512,6 +512,8 @@ export async function editRoutes(
         first.repo !== row.repo ||
         theirs?.path !== change.path ||
         first.login.toLowerCase() === session.login.toLowerCase() ||
+        // Made on top of this one: stacking this on it would make each wait for the other.
+        first.after_draft === row.id ||
         !(first.status === "open" || first.status === "review") ||
         first.sent_at === null
       )

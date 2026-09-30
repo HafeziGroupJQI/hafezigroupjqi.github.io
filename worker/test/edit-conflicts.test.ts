@@ -502,6 +502,27 @@ describe("editing on top of another member's sent change", () => {
     ])
   })
 
+  it("won't stack a change on one made on top of it", async () => {
+    const { ada, bob, first, second } = await overlapping()
+    await put(bob, second, {
+      stack_on: first,
+      stack_sha: await gitBlobSha(ADA_LINE),
+      text: BOB_LINE,
+    })
+    expect((await send(bob, second)).status).toBe(200)
+    await put(ada, first, { text: ADA_LINE + "More.\n" })
+    const cycle = await put(ada, first, {
+      stack_on: second,
+      stack_sha: await gitBlobSha(BOB_LINE),
+      text: BOB_LINE,
+    })
+    expect(cycle.status).toBe(409)
+    const row = await env.DB.prepare("SELECT after_draft FROM upload_drafts WHERE id = ?")
+      .bind(first)
+      .first<any>()
+    expect(row.after_draft).toBeNull()
+  })
+
   it("stacks only on a sent change to the same page by someone else", async () => {
     const { ada, bob, first, second } = await overlapping()
     const other = (await draft(ada, TEXT + "x\n", "x", "content/research/optics.md")).body.id

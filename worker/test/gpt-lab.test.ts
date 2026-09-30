@@ -2,10 +2,10 @@ import { SELF, env } from "cloudflare:test"
 import { beforeAll, describe, expect, it } from "vitest"
 import { issueLabTicket } from "../src/compute/tokens"
 import { MAX_TEXT, MAX_TURNS, labTranscript } from "../src/gpt/lab-chats"
-import { ORIGIN, as, auditRows } from "./helpers"
+import { ORIGIN, as } from "./helpers"
 
-// Hafezi GPT in the lab's own panel: the lab origin (this Worker's origin, ORIGIN here) calls
-// /lab/<ticket>/hafezi-gpt/api/gpt/..., with the lab ticket as its only credential.
+// Hafezi GPT's coding agent in the lab: the lab origin (this Worker's origin, ORIGIN here) calls
+// /lab/<ticket>/hafezi-gpt/api/gpt/tools and .../lab-chats, with the lab ticket as its only credential.
 
 const exp = () => Math.floor(Date.now() / 1000) + 3600
 
@@ -22,53 +22,47 @@ function lab(ticket: string) {
     })
 }
 
-function events(text: string) {
-  return text
-    .split("\n\n")
-    .filter(Boolean)
-    .map((chunk) => chunk.match(/^event: (.*)$/m)?.[1])
-}
-
 describe("Hafezi GPT on the lab origin", () => {
   let own: string
   beforeAll(async () => {
     own = await issueLabTicket(env as any, { login: "Lena", role: "member", exp: exp() }, "lena")
   })
 
-  it("chats as the lab's own member, in the same conversations as the site", async () => {
+  it("reaches only the agent's site tools and lab chats, not the member's site conversations", async () => {
+    // Any script on the lab origin has the ticket from its own URL: it must not list, read, write,
+    // share or delete the member's conversations, projects or uploads.
     const call = lab(own)
-    const boot = await call("/bootstrap")
-    expect(boot.status).toBe(200)
-    expect(((await boot.json()) as any).models.length).toBeGreaterThan(0)
-
+    expect((await call("/tools")).status).toBe(200)
+    expect((await call("/lab-chats")).status).toBe(200)
+    for (const path of [
+      "/bootstrap",
+      "/conversations",
+      "/projects",
+      "/files",
+      "/toolsx",
+      "/lab-chatsx",
+    ])
+      expect((await call(path)).status, path).toBe(404)
     const created = await call("/conversations", {
       method: "POST",
       body: JSON.stringify({ origin_slug: "scratchpad" }),
     })
-    expect(created.status).toBe(201)
-    const chat = (await created.json()) as any
-    expect(chat).toMatchObject({ owner: "lena" })
-
-    const turn = await call(`/conversations/${chat.id}/messages`, {
+    expect(created.status).toBe(404)
+    const site = await as("lena")
+    const mine = await site.json("/api/gpt/conversations", {
+      method: "POST",
+      body: JSON.stringify({ origin_slug: "scratchpad" }),
+    })
+    const id = mine.body.id
+    expect((await call(`/conversations/${id}`)).status).toBe(404)
+    const turn = await call(`/conversations/${id}/messages`, {
       method: "POST",
       headers: { accept: "text/event-stream" },
-      body: JSON.stringify({
-        text: "Why does my fit diverge?",
-        context: { label: "fit.ipynb · cell 3 (Python 3)", text: "curve_fit(f, x, y)" },
-      }),
+      body: JSON.stringify({ text: "Why does my fit diverge?" }),
     })
-    expect(turn.status).toBe(200)
-    expect(turn.headers.get("content-type")).toContain("text/event-stream")
-    expect(events(await turn.text())).toContain("done")
-
-    // The site's own app sees the same chat, with the cell chip.
-    const site = await as("lena")
-    const listed = await site.json("/api/gpt/conversations")
-    expect(listed.body.map((c: any) => c.id)).toContain(chat.id)
-    const opened = await site.json(`/api/gpt/conversations/${chat.id}`)
-    expect(opened.body.turns[0].context).toEqual({ label: "fit.ipynb · cell 3 (Python 3)" })
-    const rows = await auditRows("login = 'lena' AND action = 'gpt.message'")
-    expect(rows.length).toBeGreaterThan(0)
+    expect(turn.status).toBe(404)
+    expect((await call(`/conversations/${id}`, { method: "DELETE" })).status).toBe(404)
+    expect((await site.fetch(`/api/gpt/conversations/${id}`)).status).toBe(200)
   })
 
   it("is refused in a lab an owner opened for another member", async () => {
@@ -77,7 +71,7 @@ describe("Hafezi GPT on the lab origin", () => {
       { login: "olivia", role: "owner", exp: exp() },
       "lena",
     )
-    const response = await lab(other)("/bootstrap")
+    const response = await lab(other)("/tools")
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({
       detail: "Hafezi GPT is available in your own lab only",
@@ -104,38 +98,19 @@ describe("Hafezi GPT on the lab origin", () => {
     expect((await tool("search_site", [])).status).toBe(422)
   })
 
-  it("never gives an owner's lab admin rights over other members' projects", async () => {
-    const alice = await as("alice-lab")
-    const project = await alice.json("/api/gpt/projects", {
-      method: "POST",
-      body: JSON.stringify({ name: "Shared", visibility: "group" }),
-    })
-    const owner = lab(
-      await issueLabTicket(env as any, { login: "olga", role: "owner", exp: exp() }, "olga"),
-    )
-    const url = `/projects/${project.body.id}`
-    const seen = (await (await owner(url)).json()) as any
-    expect(seen.can_edit).toBe(false)
-    expect((await owner(url, { method: "DELETE" })).status).toBe(403)
-    const rename = { method: "PUT", body: JSON.stringify({ name: "Taken" }) }
-    expect((await owner(url, rename)).status).toBe(403)
-    // The same owner on the site is an admin there.
-    expect((await (await as("olga", "owner")).fetch(`/api/gpt${url}`, rename)).status).toBe(200)
-  })
-
   it("takes writes only from the lab page itself, and only with a valid ticket", async () => {
     const call = lab(own)
     const post = (headers: Record<string, string>) =>
-      call("/conversations", { method: "POST", body: "{}", headers })
+      call("/tools/search_site", { method: "POST", body: '{"query":"laser"}', headers })
     expect((await post({ origin: "https://evil.example" })).status).toBe(403)
     expect((await post({ origin: "https://public.example" })).status).toBe(403)
-    const bare = await SELF.fetch(`${ORIGIN}/lab/${own}/hafezi-gpt/api/gpt/conversations`, {
-      method: "POST",
+    const bare = await SELF.fetch(`${ORIGIN}/lab/${own}/hafezi-gpt/api/gpt/lab-chats/x`, {
+      method: "PUT",
       body: "{}",
     })
     expect(bare.status).toBe(403)
-    expect((await lab(own.slice(0, -2) + "xx")("/bootstrap")).status).toBe(401)
-    expect((await call("/bootstrap", { headers: { "service-worker": "script" } })).status).toBe(403)
+    expect((await lab(own.slice(0, -2) + "xx")("/tools")).status).toBe(401)
+    expect((await call("/tools", { headers: { "service-worker": "script" } })).status).toBe(403)
     // Only the GPT API is reachable this way.
     expect((await SELF.fetch(`${ORIGIN}/lab/${own}/hafezi-gpt/api/admin/audit`)).status).toBe(403)
   })

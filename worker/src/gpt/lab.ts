@@ -4,8 +4,8 @@ import { HttpError } from "../http"
 import { navIdentity } from "../profile/routes"
 import { type Session, signedOutSince } from "../session"
 
-// Hafezi GPT inside JupyterLab (the lab extension's panel), on the lab origin: the Worker's own
-// origin, where the site's bearer never is. The panel calls /lab/<ticket>/hafezi-gpt/api/gpt/...,
+// Hafezi GPT inside JupyterLab (the coding agent, jupyterlite-ai), on the lab origin: the Worker's
+// own origin, where the site's bearer never is. The lab calls /lab/<ticket>/hafezi-gpt/api/gpt/...,
 // and the lab ticket in the path is the credential, as it is for the lab itself. Only in a
 // member's own lab: in a lab an owner opens for another member, that member's code runs on this
 // origin and could read the ticket, so it must not reach the owner's conversations.
@@ -13,6 +13,15 @@ import { type Session, signedOutSince } from "../session"
 const LAB_GPT = /^\/lab\/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\/hafezi-gpt(\/api\/gpt\/.*)$/
 
 export const isLabGptPath = (path: string) => LAB_GPT.test(path)
+
+/**
+ * The /api/gpt routes the lab origin may reach: the agent's site tools and its saved chats. Any
+ * script on that origin (a trusted HTML output, an extension) has the ticket from its own URL, so
+ * the member's site conversations, projects and uploads stay out of its reach.
+ */
+const LAB_GPT_ROUTES = /^\/api\/gpt\/(?:tools|lab-chats)(?:\/|$)/
+
+export const labGptAllowed = (apiPath: string) => LAB_GPT_ROUTES.test(apiPath)
 
 /**
  * The member a lab-origin request comes from, from the lab ticket in its path: same origin only
@@ -58,7 +67,7 @@ export async function labGptRequest(
   env: Env,
 ): Promise<{ session: Session; request: Request; url: URL }> {
   const [, token, apiPath] = url.pathname.match(LAB_GPT) ?? []
-  if (!token) throw new HttpError(404, "not found")
+  if (!token || !labGptAllowed(apiPath)) throw new HttpError(404, "not found")
   const session = await labSession(request, url, env, token)
   const apiUrl = new URL(apiPath + url.search, url.origin)
   const headers = new Headers(request.headers)

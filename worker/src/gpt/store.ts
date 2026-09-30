@@ -8,7 +8,7 @@ import type { UsageTotals } from "./models"
 
 export type Visibility = "private" | "group"
 
-/** What used Hafezi GPT: the site's chat (and the lab's panel), the lab's coding agent, or its ghost text. */
+/** What used Hafezi GPT: the site's chat, the lab's coding agent, or its ghost text. */
 export type UsageSource = "chat" | "agent" | "completion"
 
 /** A request's usage, as counted by day: the model it ran on, where it came from, and whether it is a new request. */

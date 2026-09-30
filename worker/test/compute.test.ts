@@ -1110,7 +1110,7 @@ describe("JupyterLab WebSockets through the relay", { timeout: 30_000 }, () => {
     })
     expect(reload.status).toBe(302)
     expect(reload.headers.get("location")).toBe(new URL("/scratchpad", SITE).toString())
-    const gpt = `/lab/${before.ticket}/hafezi-gpt/api/gpt/bootstrap`
+    const gpt = `/lab/${before.ticket}/hafezi-gpt/api/gpt/tools`
     expect((await SELF.fetch(ORIGIN + gpt)).status).toBe(401)
     // …even after the relay forgets what it had in memory.
     const relay = workerEnv.COMPUTE_RELAY
@@ -1129,7 +1129,7 @@ describe("JupyterLab WebSockets through the relay", { timeout: 30_000 }, () => {
       user: { login: "lou" },
     })
     expect(
-      (await SELF.fetch(`${ORIGIN}/lab/${after.ticket}/hafezi-gpt/api/gpt/bootstrap`)).status,
+      (await SELF.fetch(`${ORIGIN}/lab/${after.ticket}/hafezi-gpt/api/gpt/tools`)).status,
     ).toBe(200)
     const reopened = open(after.ticket, ORIGIN, kernel)
     const again = await host.next(ofType(FrameType.OPEN_WS))

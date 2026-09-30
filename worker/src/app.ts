@@ -145,7 +145,7 @@ export function createHandler(
     // The lab's coding agent: a Messages API endpoint on the lab origin, for the member's own lab.
     if (isLabAgentPath(path)) return labAgent(request, url, env, ctx, gptDeps.anthropicFetch)
 
-    // Hafezi GPT in the lab's own panel, on the lab origin: the lab ticket is its credential there.
+    // The lab agent's site tools and saved chats, on the lab origin: the lab ticket is its credential there.
     if (isLabGptPath(path)) {
       const lab = await labGptRequest(request, url, env)
       const record = auditor(env, ctx, lab.request, lab.session)

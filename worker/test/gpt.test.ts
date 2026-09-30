@@ -406,7 +406,7 @@ describe("uploads", { timeout: 20_000 }, () => {
       (await bob.fetch(`/api/gpt/files/${png.id}`)).headers.get("x-content-type-options"),
     ).toBe("nosniff")
 
-    // The same file on the lab origin, where the lab ticket lives.
+    // Never on the lab origin, where the lab ticket lives: uploads aren't served there at all.
     const ticket = await issueLabTicket(
       env as any,
       { login: "alice-serve", role: "member", exp: Math.floor(Date.now() / 1000) + 3600 },
@@ -415,10 +415,7 @@ describe("uploads", { timeout: 20_000 }, () => {
     const onLab = await SELF.fetch(
       `${ORIGIN}/lab/${ticket}/hafezi-gpt/api/gpt/files/${disguised.id}`,
     )
-    expect(onLab.status).toBe(200)
-    expect(onLab.headers.get("content-type")).toBe("text/plain; charset=utf-8")
-    expect(onLab.headers.get("content-security-policy")).toBe(sandbox)
-    expect(onLab.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(onLab.status).toBe(404)
     await onLab.arrayBuffer()
   })
 })

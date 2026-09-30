@@ -158,10 +158,23 @@ describe("one lowercase login for a member everywhere", () => {
     ).json()) as any
     expect(chat.owner).toBe("mixed-case")
 
-    // The lab, opened from the Scratchpad with this session, sees the same chats.
+    // The lab, opened from the Scratchpad with this session, is the same member: a chat it saves
+    // is one of the site's conversations.
     const status = (await (await site("/api/compute/status")).json()) as any
     const ticket = new URL(status.lab).pathname.split("/")[2]
-    const listed = (await (await labCall(ticket, "/api/gpt/conversations")).json()) as any[]
+    const labChat = {
+      messages: [{ type: "msg", id: "0", body: "hi", sender: "user", time: 1 }],
+      users: { user: { username: "user", display_name: "User" } },
+      metadata: {},
+    }
+    const saved = await labCall(ticket, "/api/gpt/lab-chats/Hafezi%20GPT", {
+      method: "PUT",
+      body: JSON.stringify(labChat),
+    })
+    expect(saved.status).toBe(200)
+    const { conversation_id } = (await saved.json()) as any
+    const listed = (await (await site("/api/gpt/conversations")).json()) as any[]
+    expect(listed.map((c) => c.id)).toContain(conversation_id)
     expect(listed.map((c) => c.id)).toContain(chat.id)
     // So does a bearer from before this rule, which still carries GitHub's casing.
     const old = await sign(

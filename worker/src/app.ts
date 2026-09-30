@@ -2,6 +2,7 @@ import { adminRoutes } from "./admin/routes"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
 import { type GitHubFetch, allowedOrigins, exchange, requireMutation, startLogin } from "./auth"
 import { calendarRoutes } from "./calendar/routes"
+import { changeRoutes } from "./changes"
 import {
   computeHostRoute,
   computeRoutes,
@@ -273,6 +274,8 @@ export function createHandler(
       "vault-private": privateVaultFetch,
     })
     if (edit) return edit
+    const changes = await changeRoutes(request, url, env)
+    if (changes) return changes
     return problem(404, "not found")
   }
 

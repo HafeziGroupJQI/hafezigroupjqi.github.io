@@ -2,13 +2,13 @@
 // The Edit button leads a page's tools row (JqiFrame's .page-tools), dark like its neighbours.
 .page-tools > a.page-edit {
   padding: 4px 10px;
-  background: #454545;
-  border: 1px solid #454545;
+  background: var(--c-band, #454545);
+  border: 1px solid var(--c-band, #454545);
   border-radius: 3px;
-  color: #fff;
+  color: var(--c-on-band, #fff);
   text-decoration: none;
   &:hover {
-    background: #222;
+    background: var(--c-band, #222);
   }
 }
 
@@ -71,7 +71,7 @@
     border: 1px solid var(--jqi-rule);
     border-radius: 4px;
     overflow: hidden;
-    background: #fff;
+    background: var(--light, #fff);
   }
   .edit-source .cm-editor {
     height: 100%;
@@ -88,7 +88,7 @@
   }
   .edit-problems {
     margin: 4px 0;
-    color: #b3261e;
+    color: var(--c-err, #b3261e);
     font-size: 0.9rem;
     &:empty {
       display: none;
@@ -147,7 +147,7 @@
       font-size: 0.8rem;
       cursor: pointer;
       &:hover:not(:disabled) {
-        color: #111;
+        color: var(--c-strong, #111);
         text-decoration: underline;
       }
     }

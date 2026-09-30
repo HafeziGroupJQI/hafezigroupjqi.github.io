@@ -530,7 +530,7 @@ pre {
         margin-right: 1rem;
         display: inline-block;
         text-align: right;
-        color: rgba(115, 138, 148, 0.6);
+        color: var(--syn-comment, rgba(115, 138, 148, 0.6));
       }
     }
 

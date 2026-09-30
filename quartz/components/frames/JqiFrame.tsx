@@ -3,6 +3,7 @@ import JqiHeaderConstructor from "../jqi/Header"
 import JqiFooterConstructor from "../jqi/Footer"
 import { navScript } from "../jqi/navScript"
 import { memberBootstrap } from "../jqi/memberBootstrap"
+import { themeBootstrap } from "../jqi/themeBootstrap"
 import SectionNav from "../jqi/SectionNav"
 import { publicNav, resourceNav } from "../jqi/nav"
 import { FullSlug, resolveRelative } from "../../util/path"
@@ -93,6 +94,8 @@ export const JqiFrame: PageFrame = {
       <div
         class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}${tagPage ? " site-tag" : ""}${dashboard ? " site-dashboard" : ""}`}
       >
+        {/* A signed-in member's own theme (frontend/theme/), before the page paints: members only. */}
+        {internal && <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />}
         <script dangerouslySetInnerHTML={{ __html: memberBootstrap }} />
         <a href="#main-content" class="skip-nav-link">
           Skip to main content

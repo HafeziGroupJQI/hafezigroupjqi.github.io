@@ -286,6 +286,17 @@ describe("the lab's coding agent endpoint", () => {
     for (const name of VAULT_TOOLS) expect(LAB_PROMPT).toContain(`hafezi_${name}`)
   })
 
+  it("spells out the kernel tools' order: a kernel first, then its kernelId in args, an object", () => {
+    // The agent once ran execute-in-kernel with no kernelId, then with args as a JSON string.
+    const start = LAB_PROMPT.indexOf("jupyterlab-ai-commands:start-kernel")
+    const run = LAB_PROMPT.indexOf("jupyterlab-ai-commands:execute-in-kernel")
+    expect(start).toBeGreaterThan(0)
+    expect(LAB_PROMPT).toContain("jupyterlab-ai-commands:list-kernels")
+    expect(run).toBeGreaterThan(start)
+    expect(LAB_PROMPT).toContain("args as an object, never a JSON string")
+    expect(LAB_PROMPT).toContain('{"kernelId": "<that id>", "code": "…"}')
+  })
+
   it("sends the lab's section upstream with the agent's request", async () => {
     const system = [
       { type: "text", text: "You are Jupyternaut.", cache_control: { type: "ephemeral" } },

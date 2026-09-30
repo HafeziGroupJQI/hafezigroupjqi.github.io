@@ -67,4 +67,45 @@
   :root[data-palette][saved-theme="light"] .site-header__logo img {
     mix-blend-mode: multiply;
   }
+
+  // Third-party widgets, through their own variables: FullCalendar 6 (the calendar) and
+  // diff2html 3 (a page's History). Each defines its variables on :root; these win there.
+  :root[data-palette] {
+    --fc-page-bg-color: var(--light);
+    --fc-neutral-bg-color: var(--c-surface-1);
+    --fc-neutral-text-color: var(--c-muted);
+    --fc-border-color: var(--c-rule);
+    --fc-list-event-hover-bg-color: var(--c-surface-2);
+    --fc-more-link-bg-color: var(--c-surface-2);
+    --fc-non-business-color: var(--c-surface-1);
+    --fc-highlight-color: var(--c-info-soft);
+    --fc-today-bg-color: var(--c-warn-softer);
+    --fc-now-indicator-color: var(--c-err);
+    @each $scheme in ("", "dark-") {
+      --d2h-#{$scheme}bg-color: var(--light);
+      --d2h-#{$scheme}border-color: var(--c-rule);
+      --d2h-#{$scheme}dim-color: var(--c-muted);
+      --d2h-#{$scheme}line-border-color: var(--c-rule);
+      --d2h-#{$scheme}file-header-bg-color: var(--c-surface-1);
+      --d2h-#{$scheme}file-header-border-color: var(--c-rule);
+      --d2h-#{$scheme}empty-placeholder-bg-color: var(--c-surface-1);
+      --d2h-#{$scheme}empty-placeholder-border-color: var(--c-rule);
+      --d2h-#{$scheme}selected-color: var(--c-info-soft);
+      --d2h-#{$scheme}ins-bg-color: var(--c-ok-softer);
+      --d2h-#{$scheme}ins-border-color: var(--c-ok-soft);
+      --d2h-#{$scheme}ins-highlight-bg-color: var(--c-ok-soft);
+      --d2h-#{$scheme}ins-label-color: var(--c-ok);
+      --d2h-#{$scheme}del-bg-color: var(--c-err-softer);
+      --d2h-#{$scheme}del-border-color: var(--c-err-soft);
+      --d2h-#{$scheme}del-highlight-bg-color: var(--c-err-soft);
+      --d2h-#{$scheme}del-label-color: var(--c-err);
+      --d2h-#{$scheme}change-del-color: var(--c-warn-softer);
+      --d2h-#{$scheme}change-ins-color: var(--c-ok-softer);
+      --d2h-#{$scheme}info-bg-color: var(--c-info-softer);
+      --d2h-#{$scheme}info-border-color: var(--c-info-soft);
+      --d2h-#{$scheme}change-label-color: var(--c-warn);
+      --d2h-#{$scheme}moved-label-color: var(--c-info);
+    }
+    --d2h-dark-color: var(--darkgray);
+  }
 }

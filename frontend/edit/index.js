@@ -714,8 +714,12 @@ export async function mountEdit(root) {
 
   // A draft is saved on the site every two minutes while it has unsaved changes, and leaving the
   // page with some asks first (this browser keeps a copy either way).
+  // A text the site filled in (a new folder page's first lines, a restore or an undo) isn't saved
+  // by itself: only once the member has changed it, or saves it.
+  const offered = (source.new && !draft) || revert ? start.text : null
   setInterval(() => {
-    if (source.can_edit && dirty() && !busy) void save({ quiet: true })
+    if (source.can_edit && dirty() && !busy && editor.getText() !== offered)
+      void save({ quiet: true })
   }, 120_000)
   setInterval(() => {
     hint.textContent = sendHint(source)

@@ -18,6 +18,13 @@ export function folderActions(dataset) {
       title: `Add files to ${folder} in the private vault`,
       href: uploadsUrl("folder", folder),
     },
+    {
+      // A folder page is made by the site because the folder has no index.md of its own.
+      id: "index",
+      label: "Add an index page",
+      title: `Write ${folder}/index.md, this folder's own page, in the editor`,
+      href: `/edit?${new URLSearchParams({ new: `${folder}/index.md` })}`,
+    },
   ]
 }
 

@@ -768,6 +768,26 @@ describe("settling a queued conflict", () => {
     await unchanged(conflict)
   })
 
+  it("can't be withdrawn or discarded while it is being settled, nor settled once withdrawn", async () => {
+    const { ada, bob, second, conflict } = await queued()
+    // Ada's settlement has claimed it and is under way.
+    await env.DB.prepare("UPDATE edit_conflicts SET resolved_by = 'ada' WHERE id = ?")
+      .bind(conflict)
+      .run()
+    expect((await post(bob, `/api/edit/conflicts/${conflict}/withdraw`)).status).toBe(409)
+    expect((await bob.json(`/api/edit/drafts/${second}`, { method: "DELETE" })).status).toBe(409)
+    expect((await conflicts())[0]).toMatchObject({ state: "open", resolved_by: "ada" })
+    expect(await statusOf(second)).toBe("conflict")
+    // A draft no longer held (taken back meanwhile) isn't sent by a settlement.
+    await env.DB.batch([
+      env.DB.prepare("UPDATE edit_conflicts SET resolved_by = NULL WHERE id = ?").bind(conflict),
+      env.DB.prepare("UPDATE upload_drafts SET status = 'editing' WHERE id = ?").bind(second),
+    ])
+    expect((await resolve(ada, conflict, { choice: "second" })).status).toBe(409)
+    expect(await statusOf(second)).toBe("editing")
+    expect((await conflicts())[0]).toMatchObject({ state: "open", resolved_by: null })
+  })
+
   it("settles against the first editor's newest sent text", async () => {
     const { ada, first, second, conflict } = await queued()
     const newer = ADA_LINE.replace("First paragraph.", "First, newer.")
@@ -859,6 +879,38 @@ describe("the daily run", () => {
     expect((await conflicts())[0].state).toBe("expired")
     expect(await auditRows("action = 'edit.conflict.expire'")).toHaveLength(1)
     expect(await statusOf(idle)).toBe("discarded")
+  })
+
+  it("leaves alone a conflict settled while the run expires it", async () => {
+    const { bob, second } = await overlapping()
+    const { conflict } = (await post(bob, `/api/edit/drafts/${second}/queue`)).body
+    const { expireConflicts } = await import("../src/edit/conflicts")
+    // Settled between the run's reading and its writing.
+    const racing = {
+      ...env,
+      DB: new Proxy(env.DB, {
+        get(target, key) {
+          if (key !== "batch") return (target as any)[key].bind?.(target) ?? (target as any)[key]
+          return async (statements: D1PreparedStatement[]) => {
+            await target.batch([
+              target
+                .prepare("UPDATE edit_conflicts SET state = 'resolved' WHERE id = ?")
+                .bind(conflict.id),
+              target.prepare("UPDATE upload_drafts SET status = 'open' WHERE id = ?").bind(second),
+            ])
+            return target.batch(statements)
+          }
+        },
+      }),
+    }
+    const changesOfSecond = () =>
+      env.DB.prepare("SELECT COUNT(*) AS n FROM changes WHERE draft_id = ?")
+        .bind(second)
+        .first<any>()
+    expect((await changesOfSecond()).n).toBe(1)
+    expect((await expireConflicts(racing as any, Date.now() + 15 * 86_400_000)).expired).toEqual([])
+    expect(await statusOf(second)).toBe("open")
+    expect((await changesOfSecond()).n).toBe(1)
   })
 })
 

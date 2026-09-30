@@ -209,6 +209,16 @@ export async function discard(
   message: string,
 ): Promise<void> {
   if (!LIVE.includes(row.status)) throw new HttpError(409, `this draft is already ${row.status}`)
+  // A page edit whose conflict someone is settling right now (src/edit/routes.ts) waits for them.
+  if (
+    row.kind === "edit" &&
+    (await env.DB.prepare(
+      "SELECT 1 FROM edit_conflicts WHERE draft_id = ? AND state = 'open' AND resolved_by IS NOT NULL",
+    )
+      .bind(row.id)
+      .first())
+  )
+    throw new HttpError(409, "this change is being settled right now: try again in a moment")
   if (row.pr_number) {
     const pull = await repo.pull(row.pr_number).catch((error) => {
       if (error instanceof RepoMissing) return null
@@ -225,7 +235,7 @@ export async function discard(
   if (row.kind === "edit")
     await env.DB.prepare(
       `UPDATE edit_conflicts SET state = 'withdrawn', resolved_at = ?
-       WHERE draft_id = ? AND state = 'open'`,
+       WHERE draft_id = ? AND state = 'open' AND resolved_by IS NULL`,
     )
       .bind(Date.now(), row.id)
       .run()

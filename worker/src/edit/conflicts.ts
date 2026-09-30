@@ -380,6 +380,23 @@ export async function openConflictOf(env: Env, draft: string) {
     .first<ConflictRow & { author: string | null; summary: string | null }>()
 }
 
+/**
+ * The statement taking back a held draft's changes on the site's recent changes (as
+ * unsentChanges), only once its conflict stands closed as `state` at `at`: when someone else
+ * settled it first, the settled draft's rows stay.
+ */
+export const unsentAfter = (
+  env: Pick<Env, "DB">,
+  draft: string,
+  conflict: string,
+  state: ConflictRow["state"],
+  at: number,
+) =>
+  env.DB.prepare(
+    `DELETE FROM changes WHERE draft_id = ? AND state != 'merged'
+       AND EXISTS (SELECT 1 FROM edit_conflicts WHERE id = ? AND state = ? AND resolved_at = ?)`,
+  ).bind(draft, conflict, state, at)
+
 /** Open conflicts at most this many per member at once. */
 export const CONFLICTS_OPEN_MAX = 5
 
@@ -405,19 +422,23 @@ export async function expireConflicts(env: Env, now = Date.now()) {
     const [closed] = await env.DB.batch([
       env.DB.prepare(
         `UPDATE edit_conflicts SET state = 'expired', resolved_at = ?
-         WHERE id = ? AND state = 'open'`,
+         WHERE id = ? AND state = 'open' AND resolved_by IS NULL`,
       ).bind(now, conflict.id),
       env.DB.prepare(
         `UPDATE upload_drafts SET status = 'editing', detail_json = ?, updated_at = ?
-         WHERE id = ? AND status = 'conflict'`,
+         WHERE id = ? AND status = 'conflict'
+           AND EXISTS (SELECT 1 FROM edit_conflicts WHERE id = ? AND state = 'expired'
+                         AND resolved_at = ?)`,
       ).bind(
         JSON.stringify({
           message: `nobody settled it in ${CONFLICT_DAYS} days: it is your draft again, with your text`,
         }),
         now,
         conflict.draft_id,
+        conflict.id,
+        now,
       ),
-      unsentChanges(env, conflict.draft_id),
+      unsentAfter(env, conflict.draft_id, conflict.id, "expired", now),
     ])
     if (!closed.meta.changes) continue
     await auditJob(env, conflict.login, "edit.conflict.expire", conflict.draft_id, {

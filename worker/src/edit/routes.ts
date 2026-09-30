@@ -36,6 +36,7 @@ import {
   mergeable,
   refusal,
   sentText,
+  unsentAfter,
 } from "./conflicts"
 import { gitBlobSha, threeWay } from "./merge"
 import { pageProblems, readPage, vaultProblems } from "./public"
@@ -905,6 +906,9 @@ async function conflictRoutes(
       throw new HttpError(422, "that is the first change's text: keep the first change instead")
     await claim()
     try {
+      // Still held: a draft taken back meanwhile is its author's again, and isn't sent.
+      if ((await draftRow(env, second.id))?.status !== "conflict")
+        throw new HttpError(409, "this change was taken back by its author")
       const summary = cleanSummary(`${second.summary ?? ""} (settled by ${settler})`.slice(-120))
       const author = second.author || second.login
       await env.ARTIFACTS.put(stagedKey(second.id, row.path), text, {
@@ -940,11 +944,11 @@ async function conflictRoutes(
         await env.ARTIFACTS.put(publishedKey(second.id, row.path), text, {
           httpMetadata: { contentType: change.content_type ?? "text/markdown; charset=utf-8" },
         })
-        await env.DB.batch([
+        const [opened] = await env.DB.batch([
           env.DB.prepare(
             `UPDATE upload_drafts SET status = 'open', title = ?, detail_json = NULL, sent_at = ?,
                due_at = ?, updated_at = ?
-             WHERE id = ?`,
+             WHERE id = ? AND status = 'conflict'`,
           ).bind(title, now, dueAt(now), now, second.id),
           unsentChanges(env, second.id),
           recordChanges(
@@ -952,8 +956,11 @@ async function conflictRoutes(
             draftChanges(settled, [staged], { at: now, author, summary: title, pull: null }),
           ),
         ])
+        if (!opened.meta.changes)
+          throw new HttpError(409, "this change was taken back by its author")
       } else await send(env, repo, settled, [staged], author, now)
-      await env.DB.batch([finish("resolved")])
+      const [finished] = await env.DB.batch([finish("resolved")])
+      if (!finished.meta.changes) throw new HttpError(409, "this conflict is settled already")
     } catch (error) {
       await release()
       throw error
@@ -982,7 +989,7 @@ async function conflictRoutes(
     const [closed] = await env.DB.batch([
       env.DB.prepare(
         `UPDATE edit_conflicts SET state = 'withdrawn', resolved_by = ?, resolved_at = ?
-         WHERE id = ? AND state = 'open'`,
+         WHERE id = ? AND state = 'open' AND resolved_by IS NULL`,
       ).bind(session.login, now, row.id),
       env.DB.prepare(
         `UPDATE upload_drafts SET status = 'editing', detail_json = NULL, updated_at = ?
@@ -990,9 +997,10 @@ async function conflictRoutes(
            AND EXISTS (SELECT 1 FROM edit_conflicts WHERE id = ? AND state = 'withdrawn'
                          AND resolved_at = ?)`,
       ).bind(now, row.draft_id, row.id, now),
-      unsentChanges(env, row.draft_id),
+      unsentAfter(env, row.draft_id, row.id, "withdrawn", now),
     ])
-    if (!closed.meta.changes) throw new HttpError(409, "this conflict is settled already")
+    if (!closed.meta.changes)
+      throw new HttpError(409, "this conflict is being settled or is settled already")
     record("edit.conflict.withdraw", row.path, { conflict: row.id, draft: row.draft_id })
     const draft = (await draftRow(env, row.draft_id))!
     return json({

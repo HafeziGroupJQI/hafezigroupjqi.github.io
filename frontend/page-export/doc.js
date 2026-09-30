@@ -49,6 +49,33 @@ export function sourceMath(markdown) {
 }
 
 /**
+ * The Mermaid diagrams of a page's Markdown source, in order: each ```mermaid fence's text. The
+ * page keeps each diagram's source on its code element (data-clipboard); this is for one that
+ * doesn't. Pure.
+ */
+export function mermaidSources(markdown) {
+  const text = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
+  return [
+    ...text.matchAll(/^ {0,3}(`{3,}|~{3,})[ \t]*mermaid\b[^\n]*\n([\s\S]*?)^ {0,3}\1[ \t]*$/gm),
+  ].map((match) => match[2].replace(/\r?\n$/, ""))
+}
+
+/**
+ * A diagram's source with its labels as SVG text (a Mermaid directive): the page's own drawing
+ * labels in HTML (foreignObject), which no canvas may read back, so it can't become a picture.
+ * Pure.
+ */
+export function mermaidTextLabels(source) {
+  const directive = '%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%'
+  // A diagram's own front matter must stay first.
+  const front = source.match(/^\s*---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/)?.[0]
+  return front ? `${front}${directive}\n${source.slice(front.length)}` : `${directive}\n${source}`
+}
+
+/** The Mermaid build the site's pages load (the Obsidian-flavored Markdown plugin's). */
+export const MERMAID = "https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.4.0/mermaid.esm.min.mjs"
+
+/**
  * The largest picture in the document, in CSS px (Docs reads them at 96 dpi): 600 × 800 fits the
  * text of a Letter page and of an A4 one inside Docs' 1 in margins (6.5 in and 6.27 in wide).
  */
@@ -190,13 +217,91 @@ const box = (element) => {
 }
 
 /**
- * The article's HTML for the document. `source`: the page's Markdown, for its equations.
+ * A drawing's SVG with its own size: a diagram drawn to fill its column (width="100%") is given its
+ * viewBox's, so as a picture it has one. Mermaid's text labels also lose its second escape of
+ * &, < and > (it writes "&amp;amp;" for an &). Pure but for the DOM's XML parser.
+ */
+export function drawingSvg(svg) {
+  const root = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement
+  const [, , width, height] = (root.getAttribute("viewBox") ?? "").split(/[\s,]+/).map(Number)
+  if (width > 0 && height > 0 && !/^[\d.]+(?:px)?$/.test(root.getAttribute("width") ?? "")) {
+    root.setAttribute("width", String(width))
+    root.setAttribute("height", String(height))
+    root.style.removeProperty("max-width")
+  }
+  return new XMLSerializer()
+    .serializeToString(root)
+    .replace(/&amp;(amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);/gi, "&$1;")
+}
+
+// A Mermaid diagram as a picture for the document: drawn again by the page's Mermaid (set up as the
+// page set it, in its theme) with its labels as SVG text, at its own size fitted to the page.
+async function mermaidPicture(source, { max }) {
+  const { default: mermaid } = await import(MERMAID)
+  const id = `doc-mermaid-${Math.random().toString(36).slice(2)}`
+  try {
+    const { svg } = await mermaid.render(id, mermaidTextLabels(source))
+    return await docPicture(new Blob([drawingSvg(svg)], { type: "image/svg+xml" }), { max })
+  } finally {
+    document.getElementById(id)?.remove()
+    document.getElementById(`d${id}`)?.remove()
+  }
+}
+
+// Every Mermaid diagram as a picture, or where it can't be drawn, its source with a note: never
+// dropped.
+async function mermaidDiagrams(copy, article, markdown) {
+  const live = [...article.querySelectorAll("code.mermaid")]
+  const fences = mermaidSources(markdown ?? "")
+  await Promise.all(
+    [...copy.querySelectorAll("code.mermaid")].map(async (code, index) => {
+      const shown = live[index]
+      let source = null
+      try {
+        source = JSON.parse(shown?.dataset.clipboard ?? "null")
+      } catch {
+        source = null
+      }
+      if (typeof source !== "string" && fences.length === live.length) source = fences[index]
+      const block = code.closest("pre") ?? code
+      if (typeof source !== "string" || !source.trim()) {
+        block.remove()
+        return
+      }
+      try {
+        const picture = await mermaidPicture(source, { max: DOC_MAX })
+        const paragraph = document.createElement("p")
+        const image = document.createElement("img")
+        image.setAttribute("alt", "Diagram")
+        setPicture(image, picture)
+        paragraph.append(image)
+        block.replaceWith(paragraph)
+      } catch {
+        const pre = document.createElement("pre")
+        const text = document.createElement("code")
+        text.textContent = source
+        pre.append(text)
+        const note = document.createElement("p")
+        const words = document.createElement("em")
+        words.textContent = "(A Mermaid diagram: see the online page for its picture.)"
+        note.append(words)
+        block.replaceWith(pre, note)
+      }
+    }),
+  )
+}
+
+/**
+ * The article's HTML for the document. `source`: the page's Markdown, for its equations and
+ * diagrams.
  */
 export async function articleHtml(article, { source } = {}) {
   const copy = article.cloneNode(true)
-  // Each picture's size on the page, by position (the copy's pictures are the article's).
+  // Each picture's size on the page, by position (the copy's pictures are the article's, before
+  // any are added).
   const liveImages = [...article.querySelectorAll("img")]
   const images = [...copy.querySelectorAll("img")].map((image, index) => [image, liveImages[index]])
+  await mermaidDiagrams(copy, article, source)
   // Drawings inline in the page (Excalidraw, Mermaid) become pictures; small ones are icons.
   const live = [...article.querySelectorAll("svg")]
   const drawings = [...copy.querySelectorAll("svg")].map((svg, index) => [svg, live[index]])

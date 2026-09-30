@@ -9,6 +9,8 @@ import {
   docImageSize,
   docKeepsImage,
   docPixels,
+  mermaidSources,
+  mermaidTextLabels,
   sourceMath,
   texText,
 } from "./doc.js"
@@ -226,4 +228,41 @@ test("the PDF saved to Drive is the downloaded file itself, named after the page
   assert.equal(file.type, "application/pdf")
   // The same object as the download's (pdf.js loads it once): the same bytes in Drive.
   assert.equal(file.body, blob)
+})
+
+test("a Mermaid diagram's source comes from the page, or else its Markdown's fences", () => {
+  const markdown = [
+    "---",
+    "title: Setup",
+    "---",
+    "```mermaid",
+    "flowchart LR",
+    "  A --> B",
+    "```",
+    "",
+    "```python",
+    "print('not a diagram')",
+    "```",
+    "~~~~ mermaid {height=200}",
+    "sequenceDiagram",
+    "  A->>B: hi",
+    "~~~~",
+  ].join("\n")
+  assert.deepEqual(mermaidSources(markdown), [
+    "flowchart LR\n  A --> B",
+    "sequenceDiagram\n  A->>B: hi",
+  ])
+  assert.deepEqual(mermaidSources("no diagrams"), [])
+})
+
+test("a diagram is drawn again with text labels, which a canvas may read back", () => {
+  assert.equal(
+    mermaidTextLabels("flowchart LR\n  A --> B"),
+    '%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%\nflowchart LR\n  A --> B',
+  )
+  // Its own front matter stays first.
+  assert.equal(
+    mermaidTextLabels("---\ntitle: Bench\n---\nflowchart LR\n  A --> B"),
+    '---\ntitle: Bench\n---\n%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%\nflowchart LR\n  A --> B',
+  )
 })

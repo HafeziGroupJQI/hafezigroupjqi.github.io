@@ -262,6 +262,32 @@ describe("public pages: publishing", () => {
     ])
   })
 
+  it("never lets a second due edit of one page overwrite the first in the same run", async () => {
+    const ada = await as("ada")
+    const bob = await as("bob")
+    const path = "content/research/engines.md"
+    // Both loaded the same version and both published before either went in.
+    const one = (await draft(ada, path, RESEARCH + "Ada's line.\n")).body.id
+    const two = (await draft(bob, path, RESEARCH + "Bob's line.\n")).body.id
+    const due = (await publish(ada, one)).body.due_at
+    expect((await publish(bob, two)).status).toBe(200)
+    const run = await commitDue(env as any, vault.fetch, due)
+    expect(run).toMatchObject({ merged: [one], conflicts: [two] })
+    // Ada's change is on the page; Bob's is a conflict with his text kept, and he is told.
+    expect(vault.text(path)).toBe(RESEARCH + "Ada's line.\n")
+    expect(vault.made.length).toBe(1)
+    expect((await bob.json(`/api/edit/drafts/${two}`)).body).toMatchObject({
+      status: "conflict",
+      text: RESEARCH + "Bob's line.\n",
+    })
+    expect(await auditRows("action = 'edit.conflict'")).toEqual([
+      expect.objectContaining({ login: "bob", target: two }),
+    ])
+    // The next run leaves Ada's change alone too.
+    await commitDue(env as any, vault.fetch, due + 3_600_000)
+    expect(vault.text(path)).toBe(RESEARCH + "Ada's line.\n")
+  })
+
   it("stays within a Free invocation's subrequests: a few edits per run, the rest an hour later", async () => {
     const people = ["ada", "bob", "cy", "dee", "eli"]
     const ids: string[] = []

@@ -16,8 +16,9 @@ import { editMessage, editTitle } from "./rules"
 // hour after this one, so its member can still change or discard it; until then it is theirs
 // alone, in the site's D1 and R2. The hourly run (commitDue, the Worker's "4 * * * *" cron) then
 // commits each due edit straight to main as its member's own commit, checked again against main
-// as it is then, and refused as a conflict if the page changed there since the member loaded it:
-// nothing anyone else wrote is overwritten.
+// as it is then, and refused as a conflict if the page changed there since the member loaded it,
+// or if another member's edit of the same page went in earlier in the same run: nothing anyone
+// else wrote is overwritten.
 
 /** Due within this long of now counts as due: the cron fires on the hour, give or take. */
 const SLACK_MS = 5 * 60_000
@@ -157,6 +158,9 @@ export async function commitDue(
   let parent = tip.commit
   let tree = tip.tree
   const made: { row: Due; commit: string }[] = []
+  // Pages this run has already committed an edit of: main's tree above was read once, so a second
+  // due edit of the same page still matches it, and would replace the first one's text whole.
+  const written = new Set<string>()
   for (const row of results) {
     try {
       if (row.sent_at === null || row.edited_at > row.sent_at) {
@@ -164,12 +168,14 @@ export async function commitDue(
         result.waiting.push(row.id)
         continue
       }
-      if (files.get(row.path)?.sha !== row.base_sha) {
+      if (written.has(row.path) || files.get(row.path)?.sha !== row.base_sha) {
         await mark(
           env,
           row,
           "conflict",
-          "the page changed on main since you started: open it in the editor to take the change in",
+          written.has(row.path)
+            ? "someone else's edit of this page went in first: open it in the editor to take their change in"
+            : "the page changed on main since you started: open it in the editor to take the change in",
         )
         await auditJob(env, row.login, "edit.conflict", row.id, { path: row.path })
         result.conflicts.push(row.id)
@@ -204,6 +210,7 @@ export async function commitDue(
         email: `${row.login}@users.noreply.github.com`,
       })
       made.push({ row, commit: parent })
+      written.add(row.path)
     } catch (error) {
       console.error(`committing edit ${row.id} failed`, error)
       result.waiting.push(row.id)

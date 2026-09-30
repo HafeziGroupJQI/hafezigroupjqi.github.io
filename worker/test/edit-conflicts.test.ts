@@ -723,3 +723,28 @@ describe("the daily run", () => {
     expect(await statusOf(idle)).toBe("discarded")
   })
 })
+
+describe("a page moved or deleted while it was edited", () => {
+  it("says so plainly when a private page was renamed by a merged upload", async () => {
+    const bob = await as("bob")
+    const path = "notes/meeting.md"
+    const id = (
+      await post(bob, "/api/edit/drafts", {
+        repo: "vault-private",
+        path,
+        base_sha: privateVault.sha(path),
+        text: privateVault.text(path) + "More.\n",
+        summary: "more",
+      })
+    ).body.id
+    const text = privateVault.text(path)!
+    privateVault.push(path, null)
+    privateVault.push("notes/2026-meeting.md", text)
+    expect(await send(bob, id)).toMatchObject({
+      status: 409,
+      body: { kind: "moved", detail: expect.stringContaining("moved or deleted") },
+    })
+    // The text is still there, to copy.
+    expect((await bob.json(`/api/edit/drafts/${id}`)).body.text).toBe(text + "More.\n")
+  })
+})

@@ -5,6 +5,7 @@ import { prepareSite } from "./prepare-site.mjs"
 import { auditOutput, auditSource } from "./audit-assets.mjs"
 import { parseBuildOptions } from "./build-options.mjs"
 import { renderDrawings } from "./render-excalidraw.mjs"
+import { renderPdfs } from "./render-pdfs.mjs"
 import yaml from "yaml"
 import { prepareUnified } from "./prepare-unified.mjs"
 import { renderPrivateSource } from "./render-private-source.mjs"
@@ -111,6 +112,16 @@ try {
     // browsers the member edition, and the sign-in pages. No member content is in this build.
     await bundleMembers(options.output, "public", membersApi)
     writeAuthPages(options.output)
+  }
+  // Every page with an Export menu as a PDF at /pdf/<slug>.pdf, printed from this build in
+  // headless Chromium (cached by content; PDF_RENDER=0 skips it, e.g. for a quick local build).
+  if (process.env.PDF_RENDER !== "0") {
+    const host = (options.quartzBaseUrl ?? config.configuration.baseUrl).split("/")[0]
+    const local = /^(?:localhost|127\.0\.0\.1)(?::|$)/.test(host)
+    await renderPdfs(options.output, {
+      origin: `${local ? "http" : "https"}://${host}`,
+      edition: options.mode === "internal" ? "members" : "public",
+    })
   }
   const outputAudit = await auditOutput(
     options.output,

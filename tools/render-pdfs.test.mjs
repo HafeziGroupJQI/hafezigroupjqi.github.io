@@ -14,6 +14,7 @@ import {
   articlePart,
   assetFile,
   hasExportMenu,
+  MAX_PDF_BYTES,
   openBrowser,
   pageAssets,
   pageKey,
@@ -324,4 +325,33 @@ test("a second run of the same site prints nothing: every page comes from the ca
   assert.deepEqual([second.summary.printed, second.summary.cached], [0, 1])
   assert.deepEqual(fs.readFileSync(path.join(out, "pdf", "setups", "kitchen-sink.pdf")), bytes)
   assert.deepEqual(fs.readdirSync(path.join(cache, "public")).length, 1)
+})
+
+test("a PDF over the size limit isn't kept, printed or from the cache, and says so", async (t) => {
+  if (!(await hasBrowser())) return t.skip("no headless Chromium (npm run setup:browser)")
+  // The members deploy failed on a 26 MiB page PDF: Workers' assets take 25 MiB a file.
+  assert.ok(MAX_PDF_BYTES < 25 * 1024 * 1024)
+  const out = await kitchenSink(t)
+  const cache = temporary(t, "render-pdfs-cache-")
+  const lines = []
+  const run = () =>
+    renderPdfs(out, {
+      cache,
+      allowed: new Set(),
+      report: null,
+      log: (line) => lines.push(line),
+      jobs: 1,
+      maxBytes: 1000,
+    })
+  const pdf = path.join(out, "pdf", "setups", "kitchen-sink.pdf")
+  const first = await run()
+  assert.deepEqual([first.summary.printed, first.summary.tooLarge], [1, 1])
+  assert.equal(fs.existsSync(pdf), false)
+  assert.ok(lines.some((line) => /kitchen-sink: .* MiB, over .*: no PDF kept/.test(line)))
+  const second = await run()
+  assert.deepEqual(
+    [second.summary.printed, second.summary.cached, second.summary.tooLarge],
+    [0, 1, 1],
+  )
+  assert.equal(fs.existsSync(pdf), false)
 })

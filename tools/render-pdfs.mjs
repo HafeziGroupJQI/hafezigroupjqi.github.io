@@ -287,6 +287,12 @@ export async function printPage(page, { url }, { inspect } = {}) {
   }
 }
 
+/**
+ * The largest PDF kept in a build: Workers' static assets take at most 25 MiB a file
+ * (tools/audit-assets.mjs), and the members deploy failed on a 26 MiB one. A larger page keeps no
+ * PDF: its Export menu falls back to the print dialog, and Save to Drive says there's none.
+ */
+export const MAX_PDF_BYTES = 20 * 1024 * 1024
 const jobsDefault = () => Math.max(1, Math.min(4, os.availableParallelism?.() ?? os.cpus().length))
 
 /**
@@ -308,6 +314,7 @@ export async function renderPdfs(
     allowed = ALLOWED_HOSTS,
     report: reportFile = process.env.PDF_REPORT ?? path.join(".cache", "pdf-report.json"),
     only = null,
+    maxBytes = MAX_PDF_BYTES,
     log = console.log,
   } = {},
 ) {
@@ -346,8 +353,12 @@ export async function renderPdfs(
     delete page.html
     fs.mkdirSync(path.dirname(target), { recursive: true })
     if (fs.existsSync(cached)) {
-      fs.copyFileSync(cached, target)
-      results.push({ slug: page.slug, cache: "hit", bytes: fs.statSync(target).size })
+      const bytes = fs.statSync(cached).size
+      if (bytes > maxBytes) results.push({ slug: page.slug, cache: "hit", bytes, tooLarge: true })
+      else {
+        fs.copyFileSync(cached, target)
+        results.push({ slug: page.slug, cache: "hit", bytes })
+      }
     } else todo.push({ ...page, cached, target })
   }
 
@@ -366,9 +377,12 @@ export async function renderPdfs(
           const begun = Date.now()
           try {
             const printed = await printPage(page, item)
-            fs.writeFileSync(item.target, printed.pdf)
+            // Cached even when too large, so the next deploy doesn't print it again to learn so.
             fs.writeFileSync(item.cached, printed.pdf)
+            const tooLarge = printed.pdf.length > maxBytes
+            if (!tooLarge) fs.writeFileSync(item.target, printed.pdf)
             results.push({
+              ...(tooLarge && { tooLarge: true }),
               slug: item.slug,
               cache: "miss",
               ms: Date.now() - begun,
@@ -415,6 +429,7 @@ export async function renderPdfs(
     printed: results.filter((result) => result.cache === "miss" && !result.failed).length,
     cached: results.filter((result) => result.cache === "hit").length,
     failed: failed.length,
+    tooLarge: results.filter((result) => result.tooLarge).length,
     warnings: warned.length,
     seconds: Math.round((Date.now() - started) / 100) / 10,
     scope,
@@ -430,6 +445,11 @@ export async function renderPdfs(
       (reportFile ? `; report: ${reportFile}` : ""),
   )
   for (const result of failed) log(`render-pdfs: ${result.slug}: ${result.failed}`)
+  for (const result of results.filter((result) => result.tooLarge))
+    log(
+      `render-pdfs: ${result.slug}: ${(result.bytes / 1048576).toFixed(1)} MiB, over ` +
+        `${maxBytes / 1048576} MiB: no PDF kept (its menu falls back to printing)`,
+    )
   for (const result of warned)
     log(
       `render-pdfs: ${result.slug}: ` +

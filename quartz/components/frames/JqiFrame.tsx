@@ -6,6 +6,7 @@ import { memberBootstrap } from "../jqi/memberBootstrap"
 import SectionNav from "../jqi/SectionNav"
 import { publicNav, resourceNav } from "../jqi/nav"
 import { FullSlug, resolveRelative } from "../../util/path"
+import { PrintMeta } from "./printMeta"
 
 const JqiHeader = JqiHeaderConstructor()
 const JqiFooter = JqiFooterConstructor()
@@ -121,6 +122,14 @@ export const JqiFrame: PageFrame = {
                       <span>{frontmatter?.title}</span>
                     </nav>
                     <h1>{frontmatter?.title}</h1>
+                    <PrintMeta
+                      slug={slug}
+                      title={String(frontmatter?.title ?? "")}
+                      trail={crumbs.map((crumb) => crumb.label)}
+                      baseUrl={componentData.cfg.baseUrl}
+                      members={internal && slug.startsWith("resources/")}
+                      frontmatter={frontmatter}
+                    />
                     {tags.length > 0 && (
                       <ul class="tags" aria-label="Topics">
                         {tags.map((tag) => (

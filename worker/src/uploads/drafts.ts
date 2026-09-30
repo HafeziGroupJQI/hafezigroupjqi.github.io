@@ -253,12 +253,15 @@ export const plainName = (name: string, login: string) =>
 /** The message of a draft's commit, which a rebase merge puts on main as it is. */
 export const mergeTitle = (title: string) => `${title} from the members site uploads`
 
-const size = (bytes: number | null) =>
+/** A file's size as the pull request says it: bytes under 1 kb, then kb, then mb. */
+export const size = (bytes: number | null) =>
   bytes === null
     ? ""
-    : bytes < 1024 * 1024
-      ? ` (${Math.max(1, Math.round(bytes / 1024))} kb)`
-      : ` (${(bytes / 1024 / 1024).toFixed(1)} mb)`
+    : bytes < 1024
+      ? ` (${bytes} ${bytes === 1 ? "byte" : "bytes"})`
+      : bytes < 1024 * 1024
+        ? ` (${Math.round(bytes / 1024)} kb)`
+        : ` (${(bytes / 1024 / 1024).toFixed(1)} mb)`
 
 /** The pull request's description: who, every file, the member's note, and when it merges. */
 export function pullBody(row: DraftRow, changes: ChangeRow[], name: string, due: number): string {

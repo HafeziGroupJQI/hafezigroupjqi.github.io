@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
 import { HttpError } from "../src/http"
 import { dueAt } from "../src/profile/routes"
-import { mergeTitle, plainName, summary, uploadTitle } from "../src/uploads/drafts"
+import { mergeTitle, plainName, size, summary, uploadTitle } from "../src/uploads/drafts"
 import { DraftRepo, PrivateVault } from "../src/uploads/github"
 import { mergeDue } from "../src/uploads/merge"
 import {
@@ -444,7 +444,7 @@ describe("uploads: drafts", () => {
     })
     for (const line of [
       "- add `notes/scan.pdf` (195 kb)",
-      "- replace `notes/meeting.md`",
+      `- replace \`notes/meeting.md\` (${NOTE.length + 6} bytes)`,
       "- rename `notes/old.pdf` to `files/old.pdf`",
       "- delete `files/data.csv`",
       "```text\n@olivia the scans\n```",
@@ -559,6 +559,18 @@ describe("uploads: drafts", () => {
       status: 503,
       detail: expect.stringContaining("no token for the vault"),
     })
+  })
+
+  it("gives a file's size in bytes under 1 kb, then in kb and mb", () => {
+    expect([0, 1, 1023, 1024, 1536, 1_572_864, null].map(size)).toEqual([
+      " (0 bytes)",
+      " (1 byte)",
+      " (1023 bytes)",
+      " (1 kb)",
+      " (2 kb)",
+      " (1.5 mb)",
+      "",
+    ])
   })
 
   it("names a draft's commit in lowercase, short enough for the merge's words", () => {

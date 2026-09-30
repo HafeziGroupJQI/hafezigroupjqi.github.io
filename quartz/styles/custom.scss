@@ -1001,6 +1001,12 @@ article.popover-hint > *:first-child {
 .public-breadcrumbs a {
   color: #222;
 }
+// A crumb and the "›" after it wrap as one, so no line of the breadcrumb starts with a "›".
+.public-breadcrumbs__crumb {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
 // Narrow screens: the crumbs wrap, and the page's own name takes a full line under them rather
 // than a sliver of the first (a long notebook name stood ~14 lines tall at 390px).
 @media (max-width: 999px) {

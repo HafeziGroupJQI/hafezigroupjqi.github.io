@@ -111,14 +111,13 @@ export const JqiFrame: PageFrame = {
                 <div class="page-content__header popover-hint" data-vault-source={vaultSource}>
                   <>
                     <nav class="public-breadcrumbs" aria-label="Breadcrumb">
-                      <a href={resolveRelative(slug, "index" as FullSlug)}>Home</a>
-                      {crumbs.map((crumb) => (
-                        <>
-                          <span aria-hidden="true">›</span>
+                      {/* Each crumb keeps the "›" after it, so a wrapped line never starts with one. */}
+                      {[{ target: "index" as FullSlug, label: "Home" }, ...crumbs].map((crumb) => (
+                        <span class="public-breadcrumbs__crumb">
                           <a href={resolveRelative(slug, crumb.target)}>{crumb.label}</a>
-                        </>
+                          <span aria-hidden="true">›</span>
+                        </span>
                       ))}
-                      <span aria-hidden="true">›</span>
                       <span>{frontmatter?.title}</span>
                     </nav>
                     <h1>{frontmatter?.title}</h1>

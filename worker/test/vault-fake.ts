@@ -3,6 +3,8 @@
 // the one GraphQL mutation the uploads use. Tests seed it, read files back and look at the
 // commits, branches and pull requests the Worker made.
 
+import { threeWay } from "../src/edit/merge"
+
 type Snapshot = Map<string, Uint8Array>
 
 interface Commit {
@@ -180,7 +182,7 @@ export class FakeVault {
       state: pull.state,
       draft: pull.draft,
       merged: pull.merged,
-      mergeable: pull.mergeable,
+      mergeable: this.mergeable(pull),
       merge_commit_sha: pull.merge_commit_sha,
       head: { ref: pull.head, sha: this.refs.get(pull.head) ?? null },
     }
@@ -198,6 +200,30 @@ export class FakeVault {
       else snapshot.delete(path)
     }
     return snapshot
+  }
+
+  /**
+   * Whether a pull request merges cleanly into main, as GitHub works it out: a test's own answer
+   * (false, or null for "not worked out yet"), else a line-by-line merge of each file its branch
+   * changes with what main did to that file since the branch began.
+   */
+  private mergeable(pull: FakePull): boolean | null {
+    if (pull.mergeable !== true) return pull.mergeable
+    const tip = this.refs.get(pull.head)
+    const head = tip ? this.commit(tip) : undefined
+    if (!head?.parents[0]) return true
+    const before = this.snapshot(head.parents[0])
+    const after = this.trees.get(head.tree)!
+    const main = this.snapshot()
+    const same = (a?: Uint8Array, b?: Uint8Array) => (a && blobSha(a)) === (b && blobSha(b))
+    for (const path of new Set([...before.keys(), ...after.keys()])) {
+      const [was, mine, now] = [before.get(path), after.get(path), main.get(path)]
+      if (same(was, mine) || same(was, now) || same(mine, now)) continue
+      if (!was || !mine || !now) return false
+      if (!threeWay(decoder.decode(was), decoder.decode(now), decoder.decode(mine)).clean)
+        return false
+    }
+    return true
   }
 
   /** Squash a pull request onto main: its branch's changes since its parent, applied to main. */
@@ -442,7 +468,7 @@ export class FakeVault {
     if (method === "PUT" && pull && match![2]) {
       if (pull.draft)
         return Response.json({ message: "Pull Request is still a draft" }, { status: 405 })
-      if (pull.state !== "open" || pull.mergeable === false)
+      if (pull.state !== "open" || this.mergeable(pull) === false)
         return Response.json({ message: "Pull Request is not mergeable" }, { status: 405 })
       if (body.sha !== this.refs.get(pull.head))
         return Response.json({ message: "Head branch was modified" }, { status: 409 })

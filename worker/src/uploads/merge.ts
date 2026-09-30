@@ -2,9 +2,20 @@ import { auditJob } from "../audit"
 import type { Env } from "../env"
 import type { RepoFetch } from "../repo"
 import { settleChanges } from "../changes"
-import { type Detail, type DraftRow, type Status, changesOf, needsReview, settle } from "./drafts"
+import {
+  type Detail,
+  type DraftRow,
+  type Status,
+  changesOf,
+  needsReview,
+  send,
+  settle,
+  stagedKey,
+} from "./drafts"
 import { PrivateVault } from "./github"
-import { firstState, openConflict } from "../edit/conflicts"
+import { baseKey, baseText, firstState, openConflict } from "../edit/conflicts"
+import { threeWay } from "../edit/merge"
+import { contentReport } from "../edit/rules"
 
 // The hourly merge of members' uploads and private page edits (the Worker's "2 * * * *" cron): a draft sent in an earlier hour whose pull request's validate check is green is marked
 // ready and merged into vault-private's main by rebase, as the member's own commit. A failed check or a conflict stays open for
@@ -83,6 +94,13 @@ async function settleDraft(
     result.conflicts.push(row.id)
     return
   }
+  // The change it was made on top of has merged: its branch, made on main as it was before, would
+  // conflict with main exactly where the two meet. Rebuilt on main now (its text merged with
+  // anything else main gained), it goes in once its check passes on the new commit.
+  if (row.kind === "edit" && row.after_draft && first === "none") {
+    await rebuild(env, repo, row, result)
+    return
+  }
   let pull = await repo.pull(number)
   if (pull.merged) {
     // An admin merged it on GitHub.
@@ -141,7 +159,11 @@ async function settleDraft(
   if (pull.mergeable === null) pull = await repo.pull(number)
   if (pull.mergeable === false) {
     await mark(env, row, "conflict", {
-      message: "main changed the same files: send the draft again to rebuild it on main",
+      // A page edit is held with a conflict row: its member withdraws it in the editor first.
+      message:
+        row.kind === "edit"
+          ? "main changed the same lines: an admin can settle it, or withdraw it in the editor, take main's change in and send it again"
+          : "main changed the same files: send the draft again to rebuild it on main",
       url: pull.html_url,
     })
     // A page edit's conflict is listed for its member and admins, like a public page's.
@@ -189,6 +211,72 @@ async function settleDraft(
     commit: merged.merged,
   })
   result.merged.push(row.id)
+}
+
+/** Rebuild a page edit made on top of a change that has merged since, on main as it is now. */
+async function rebuild(env: Env, repo: PrivateVault, row: DraftRow, result: MergeResult) {
+  const [change] = await changesOf(env, row.id)
+  const [main, staged, base] = await Promise.all([
+    repo.file(change.path),
+    env.ARTIFACTS.get(stagedKey(row.id, change.path)).then((object) => object?.text() ?? null),
+    baseText(env, repo, row, change),
+  ])
+  const now = main && new TextDecoder().decode(main.bytes)
+  const merged =
+    now === null || staged === null || base === null
+      ? null
+      : now === base
+        ? { clean: true, text: staged }
+        : threeWay(base, now, staged)
+  if (!main || !merged?.clean) {
+    await mark(env, row, "conflict", {
+      message:
+        "main changed the same lines as yours since the change you edited on top of went in: an admin can settle it, or withdraw it in the editor and send it again",
+    })
+    await env.DB.batch([
+      openConflict(env, {
+        repo: row.repo,
+        path: change.path,
+        draft: row.id,
+        login: row.login,
+        reason: main ? "main" : "moved",
+        now: Date.now(),
+      }),
+    ])
+    await auditJob(env, row.login, "edit.conflict", row.id, { reason: "rebuild" })
+    result.conflicts.push(row.id)
+    return
+  }
+  if (merged.text !== staged)
+    await env.ARTIFACTS.put(stagedKey(row.id, change.path), merged.text, {
+      httpMetadata: { contentType: change.content_type ?? "text/markdown; charset=utf-8" },
+    })
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE upload_changes SET base_sha = ?, size = ?, review = ?
+       WHERE draft_id = ? AND path = ?`,
+    ).bind(
+      main.sha,
+      new TextEncoder().encode(merged.text).length,
+      contentReport(change.path, merged.text).review,
+      row.id,
+      change.path,
+    ),
+    env.DB.prepare("UPDATE upload_drafts SET after_draft = NULL WHERE id = ?").bind(row.id),
+  ])
+  await env.ARTIFACTS.delete(baseKey(row.id, change.path))
+  // Its hour stays as it was: sent at the same time, it is due at the same time.
+  const rebuilt = { ...row, after_draft: null }
+  await send(
+    env,
+    repo,
+    rebuilt,
+    await changesOf(env, row.id),
+    row.author || row.login,
+    row.sent_at ?? Date.now(),
+  )
+  await auditJob(env, row.login, "edit.rebuild", row.id, { onto: main.sha })
+  result.waiting.push(row.id)
 }
 
 export async function mergeDue(

@@ -560,6 +560,17 @@ describe("editing on top of another member's sent change", () => {
     ])
     const run = await mergeDue(env as any, privateVault.fetch, due)
     expect(run.merged).toEqual([first])
+    // Its branch began before Ada's went in, so GitHub can't merge it: it is rebuilt on main,
+    // and goes in once its check passes there.
+    const pull = (await bob.json(`/api/edit/drafts/${second}`)).body.pull.number
+    const again = await mergeDue(env as any, privateVault.fetch, due)
+    expect(again).toMatchObject({ merged: [], conflicts: [], waiting: [second] })
+    expect((await bob.json(`/api/edit/drafts/${second}`)).body).toMatchObject({
+      status: "open",
+      due_at: sent.body.due_at,
+      pull: { number: pull },
+    })
+    privateVault.report(privateVault.refs.get(`edits/bob/${second}`)!, "success")
     expect((await mergeDue(env as any, privateVault.fetch, due)).merged).toEqual([second])
     expect(privateVault.text(path)).toBe(both)
   })

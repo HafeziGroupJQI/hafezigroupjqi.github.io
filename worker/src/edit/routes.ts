@@ -77,6 +77,16 @@ const CONTENT_TYPES: Record<EditKind, string> = {
   ipynb: "application/x-ipynb+json",
 }
 
+/** What a revert restores (a commit's version of the page) or undoes (a commit's change). */
+function revertParam(value: unknown): { rev: string; mode: "restore" | "undo" } {
+  const { rev, mode } = (value ?? {}) as Record<string, unknown>
+  if (typeof rev !== "string" || !/^[0-9a-f]{40}$/.test(rev))
+    throw new HttpError(422, "rev must be a commit's full sha")
+  if (mode !== "restore" && mode !== "undo")
+    throw new HttpError(422, "mode must be restore or undo")
+  return { rev, mode }
+}
+
 /** A draft's id, as a request names one. */
 function draftId(value: unknown): string {
   if (typeof value !== "string" || !/^[0-9a-f]{12}$/.test(value))
@@ -229,6 +239,59 @@ export async function editRoutes(
     })
   }
 
+  // A page as it was at a commit (restore), or as it is now without that commit's change (undo),
+  // for the editor to open as a new draft: from a page's History. Nothing is saved here; a
+  // revert is a normal draft, sent and checked like any other.
+  if (path === "/api/edit/revert" && request.method === "GET") {
+    const name = repoParam(url.searchParams.get("repo"))
+    const { path: file, kind } = editablePath(name, url.searchParams.get("path"))
+    const { rev, mode } = revertParam({
+      rev: url.searchParams.get("rev"),
+      mode: url.searchParams.get("mode"),
+    })
+    // A page renamed since: its version at the commit is under its old name.
+    const from = url.searchParams.get("from")
+    const then = from ? editablePath(name, from).path : file
+    if (mode === "undo" && kind === "ipynb")
+      throw new HttpError(422, "a notebook's change can't be undone on its own: restore a version")
+    const repo = repoOf(name)
+    const [commit, at, main] = await Promise.all([
+      repo.commitInfo(rev),
+      repo.file(then, rev),
+      repo.file(file),
+    ])
+    if (!commit || !at) throw new HttpError(404, "that version of the page isn't in the vault")
+    if (!main) throw new HttpError(404, "the page isn't on main now, so it can't be reverted here")
+    const atText = decode(at.bytes, then)
+    const mainText = decode(main.bytes, file)
+    let text = atText
+    let clean = true
+    if (mode === "undo") {
+      const parent = commit.parents[0]
+      const before = parent ? await repo.file(then, parent) : null
+      if (!before)
+        throw new HttpError(
+          422,
+          "that change made the page: there is nothing before it to go back to",
+        )
+      // Take that commit's change back out of the page as it is now, as `git revert` would.
+      const merge = threeWay(atText, mainText, decode(before.bytes, then))
+      clean = merge.clean
+      text = clean ? merge.text : mainText
+    }
+    const by = commit.author.replace(/[@`<>[\]]/g, "").trim()
+    return json({
+      rev,
+      mode,
+      text,
+      clean,
+      base_sha: main.sha,
+      summary: cleanSummary(
+        `${mode === "restore" ? "revert to" : "undo"} ${rev.slice(0, 7)}${by ? ` by ${by}` : ""}`,
+      ).toLowerCase(),
+    })
+  }
+
   // A new draft of a page: the text the member wrote, on the blob they loaded.
   if (path === "/api/edit/drafts" && request.method === "POST") {
     requireMutation(request, env)
@@ -238,6 +301,9 @@ export async function editRoutes(
     const text = editText(body.text)
     const base = blobSha(body.base_sha)
     const summary = cleanSummary(body.summary)
+    // A revert from the page's History says what it restores or undoes.
+    const revert =
+      body.revert === undefined || body.revert === null ? null : revertParam(body.revert)
     const repo = repoOf(name)
     if (!repo.ready) throw new HttpError(503, "editing isn't set up yet: ask an admin")
     const access = await editAccess(env, session, name, file)
@@ -275,13 +341,13 @@ export async function editRoutes(
     const [inserted] = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO upload_drafts
-           (id, login, repo, kind, summary, note, created_at, edited_at, updated_at)
-         SELECT ?1, ?2, ?3, 'edit', ?4, '', ?5, ?5, ?5
+           (id, login, repo, kind, summary, note, created_at, edited_at, updated_at, revert_json)
+         SELECT ?1, ?2, ?3, 'edit', ?4, '', ?5, ?5, ?5, ?7
          WHERE NOT EXISTS (
            SELECT 1 FROM upload_drafts d JOIN upload_changes c ON c.draft_id = d.id
            WHERE d.login = ?2 COLLATE NOCASE AND d.kind = 'edit' AND d.repo = ?3 AND c.path = ?6
              AND d.${LIVE_SQL})`,
-      ).bind(id, session.login, name, summary, now, file),
+      ).bind(id, session.login, name, summary, now, file, revert && JSON.stringify(revert)),
       env.DB.prepare(
         `INSERT INTO upload_changes
            (draft_id, path, action, from_path, base_sha, size, content_type, review, staged_at)
@@ -302,7 +368,8 @@ export async function editRoutes(
       const other = await liveEdit(env, session.login, name, file)
       return json({ detail: "you already have a draft of this page", draft: other?.row.id }, 409)
     }
-    record("edit.create", file, { draft: id, repo: name })
+    record("edit.create", file, { draft: id, repo: name, ...(revert ? { revert } : {}) })
+    if (revert) record("edit.revert", file, { draft: id, repo: name, ...revert })
     const row = (await draftRow(env, id))!
     return json({ ...(await view(row)), base_sha: base, problems: report.problems }, 201)
   }

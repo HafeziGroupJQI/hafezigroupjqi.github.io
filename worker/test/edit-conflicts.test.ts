@@ -748,3 +748,124 @@ describe("a page moved or deleted while it was edited", () => {
     expect((await bob.json(`/api/edit/drafts/${id}`)).body.text).toBe(text + "More.\n")
   })
 })
+
+describe("reverting from a page's history", () => {
+  const revert = (client: Client, params: Record<string, string>) =>
+    client.json(`/api/edit/revert?${new URLSearchParams({ repo: "vault", path: PAGE, ...params })}`)
+
+  it("restores a version exactly, with a summary, and saves nothing", async () => {
+    const old = vault.head
+    vault.push(PAGE, edit("First paragraph.", "First, changed."))
+    const ada = await as("ada")
+    const got = await revert(ada, { rev: old, mode: "restore" })
+    expect(got).toMatchObject({
+      status: 200,
+      body: {
+        text: TEXT,
+        clean: true,
+        base_sha: vault.sha(PAGE),
+        summary: `revert to ${old.slice(0, 7)} by seed`,
+      },
+    })
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM upload_drafts").first<any>()).toEqual({
+      n: 0,
+    })
+  })
+
+  it("undoes a change nothing since touched, and says when later edits overlap it", async () => {
+    vault.push(PAGE, edit("Second paragraph.", "Second, to undo."))
+    const undo = vault.head
+    vault.push(
+      PAGE,
+      edit("Second paragraph.", "Second, to undo.", edit("Fifth paragraph.", "Fifth, later.")),
+    )
+    const ada = await as("ada")
+    expect((await revert(ada, { rev: undo, mode: "undo" })).body).toMatchObject({
+      clean: true,
+      text: edit("Fifth paragraph.", "Fifth, later."),
+      summary: `undo ${undo.slice(0, 7)} by other`,
+    })
+    vault.push(PAGE, edit("Second paragraph.", "Second, changed again."))
+    const later = vault.text(PAGE)
+    expect((await revert(ada, { rev: undo, mode: "undo" })).body).toMatchObject({
+      clean: false,
+      text: later,
+    })
+  })
+
+  it("records a revert on the draft it becomes, which is checked like any edit", async () => {
+    const old = vault.head
+    vault.push(PAGE, edit("First paragraph.", "First, changed."))
+    const ada = await as("ada")
+    const made = await post(ada, "/api/edit/drafts", {
+      repo: "vault",
+      path: PAGE,
+      base_sha: vault.sha(PAGE),
+      text: TEXT,
+      summary: `revert to ${old.slice(0, 7)} by seed`,
+      revert: { rev: old, mode: "restore" },
+    })
+    expect(made.status).toBe(201)
+    const row = await env.DB.prepare("SELECT revert_json FROM upload_drafts WHERE id = ?")
+      .bind(made.body.id)
+      .first<any>()
+    expect(JSON.parse(row.revert_json)).toEqual({ rev: old, mode: "restore" })
+    expect(await auditRows("action = 'edit.revert'")).toHaveLength(1)
+    for (const revertBody of [
+      { rev: "abc", mode: "restore" },
+      { rev: old, mode: "redo" },
+    ])
+      expect(
+        (
+          await post(await as("bob"), "/api/edit/drafts", {
+            repo: "vault",
+            path: PAGE,
+            base_sha: vault.sha(PAGE),
+            text: TEXT,
+            revert: revertBody,
+          })
+        ).status,
+      ).toBe(422)
+  })
+
+  it("refuses what isn't a page's version, and a notebook's undo", async () => {
+    const ada = await as("ada")
+    expect((await revert(ada, { rev: "0".repeat(40), mode: "restore" })).status).toBe(404)
+    expect((await revert(ada, { rev: "main", mode: "restore" })).status).toBe(422)
+    expect((await revert(ada, { rev: vault.head, mode: "undo" })).status).toBe(422)
+    expect(
+      (
+        await ada.json(
+          `/api/edit/revert?${new URLSearchParams({ repo: "vault-private", path: "notes/fit.ipynb", rev: "a".repeat(40), mode: "undo" })}`,
+        )
+      ).status,
+    ).toBe(422)
+    expect((await revert(ada, { rev: vault.head, mode: "restore", path: "../x.md" })).status).toBe(
+      422,
+    )
+  })
+
+  it("keeps someone else's People page read-only: a revert of it can't be saved", async () => {
+    await env.DB.prepare(
+      `INSERT INTO profiles (login, path, name, status, claimed_at, updated_at)
+       VALUES ('ada', 'content/people/ada.md', 'Ada', 'approved', 0, 0)
+       ON CONFLICT DO NOTHING`,
+    ).run()
+    const person = "---\ntitle: Ada\ntype: person\ntags: [people]\n---\n\nAda.\n"
+    vault.push("content/people/ada.md", person)
+    const old = vault.head
+    vault.push("content/people/ada.md", person + "More.\n")
+    const bob = await as("bob")
+    const source = (await bob.json(`/api/edit/source?repo=vault&path=content/people/ada.md`)).body
+    expect(source.can_edit).toBe(false)
+    const made = await post(bob, "/api/edit/drafts", {
+      repo: "vault",
+      path: "content/people/ada.md",
+      base_sha: vault.sha("content/people/ada.md"),
+      text: person,
+      revert: { rev: old, mode: "restore" },
+    })
+    expect(made.status).toBe(403)
+    await env.DB.prepare("DELETE FROM profiles WHERE login = 'ada'").run()
+  })
+})

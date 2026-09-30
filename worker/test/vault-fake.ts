@@ -164,7 +164,8 @@ export class FakeVault {
   }
 
   private addCommit(tree: string, parents: string[], message: string, author: Commit["author"]) {
-    const sha = this.id("c")
+    // A commit's sha is 40 hex digits, as git's are.
+    const sha = this.id("c").padEnd(40, "0")
     this.commits.push({ sha, tree, parents, message, author })
     return sha
   }
@@ -265,7 +266,13 @@ export class FakeVault {
     if (method === "GET" && match) {
       const commit = this.commits.find((c) => c.sha === match![1])
       return commit
-        ? Response.json({ tree: { sha: commit.tree } })
+        ? Response.json({
+            sha: commit.sha,
+            tree: { sha: commit.tree },
+            parents: commit.parents.map((sha) => ({ sha })),
+            author: commit.author,
+            message: commit.message,
+          })
         : new Response("", { status: 404 })
     }
     match = path.match(/^\/git\/trees\/(\w+)$/)
@@ -294,7 +301,11 @@ export class FakeVault {
     match = path.match(/^\/contents\/(.*)$/)
     if (method === "GET" && match) {
       const wanted = decodeURIComponent(match[1]).replace(/\/$/, "")
-      const tree = this.snapshot(this.refs.get(url.searchParams.get("ref") ?? "main"))
+      // A branch, or a commit's sha.
+      const ref = url.searchParams.get("ref") ?? "main"
+      const at = this.refs.get(ref) ?? this.commits.find((c) => c.sha === ref)?.sha
+      if (!at) return new Response("", { status: 404 })
+      const tree = this.snapshot(at)
       const bytes = tree.get(wanted)
       // As GitHub does, a file over 1 MB comes without its content (the blob API has it).
       const large = bytes && bytes.length > 1024 * 1024

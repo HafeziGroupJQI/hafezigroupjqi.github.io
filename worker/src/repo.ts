@@ -89,6 +89,20 @@ export class GitRepo {
     return { commit: ref.object.sha, tree: commit.tree.sha }
   }
 
+  /** A commit's parents and its author's name, or null when there is no such commit. */
+  async commitInfo(sha: string): Promise<{ parents: string[]; author: string } | null> {
+    try {
+      const commit = await this.call<{
+        parents: { sha: string }[]
+        author: { name: string } | null
+      }>("GET", `/git/commits/${sha}`)
+      return { parents: commit.parents.map((p) => p.sha), author: commit.author?.name ?? "" }
+    } catch (error) {
+      if (error instanceof RepoMissing || error instanceof RepoConflict) return null
+      throw error
+    }
+  }
+
   /** A text file at a branch, or null when it does not exist. */
   async read(path: string, branch = "main"): Promise<string | null> {
     const file = await this.file(path, branch)

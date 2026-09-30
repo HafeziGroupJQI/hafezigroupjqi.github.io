@@ -151,7 +151,7 @@ export function prepareSite(source, yaml) {
       ["positions", "theses", "lab-facilities"].includes(record.slug)
     let body = record.body
     if (record.fm.type === "person") {
-      const contact = profileContact(record.fm)
+      const contact = profileContact(record.fm, record.slug)
       const firstPhoto = body.match(/^!\[\[[^\]]+\]\]/)?.[0]
       body = firstPhoto
         ? body.replace(firstPhoto, firstPhoto + "\n\n" + contact)

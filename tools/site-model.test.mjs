@@ -11,6 +11,7 @@ import {
   relativeUrl,
   rewriteLinks,
   publicationList,
+  personWebsite,
   profileContact,
   shorten,
 } from "./site-model.mjs"
@@ -120,6 +121,40 @@ test("profiles expose confirmed contact fields without presenting TBD as contact
   assert.doesNotMatch(html, /TBD|Office/)
 })
 
+test("profiles link a person's own website, but not the jqi page they came from or themselves", () => {
+  const source = "https://hafezi.jqi.umd.edu/people/amy"
+  const contact = (profile) =>
+    profileContact({ email: "amy@umd.edu", profile, source }, "people/amy")
+  assert.match(
+    contact("https://www.amy.dev"),
+    /<dt>Website<\/dt><dd><a href="https:\/\/www\.amy\.dev" rel="me noopener">www\.amy\.dev<\/a><\/dd>/,
+  )
+  assert.match(
+    contact(" https://amy.dev/lab/ "),
+    /href="https:\/\/amy\.dev\/lab\/"[^>]*>amy\.dev\/lab</,
+  )
+  for (const profile of [
+    source,
+    source + "/",
+    "https://hafezigroupjqi.github.io/people/amy",
+    "javascript:alert(1)",
+    "https://amy.dev/<script>",
+    'https://amy.dev/" onmouseover="alert(1)',
+    "amy.dev",
+    null,
+    "",
+  ])
+    assert.doesNotMatch(contact(profile), /Website|<script|onmouseover/, String(profile))
+  assert.match(
+    contact("https://amy.dev/?a=1&b='2'"),
+    /href="https:\/\/amy\.dev\/\?a=1&amp;b=&#39;2&#39;"/,
+  )
+  assert.deepEqual(personWebsite({ profile: "http://amy.dev/" }), {
+    href: "http://amy.dev/",
+    text: "amy.dev",
+  })
+})
+
 test("preparation builds distinct home, people, directory, alumni, and places pages", () => {
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "hafezi-fixture-"))
   // JSON is a YAML subset; inject its codec so this orchestration test needs no packages.
@@ -139,10 +174,14 @@ test("preparation builds distinct home, people, directory, alumni, and places pa
   put("people/alumni/index", { title: "Alumni" }, "<!-- alumni-directory -->")
   put(
     "people/amy",
-    person("Amy", "Graduate Students", "assets/amy.jpg").fm,
+    { ...person("Amy", "Graduate Students", "assets/amy.jpg").fm, profile: "https://amy.dev" },
     "![[assets/amy.jpg]]\n\nAmy's biography",
   )
-  put("people/jo", person("Jo", "Alumni").fm, "Jo's biography")
+  put(
+    "people/jo",
+    { ...person("Jo", "Alumni").fm, profile: "https://hafezigroupjqi.github.io/people/jo" },
+    "Jo's biography",
+  )
   put("places/index", { title: "Places", tags: ["places"] }, "<!-- places-directory -->")
   put("materials/index", { title: "Materials" }, "Material data stays here")
   fs.writeFileSync(
@@ -167,6 +206,8 @@ test("preparation builds distinct home, people, directory, alumni, and places pa
     assert.match(read("people/alumni/index"), /alumni-list/)
     assert.match(read("places/index"), /places-directory/)
     assert.match(read("people/amy"), /Amy's biography/)
+    assert.match(read("people/amy"), /<dt>Website<\/dt><dd><a href="https:\/\/amy\.dev"/)
+    assert.doesNotMatch(read("people/jo"), /Website/)
     assert.match(read("materials/index"), /Material data stays here/)
     // Recently modified is members only: the public build has no such page.
     assert.ok(!fs.existsSync(path.join(built.output, "recent.md")))

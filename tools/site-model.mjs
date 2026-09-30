@@ -232,23 +232,50 @@ export function publicationList(records, from) {
   )
 }
 
-export function profileContact(fm) {
+// The site's own address: a People page's `profile:` that points back at the page is no website.
+const SITE = "https://hafezigroupjqi.github.io"
+
+/**
+ * A person's own website (`profile:`, the "Website link" in /settings) as `{ href, text }`, or null:
+ * only an http(s) address, and not the old JQI page they were migrated from (`source:`) or their
+ * own page on this site, which migrated pages carried before anyone set a website.
+ */
+export function personWebsite(fm, slug) {
+  const href = typeof fm.profile === "string" ? fm.profile.trim() : ""
+  if (!/^https?:\/\/[^\s"<>]+$/i.test(href) || !URL.canParse(href)) return null
+  const bare = (value) =>
+    String(value ?? "")
+      .trim()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/+$/, "")
+      .toLowerCase()
+  if (bare(href) === bare(fm.source) || (slug && bare(href) === bare(`${SITE}/${slug}`)))
+    return null
+  const url = new URL(href)
+  return { href, text: url.host + url.pathname.replace(/\/+$/, "") }
+}
+
+export function profileContact(fm, slug) {
+  const website = personWebsite(fm, slug)
   const fields = [
     ["Role", fm.role],
     ["Email", fm.email],
+    ["Website", website?.text],
     ["Building", fm.building],
     ["Office", fm.office],
     ["Ask me about", fm.scope],
   ].filter(([, value]) => value && value !== "TBD")
   if (!fields.length) return ""
+  const link = ([label, value]) => {
+    if (label === "Email" && /^[^\s@]+@[^\s@]+$/.test(value))
+      return `<a href="mailto:${escapeHtml(value)}">${escapeHtml(value)}</a>`
+    if (label === "Website")
+      return `<a href="${escapeHtml(website.href)}" rel="me noopener">${escapeHtml(value)}</a>`
+    return escapeHtml(value)
+  }
   return (
     '<section class="profile-contact"><h2>Contact Information</h2><dl>' +
-    fields
-      .map(
-        ([label, value]) =>
-          `<div><dt>${label}</dt><dd>${label === "Email" && /^[^\s@]+@[^\s@]+$/.test(value) ? `<a href="mailto:${escapeHtml(value)}">${escapeHtml(value)}</a>` : escapeHtml(value)}</dd></div>`,
-      )
-      .join("") +
+    fields.map((field) => `<div><dt>${field[0]}</dt><dd>${link(field)}</dd></div>`).join("") +
     "</dl></section>"
   )
 }

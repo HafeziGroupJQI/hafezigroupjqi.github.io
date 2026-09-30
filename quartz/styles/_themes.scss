@@ -33,3 +33,37 @@
 :root[data-palette] pre > code {
   background: none;
 }
+
+// The browser's own parts (form controls, scrollbars, the date picker) in the theme's polarity.
+:root[data-palette][saved-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-palette][saved-theme="light"] {
+  color-scheme: light;
+}
+:root[data-palette] {
+  scrollbar-color: var(--gray) var(--light);
+  ::selection {
+    background: var(--c-accent-soft);
+    color: var(--dark);
+  }
+  mark,
+  .text-highlight {
+    background: var(--textHighlight);
+    color: inherit;
+  }
+  ::placeholder {
+    color: var(--c-muted);
+    opacity: 1;
+  }
+}
+// The Hafezi wordmark is near-black on a white box: on a dark theme it is inverted, and its box,
+// black then, is blended away into the header.
+:root[data-palette][saved-theme="dark"] .site-header__logo img {
+  filter: invert(1) hue-rotate(180deg);
+  mix-blend-mode: screen;
+}
+// On a tinted light theme its white box takes the header's tint.
+:root[data-palette][saved-theme="light"] .site-header__logo img {
+  mix-blend-mode: multiply;
+}

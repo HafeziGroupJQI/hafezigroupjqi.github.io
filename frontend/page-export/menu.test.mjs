@@ -61,8 +61,13 @@ test("with a Google client, a page also saves to Drive: as its PDF, a Google Doc
     "Save to Google Drive",
     ["drive-doc"],
   ])
-  // Before Google's window asks, the menu says what for, and links the privacy page.
+  // Before Google's window asks, the menu says what for, and links the privacy page; and a member
+  // can switch to another Google account (Google asks which next time).
   assert.equal(notebook[1].note.link.href, "/privacy")
+  assert.deepEqual(notebook[1].note.action, {
+    id: "drive-another",
+    label: "Use another Google account",
+  })
   assert.equal(exportItems({ source: "/lab-facilities.md" })[0].note, undefined)
   // No client ID (config.js): no Drive items at all.
   assert.equal(exportItems({ source: "/lab-facilities.md", drive: false }).length, 1)

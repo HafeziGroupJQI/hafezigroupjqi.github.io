@@ -4,7 +4,10 @@
 //     google.accounts.oauth2.initTokenClient) asks the member, in Google's window, for the
 //     drive.file scope: this site may create files in their Drive and see only those. The access
 //     token lives in this page's memory for its hour, never stored; an expired one is asked for
-//     again on the next click.
+//     again on the next click. Google's account chooser shows only the first time: after that the
+//     request names the account chosen (its email, the only thing kept, in this browser's
+//     localStorage), so Google's window closes by itself, until the member picks "Use another
+//     Google account" or signs out of the site.
 //   - A resumable upload to the Drive API v3, ported from Google's CORS upload sample
 //     (https://github.com/googledrive/cors-upload-sample, upload.js, MediaUploader, Apache-2.0) to
 //     fetch: the metadata opens a session, the file goes in one PUT, and a dropped PUT resumes from
@@ -16,6 +19,9 @@ export const GIS_URL = "https://accounts.google.com/gsi/client"
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 export const GOOGLE_DOC = "application/vnd.google-apps.document"
 const UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
+const ABOUT_URL = "https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)"
+/** The Google account's email the member chose, kept to skip Google's chooser next time. */
+export const HINT_KEY = "hafezi.drive.hint"
 const FIELDS = "id,name,mimeType,webViewLink"
 
 /** A failure to show as it is: "Export failed: " + its message. */
@@ -25,6 +31,35 @@ export class DriveError extends Error {}
 
 /** Whether a token ({value, expires} in ms) still has a minute left. */
 export const tokenValid = (token, now = Date.now()) => !!token && token.expires - 60_000 > now
+
+/**
+ * The token request's options: Google's account chooser when the member asks for another account;
+ * otherwise none after their first consent (prompt ""), naming the account they chose before
+ * (login_hint), so Google's window closes by itself.
+ */
+export function tokenRequest({ hint = null, another = false } = {}) {
+  if (another) return { prompt: "select_account" }
+  return hint ? { prompt: "", login_hint: hint } : { prompt: "" }
+}
+
+/** The remembered account's email, if this browser keeps one. */
+export function readHint(storage = globalThis.localStorage) {
+  try {
+    return storage?.getItem(HINT_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+/** Remember the account's email (never the token), or forget it (null). */
+export function writeHint(email, storage = globalThis.localStorage) {
+  try {
+    if (email) storage?.setItem(HINT_KEY, email)
+    else storage?.removeItem(HINT_KEY)
+  } catch {
+    // Storage off (a private window): Google asks which account, as before.
+  }
+}
 
 /** The token client's error_callback types: its window didn't open, or was closed. */
 export function popupMessage(type) {
@@ -135,6 +170,29 @@ export function loadGis() {
 let client = null
 let pending = null
 let token = null
+let another = false
+
+// The account's email, for the next request's hint: Drive's about.user, which drive.file may read.
+async function rememberAccount(accessToken) {
+  try {
+    const response = await fetch(ABOUT_URL, { headers: { authorization: `Bearer ${accessToken}` } })
+    if (!response.ok) return
+    const email = (await response.json())?.user?.emailAddress
+    if (typeof email === "string" && email.includes("@")) writeHint(email)
+  } catch {
+    // Without it Google asks which account next time, as before.
+  }
+}
+
+/**
+ * "Use another Google account": forget the account and this page's token; the next save shows
+ * Google's account chooser. Signing out of the site forgets the account too (members/pages.js).
+ */
+export function forgetAccount(storage = globalThis.localStorage) {
+  token = null
+  another = true
+  writeHint(null, storage)
+}
 
 function settle(response, error) {
   const waiting = pending
@@ -148,6 +206,8 @@ function settle(response, error) {
     value: response.access_token,
     expires: Date.now() + Number(response.expires_in ?? 3599) * 1000,
   }
+  another = false
+  rememberAccount(token.value)
   waiting.resolve(token.value)
 }
 
@@ -168,7 +228,7 @@ export async function driveToken(clientId) {
   pending?.reject(new DriveError("Google sign-in was asked for again"))
   return new Promise((resolve, reject) => {
     pending = { resolve, reject }
-    client.requestAccessToken()
+    client.requestAccessToken(tokenRequest({ hint: readHint(), another }))
   })
 }
 

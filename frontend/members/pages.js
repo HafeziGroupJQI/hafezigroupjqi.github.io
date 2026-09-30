@@ -2,6 +2,7 @@
 // /auth/logout) import this module as /static/members-auth.js. GitHub sends members back to
 // /auth/callback on the github.io site; the Worker is only ever called with fetch().
 
+import { forgetAccount } from "../page-export/drive.js"
 import { API_ORIGIN, FLAG_KEY, clearAuth, readAuth, safeNext, writeAuth } from "./auth.js"
 
 const NONCE_KEY = "hafezi.loginNonce"
@@ -90,6 +91,8 @@ export async function logout() {
   } catch {
     /* ignore */
   }
+  // The Google account saves to Drive were made with (page-export/drive.js).
+  forgetAccount()
   const registration = await navigator.serviceWorker?.getRegistration?.("/")
   registration?.active?.postMessage("signed-out")
   for (const name of (await caches?.keys?.()) ?? [])

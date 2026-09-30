@@ -18,8 +18,9 @@ export function pageStem(sourcePath) {
 const extension = (name) => name?.match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase() ?? ""
 
 /**
- * The menu's groups, each {label, items: [{id, label}], note?: {text, link: {href, text}}}, in
- * order; groups without items are left out. Item ids name what index.js does:
+ * The menu's groups, each {label, items: [{id, label}], note?: {text, link: {href, text},
+ * action?: {id, label}}}, in order; groups without items are left out. Item ids name what
+ * index.js does (drive-another: the next save to Drive asks which Google account):
  *   source    the page's Markdown source          quarto  that source converted to Quarto
  *   rendered  the file the page was rendered from
  *   pdf       the page's PDF, printed by the build (pdf.js), else the print dialog
@@ -66,10 +67,12 @@ export function exportItems({ source = null, rendered = null, drive = false } = 
     {
       label: "Save to Google Drive",
       items: toDrive,
-      // What Google's window will ask for, said before it asks.
+      // What Google's window will ask for, said before it asks; and a way to save to another
+      // account than the one Google was last asked for (drive.js remembers it).
       note: {
         text: "Google asks once to let this site save files to your Drive; it sees only those.",
         link: { href: "/privacy", text: "Privacy" },
+        action: { id: "drive-another", label: "Use another Google account" },
       },
     },
   ].filter((group) => group.items.length)

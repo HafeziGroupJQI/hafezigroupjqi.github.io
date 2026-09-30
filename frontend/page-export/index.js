@@ -16,6 +16,7 @@ import {
   colabUrl,
   driveToken,
   driveType,
+  forgetAccount,
   loadGis,
   pdfForDrive,
   uploadToDrive,
@@ -95,6 +96,21 @@ function menu(groups, run, opened) {
             { class: "page-export__note" },
             `${group.note.text} `,
             h("a", { href: group.note.link.href, text: group.note.link.text }),
+            ...(group.note.action
+              ? [
+                  " · ",
+                  h("button", {
+                    type: "button",
+                    class: "page-export__account",
+                    text: group.note.action.label,
+                    onclick: () => {
+                      details.open = false
+                      summary.focus()
+                      run(group.note.action)
+                    },
+                  }),
+                ]
+              : []),
           )
         : null,
     ]),
@@ -229,6 +245,10 @@ export function mountPageExport(tools) {
       if (pdf.missing()) throw missingPdf()
       pdf.load().catch(() => {})
       return drivePdf(say)
+    },
+    "drive-another": () => {
+      forgetAccount()
+      return ["Your next save to Google Drive asks which Google account to use."]
     },
     "drive-source": toDrive(async () => ({
       metadata: { name: `${stem}.md`, mimeType: driveType(`${stem}.md`) },

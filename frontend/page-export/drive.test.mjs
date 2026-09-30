@@ -16,15 +16,21 @@ import {
 } from "./doc.js"
 import {
   DRIVE_SCOPE,
+  HINT_KEY,
   colabUrl,
   consentMessage,
   driveErrorMessage,
+  driveToken,
   driveType,
+  forgetAccount,
   pdfForDrive,
   popupMessage,
+  readHint,
   resumeOffset,
+  tokenRequest,
   tokenValid,
   uploadStart,
+  writeHint,
 } from "./drive.js"
 
 test("the client ID is the site's Google OAuth client, a public value", () => {
@@ -265,4 +271,118 @@ test("a diagram is drawn again with text labels, which a canvas may read back", 
     mermaidTextLabels("---\ntitle: Bench\n---\nflowchart LR\n  A --> B"),
     '---\ntitle: Bench\n---\n%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%\nflowchart LR\n  A --> B',
   )
+})
+
+test("Google's account chooser only when asked for; else the account chosen before, by name", () => {
+  assert.deepEqual(tokenRequest(), { prompt: "" })
+  assert.deepEqual(tokenRequest({ hint: "member@example.org" }), {
+    prompt: "",
+    login_hint: "member@example.org",
+  })
+  assert.deepEqual(tokenRequest({ hint: "member@example.org", another: true }), {
+    prompt: "select_account",
+  })
+})
+
+const memoryStorage = () => {
+  const values = new Map()
+  const writes = []
+  return {
+    writes,
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      writes.push([key, value])
+      values.set(key, String(value))
+    },
+    removeItem: (key) => values.delete(key),
+  }
+}
+
+test("the account's email is kept where storage allows; nothing breaks where it doesn't", () => {
+  const storage = memoryStorage()
+  assert.equal(readHint(storage), null)
+  writeHint("member@example.org", storage)
+  assert.equal(readHint(storage), "member@example.org")
+  writeHint(null, storage)
+  assert.equal(readHint(storage), null)
+  const blocked = {
+    getItem: () => {
+      throw new Error("SecurityError")
+    },
+    setItem: () => {
+      throw new Error("QuotaExceededError")
+    },
+  }
+  assert.equal(readHint(blocked), null)
+  writeHint("member@example.org", blocked)
+  assert.equal(readHint(undefined), null)
+})
+
+test("a save asks Google once; later ones name the account, and the token is never stored", async (t) => {
+  const saved = { ...globalThis }
+  const storage = memoryStorage()
+  const session = memoryStorage()
+  const requests = []
+  let grant
+  Object.assign(globalThis, {
+    window: globalThis,
+    localStorage: storage,
+    sessionStorage: session,
+    google: {
+      accounts: {
+        oauth2: {
+          initTokenClient: (config) => {
+            grant = config.callback
+            return {
+              // An hour's token that has already run out, so every save asks again.
+              requestAccessToken: (options) => {
+                requests.push(options)
+                queueMicrotask(() =>
+                  grant({ access_token: `ya29.token-${requests.length}`, expires_in: 0 }),
+                )
+              },
+            }
+          },
+          hasGrantedAllScopes: () => true,
+        },
+      },
+    },
+    fetch: async (url, init) => {
+      assert.equal(url, "https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)")
+      assert.match(init.headers.authorization, /^Bearer ya29\.token-\d$/)
+      return new Response(
+        JSON.stringify({ user: { emailAddress: `member${requests.length}@example.org` } }),
+      )
+    },
+  })
+  const online = Object.getOwnPropertyDescriptor(globalThis.navigator, "onLine")
+  Object.defineProperty(globalThis.navigator, "onLine", { value: true, configurable: true })
+  t.after(() => {
+    for (const key of ["window", "localStorage", "sessionStorage", "google", "fetch"])
+      if (key in saved) globalThis[key] = saved[key]
+      else delete globalThis[key]
+    if (online) Object.defineProperty(globalThis.navigator, "onLine", online)
+    else delete globalThis.navigator.onLine
+  })
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
+
+  assert.equal(await driveToken("client"), "ya29.token-1")
+  await settle()
+  assert.equal(await driveToken("client"), "ya29.token-2")
+  await settle()
+  forgetAccount()
+  assert.equal(readHint(storage), null)
+  assert.equal(await driveToken("client"), "ya29.token-3")
+  await settle()
+  assert.equal(await driveToken("client"), "ya29.token-4")
+  assert.deepEqual(requests, [
+    { prompt: "" },
+    { prompt: "", login_hint: "member1@example.org" },
+    { prompt: "select_account" },
+    { prompt: "", login_hint: "member3@example.org" },
+  ])
+  // Only the account's email is ever written, only under its key; never a token.
+  assert.deepEqual(new Set(storage.writes.map(([key]) => key)), new Set([HINT_KEY]))
+  assert.ok(storage.writes.every(([, value]) => !value.includes("ya29")))
+  assert.deepEqual(session.writes, [])
 })

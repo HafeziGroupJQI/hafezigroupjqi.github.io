@@ -4260,9 +4260,20 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   color: var(--jqi-muted);
   font-size: 12px;
   line-height: 1.4;
-  a {
+  a,
+  .page-export__account {
     color: inherit;
     text-decoration: underline;
+  }
+  // "Use another Google account": a button that reads as the note's link.
+  .page-export__account {
+    display: inline;
+    width: auto;
+    padding: 0;
+    &:is(:hover, :focus-visible) {
+      background: none;
+      color: #222;
+    }
   }
 }
 @media (hover: hover) and (min-width: 800px) {

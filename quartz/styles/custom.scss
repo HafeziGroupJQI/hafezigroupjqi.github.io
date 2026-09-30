@@ -652,6 +652,9 @@ article.popover-hint > *:first-child {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  // `.site-header__nav > ul > li > a` gives links flex: 1 1 0%, which sized the chip from zero and
+  // let the full name run over "Sign out" at 1440 px; the chip takes its content's width instead.
+  flex: 0 1 auto;
 }
 @media (max-width: 1199px) {
   .site-header__nav li[data-auth="out"]:not([hidden]) {

@@ -3,13 +3,14 @@ import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { build as bundle } from "esbuild"
+import { writeThemes } from "./themes/build.mjs"
 
 const require = createRequire(import.meta.url)
 
 // The three bundles that carry the members API origin (MEMBERS_API_ORIGIN):
 //   public edition:  /sw.js (the members service worker) and /static/members-auth.js (sign-in pages)
 //   member edition:  /static/member-tools.js (calendar, dashboard, admin, Hafezi GPT; streams call the API)
-// and, in both editions, /static/page-export.js: every page's Export menu, which needs no API, and
+// and /static/themes.json (members' themes); and, in both editions, /static/page-export.js: every page's Export menu, which needs no API, and
 // /static/page-history.js: every page's History, whose comparisons (static/chunks/) load when asked
 // for, drawn with diff2html's stylesheet (/static/diff2html.css).
 export const DEFAULT_API = "https://hafezi-members.anishgoyal1108.workers.dev"
@@ -36,6 +37,9 @@ export async function bundleMembers(output, mode, apiOrigin = DEFAULT_API) {
     path.join(output, "static/diff2html.css"),
   )
   if (mode === "internal") {
+    // Members' themes (tools/themes/): the data at /static/themes.json, and its version in the
+    // bundle, so a browser whose cached theme is from an older build fetches it again.
+    define.__THEMES_VERSION__ = JSON.stringify(writeThemes(output))
     // Split so heavy tools (Hafezi GPT's Markdown renderer, the Scratchpad, the Wolfram guide and
     // its CodeMirror editor) load only when opened: static/member-tools.js on every member page,
     // static/chunks/* on demand.

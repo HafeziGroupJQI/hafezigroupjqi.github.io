@@ -1,0 +1,35 @@
+// What only a member's theme needs (frontend/theme/): rules scoped to [data-palette], which the
+// head script sets, so the public site and the site's own look never match them.
+
+// Code blocks: Quartz's syntax highlighting writes each token's GitHub Light and GitHub Dark colors
+// inline (--shiki-light, --shiki-dark). Under a theme each GitHub Light color is its role's code
+// token instead (base16's roles: tools/themes/map.mjs), so code takes the theme's own colors
+// with no change to any page's HTML. Ahead of the Wolfram notebook's own dark rule, and not on
+// paper (print.scss prints GitHub Light).
+@media screen {
+  $roles: (
+    "#6A737D": "syn-comment",
+    "#005CC5": "syn-constant",
+    "#6F42C1": "syn-function",
+    "#22863A": "syn-support",
+    "#D73A49": "syn-keyword",
+    "#032F62": "syn-string",
+    "#E36209": "syn-variable",
+    "#B31D28": "c-err",
+    "#24292E": "darkgray",
+    "#586069": "c-muted",
+  );
+  @each $color, $token in $roles {
+    :root[data-palette] :is(code, pre) span[style*="--shiki-light:#{$color}" i] {
+      color: var(--#{$token}) !important;
+    }
+  }
+}
+// Inline code sits on a card color, where its text has full contrast (--lightgray, its light
+// background on the site, is a border color in a theme).
+:root[data-palette] code {
+  background: var(--c-surface-1);
+}
+:root[data-palette] pre > code {
+  background: none;
+}

@@ -3,12 +3,7 @@
 
 import { autocompletion } from "@codemirror/autocomplete"
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands"
-import {
-  StreamLanguage,
-  bracketMatching,
-  syntaxHighlighting,
-  defaultHighlightStyle,
-} from "@codemirror/language"
+import { StreamLanguage, bracketMatching } from "@codemirror/language"
 import { mathematica } from "@codemirror/legacy-modes/mode/mathematica"
 import { EditorState } from "@codemirror/state"
 import { EditorView, keymap, lineNumbers } from "@codemirror/view"
@@ -52,7 +47,8 @@ export function createEditor(parent, code, { symbols, onRun }) {
         history(),
         bracketMatching(),
         language,
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        highlighting,
+        editorChrome,
         autocompletion({ override: [complete] }),
         keymap.of([
           { key: "Shift-Enter", run },

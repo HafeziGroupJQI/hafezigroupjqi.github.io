@@ -17,6 +17,7 @@ const SHEETS = [
   "quartz/styles/_page-editor.scss",
   "quartz/styles/base.scss",
   "quartz/styles/syntax.scss",
+  "quartz/styles/_themes.scss",
   "quartz/components/styles/popover.scss",
 ]
 // Stylesheets that define colors of their own on purpose: paper (print.scss) is always light.
@@ -58,7 +59,11 @@ function stray(file) {
     .split("\n")
     .forEach((line, index) => {
       if (/\/\/ fixed: \S/.test(line)) return
-      const code = line.replace(/\/\/.*$/, "").replace(/url\((?:[^()]|\([^()]*\))*\)/g, "url()")
+      // Not comments, URLs or strings (a selector's [style*="--shiki-light:#D73A49"] names no color).
+      const code = line
+        .replace(/\/\/.*$/, "")
+        .replace(/url\((?:[^()]|\([^()]*\))*\)/g, "url()")
+        .replace(/"[^"]*"/g, '""')
       // A declaration of a local chart palette (--viz-*) or of Tailwind's internals.
       if (/^\s*--viz-[\w-]+\s*:/.test(code)) return
       for (const match of code.matchAll(COLOR)) {

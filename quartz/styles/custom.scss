@@ -5053,5 +5053,8 @@ dialog.page-history {
   }
 }
 
+// A member's own theme (frontend/theme/): rules that apply only under one.
+@include meta.load-css("themes");
+
 // Printing and PDFs: quartz/styles/print.scss, last so it wins ties with everything above.
 @include meta.load-css("print");

@@ -6,12 +6,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
 import { python } from "@codemirror/lang-python"
 import { yamlFrontmatter } from "@codemirror/lang-yaml"
-import {
-  LanguageDescription,
-  bracketMatching,
-  defaultHighlightStyle,
-  syntaxHighlighting,
-} from "@codemirror/language"
+import { LanguageDescription, bracketMatching } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
 import { json } from "@codemirror/legacy-modes/mode/javascript"
 import { StreamLanguage } from "@codemirror/language"
@@ -27,11 +22,16 @@ import {
   lineNumbers,
 } from "@codemirror/view"
 import { h } from "../dashboard/dom.js"
+import { editorChrome, highlighting } from "../theme/highlight.js"
 
 const theme = EditorView.theme({
-  "&": { fontSize: "0.9rem", backgroundColor: "#fff", height: "100%" },
+  "&": { fontSize: "0.9rem", backgroundColor: "var(--light, #fff)", height: "100%" },
   ".cm-scroller": { fontFamily: "var(--codeFont, ui-monospace, monospace)", lineHeight: "1.5" },
-  ".cm-gutters": { backgroundColor: "#fafafa", borderRight: "1px solid #eee", color: "#999" },
+  ".cm-gutters": {
+    backgroundColor: "var(--c-surface-1, #fafafa)",
+    borderRight: "1px solid var(--c-rule, #eee)",
+    color: "var(--c-muted, #999)",
+  },
   "&.cm-focused": { outline: "none" },
   ".cm-content": { padding: "8px 0" },
 })
@@ -63,9 +63,9 @@ const saveKey = (onSave) => ({
 })
 
 const cellTheme = EditorView.theme({
-  "&": { fontSize: "0.88rem", backgroundColor: "#fafafa" },
+  "&": { fontSize: "0.88rem", backgroundColor: "var(--c-surface-1, #fafafa)" },
   ".cm-scroller": { fontFamily: "var(--codeFont, ui-monospace, monospace)", lineHeight: "1.45" },
-  "&.cm-focused": { outline: "1px solid #bbb" },
+  "&.cm-focused": { outline: "1px solid var(--c-rule, #bbb)" },
   ".cm-content": { padding: "6px 8px" },
 })
 
@@ -88,7 +88,8 @@ export function createCellEditor(parent, text, { type, readOnly, onChange, onSav
           : type === "markdown"
             ? markdown({ base: markdownLanguage, codeLanguages: codeLanguage })
             : [],
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        highlighting,
+        editorChrome,
         keymap.of([
           saveKey(onSave),
           indentWithTab,
@@ -132,7 +133,8 @@ export function createSourceEditor(parent, text, { kind, separator, readOnly, on
         search({ top: true }),
         highlightSelectionMatches(),
         language(kind),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        highlighting,
+        editorChrome,
         keymap.of([
           saveKey(onSave),
           indentWithTab,

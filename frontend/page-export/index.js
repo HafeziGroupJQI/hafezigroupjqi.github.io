@@ -1,10 +1,11 @@
 // The Export menu under a page's title, on every content page of both editions (JqiFrame's
 // [data-page-tools], whose data-source is the page's Markdown source; static/page-export.js): the
 // page as Markdown or Quarto, the file a notebook or Quarto page was rendered from (a Jupyter
-// notebook also as Quarto or Markdown, notebook-page/exporting.js), a PDF from the print dialog, and
-// the page saved to the member's Google Drive. Which items a page gets: menu.js; the Quarto
-// conversion: quarto.js; printing: print.js; Google Drive: drive.js and doc.js. A disclosure menu:
-// Enter or Space opens it, the arrow keys move through it, Escape closes it.
+// notebook also as Quarto or Markdown, notebook-page/exporting.js), its PDF (printed by the build,
+// pdf.js) or the print dialog, and the page saved to the member's Google Drive. Which items a page
+// gets: menu.js; the Quarto conversion: quarto.js; printing: print.js; Google Drive: drive.js and
+// doc.js. A disclosure menu: Enter or Space opens it, the arrow keys move through it, Escape
+// closes it.
 
 import { h } from "../dashboard/dom.js"
 import { convertNotebook } from "../notebook-page/exporting.js"
@@ -12,6 +13,7 @@ import { GOOGLE_CLIENT_ID } from "./config.js"
 import { DOC_LIMIT, articleHtml, docDocument } from "./doc.js"
 import { GOOGLE_DOC, colabUrl, driveToken, driveType, loadGis, uploadToDrive } from "./drive.js"
 import { exportItems, pageStem } from "./menu.js"
+import { pdfLoader, pdfPath } from "./pdf.js"
 import { cleanup, fit, installPrint, prepare } from "./print.js"
 import { markdownToQmd } from "./quarto.js"
 import { save } from "./save.js"
@@ -154,6 +156,20 @@ export function mountPageExport(tools) {
       ...(/\.ipynb$/i.test(file.name) ? [" or ", link(colabUrl(file.id), "open it in Colab")] : []),
     ]
   }
+  // The page's PDF from the build, fetched once (pdf.js); where there is none, the print dialog.
+  const pdf = source ? pdfLoader(pdfPath(source)) : null
+  const printDialog = async (say, why = "") => {
+    say("Preparing to print…")
+    await prepare()
+    fit()
+    const advice = `${why}In the print dialog, choose Save as PDF to keep a copy, and turn off its "Headers and footers": the page has its own.`
+    say(advice)
+    // Let that show before the dialog holds the page.
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+    print()
+    // The advice stays in the status line after.
+    return [advice]
+  }
   const notebookAs = (format) => async () =>
     save(convertNotebook(await (await fetchRendered()).text(), format, rendered.name))
   const actions = {
@@ -170,8 +186,16 @@ export function mountPageExport(tools) {
     rendered: async () => save({ name: rendered.name, text: await (await fetchRendered()).blob() }),
     "notebook-qmd": notebookAs("qmd"),
     "notebook-md": notebookAs("md"),
-    // The browser's print dialog, whose destination "Save as PDF" makes the file.
-    pdf: async () => print(),
+    pdf: async (say) => {
+      let file
+      try {
+        file = await pdf.load()
+      } catch (error) {
+        return printDialog(say, `${error.message[0].toUpperCase()}${error.message.slice(1)}. `)
+      }
+      save({ name: `${stem}.pdf`, text: file })
+    },
+    print: (say) => printDialog(say),
     "drive-doc": toDrive(async () => {
       // The member edition's images are members-only: Google gets them inlined.
       const members = !!document.querySelector(".site-internal")

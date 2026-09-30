@@ -21,7 +21,9 @@ const extension = (name) => name?.match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase() ??
  * The menu's groups, each {label, items: [{id, label}], note?: {text, link: {href, text}}}, in
  * order; groups without items are left out. Item ids name what index.js does:
  *   source    the page's Markdown source          quarto  that source converted to Quarto
- *   rendered  the file the page was rendered from pdf     the print dialog (print.js)
+ *   rendered  the file the page was rendered from
+ *   pdf       the page's PDF, printed by the build (pdf.js), else the print dialog
+ *   print     the print dialog (print.js)
  *   notebook-qmd, notebook-md  a Jupyter notebook converted (notebook-page/exporting.js)
  *   drive-doc  the article as a Google Doc        drive-source, drive-rendered  those files, to Drive
  */
@@ -40,7 +42,8 @@ export function exportItems({ source = null, rendered = null, drive = false } = 
     download.push({ id: "source", label: "Markdown (.md)" })
   if (source && !kind) download.push({ id: "quarto", label: "Quarto (.qmd)" })
   if (kind === "nb") download.push({ id: "rendered", label: "Wolfram notebook (.nb)" })
-  download.push({ id: "pdf", label: "Save as PDF…" })
+  if (source) download.push({ id: "pdf", label: "PDF (.pdf)" })
+  download.push({ id: "print", label: "Print…" })
   // To the member's Google Drive: the article as a Google Doc, and the page's file as it is (a
   // Jupyter notebook opens from Drive in Colab).
   const saved = {

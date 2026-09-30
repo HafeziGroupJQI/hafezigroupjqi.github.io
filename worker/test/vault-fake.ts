@@ -296,6 +296,8 @@ export class FakeVault {
       const wanted = decodeURIComponent(match[1]).replace(/\/$/, "")
       const tree = this.snapshot(this.refs.get(url.searchParams.get("ref") ?? "main"))
       const bytes = tree.get(wanted)
+      // As GitHub does, a file over 1 MB comes without its content (the blob API has it).
+      const large = bytes && bytes.length > 1024 * 1024
       if (bytes)
         return Response.json({
           type: "file",
@@ -303,8 +305,8 @@ export class FakeVault {
           path: wanted,
           sha: blobSha(bytes),
           size: bytes.length,
-          content: b64(bytes),
-          encoding: "base64",
+          content: large ? "" : b64(bytes),
+          encoding: large ? "none" : "base64",
         })
       const children = new Map<string, object>()
       const prefix = wanted ? wanted + "/" : ""
@@ -320,6 +322,22 @@ export class FakeVault {
       }
       return children.size
         ? Response.json([...children.values()])
+        : new Response("", { status: 404 })
+    }
+    match = path.match(/^\/git\/blobs\/(\w+)$/)
+    if (method === "GET" && match) {
+      const bytes =
+        this.blobs.get(match[1]) ??
+        [...this.trees.values()]
+          .flatMap((t) => [...t.values()])
+          .find((b) => blobSha(b) === match![1])
+      return bytes
+        ? Response.json({
+            sha: match[1],
+            size: bytes.length,
+            content: b64(bytes),
+            encoding: "base64",
+          })
         : new Response("", { status: 404 })
     }
     if (method === "POST" && path === "/git/blobs") {

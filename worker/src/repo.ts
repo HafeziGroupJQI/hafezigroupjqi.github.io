@@ -91,16 +91,28 @@ export class GitRepo {
 
   /** A text file at a branch, or null when it does not exist. */
   async read(path: string, branch = "main"): Promise<string | null> {
+    const file = await this.file(path, branch)
+    return file && new TextDecoder().decode(file.bytes)
+  }
+
+  /**
+   * A file at a branch, its bytes and its blob sha (the base an edit of it starts from), or null
+   * when there is no file there. The contents API leaves out a file over 1 MB; the blob API has it.
+   */
+  async file(path: string, branch = "main"): Promise<RepoBlob | null> {
+    let file: { type?: string; sha: string; size: number; content?: string; encoding?: string }
     try {
-      const file = await this.call<{ content: string; encoding: string }>(
-        "GET",
-        `/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${branch}`,
-      )
-      return new TextDecoder().decode(fromBase64(file.content.replace(/\s/g, "")))
+      file = await this.call("GET", `/contents/${encodePath(path)}?ref=${branch}`)
     } catch (error) {
       if (error instanceof RepoMissing) return null
       throw error
     }
+    if (file.type !== "file") return null
+    const content =
+      file.size === 0 || (file.encoding === "base64" && file.content)
+        ? (file.content ?? "")
+        : (await this.call<{ content: string }>("GET", `/git/blobs/${file.sha}`)).content
+    return { path, sha: file.sha, size: file.size, bytes: fromBase64(content.replace(/\s/g, "")) }
   }
 
   /** Every file and folder of a tree, by path. */
@@ -118,7 +130,7 @@ export class GitRepo {
     try {
       const listing = await this.call<ListEntry[] | ListEntry>(
         "GET",
-        `/contents/${folder.split("/").map(encodeURIComponent).join("/")}?ref=${branch}`,
+        `/contents/${encodePath(folder)}?ref=${branch}`,
       )
       return Array.isArray(listing) ? listing : null
     } catch (error) {
@@ -240,6 +252,15 @@ export class GitRepo {
     }
   }
 }
+
+export interface RepoBlob {
+  path: string
+  sha: string
+  size: number
+  bytes: Uint8Array
+}
+
+const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/")
 
 export interface TreeEntry {
   path: string

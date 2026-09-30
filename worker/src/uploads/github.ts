@@ -2,12 +2,14 @@ import type { Env } from "../env"
 import { HttpError } from "../http"
 import { GitRepo, type ListEntry, type RepoFetch } from "../repo"
 
-// vault-private (DOCS_REPO) with a token that may write it (GITHUB_VAULT_PRIVATE_TOKEN: a
-// fine-grained token on that repository alone with Contents and Pull requests read/write and
-// Commit statuses read). Members' uploads become a branch and a pull request there; the hourly
-// cron reads the commit status vault-private's validate workflow reports on the pull request's
-// head (a fine-grained token can't read check runs) and merges it by rebase when it is green, so
-// the member's own commit lands on main and the vault's history credits them, not the token.
+// The repositories members' drafts go to, each with a token of its own that may write it:
+// vault-private (DOCS_REPO, GITHUB_VAULT_PRIVATE_TOKEN: a fine-grained token on that repository
+// alone with Contents and Pull requests read/write and Commit statuses read) and the public vault
+// (VAULT_REPO, GITHUB_VAULT_TOKEN: Contents read/write), whose pages members edit. Members' uploads
+// and edits of private pages become a branch and a pull request on vault-private; the hourly cron
+// reads the commit status vault-private's validate workflow reports on the pull request's head (a
+// fine-grained token can't read check runs) and merges it by rebase when it is green, so the
+// member's own commit lands on main and the vault's history credits them, not the token.
 
 /** The commit status context vault-private's validate workflow reports on a pull request. */
 export const CHECK = "validate"
@@ -31,13 +33,29 @@ export interface Check {
   description: string | null
 }
 
-export class PrivateVault extends GitRepo {
-  constructor(env: Env, fetcher: RepoFetch) {
+/** The two vaults, as a draft names its repository (D1 upload_drafts.repo). */
+export type RepoName = "vault" | "vault-private"
+export const REPO_NAMES: RepoName[] = ["vault", "vault-private"]
+
+/** A vault's "owner/name" on GitHub. */
+export const repoFullName = (env: Env, name: RepoName) =>
+  name === "vault"
+    ? env.VAULT_REPO || "HafeziGroupJQI/vault"
+    : env.DOCS_REPO || "HafeziGroupJQI/vault-private"
+
+export class DraftRepo extends GitRepo {
+  constructor(
+    env: Env,
+    fetcher: RepoFetch,
+    readonly name: RepoName,
+  ) {
     super(
       fetcher,
-      env.DOCS_REPO || "HafeziGroupJQI/vault-private",
-      env.GITHUB_VAULT_PRIVATE_TOKEN,
-      "uploads are not set up yet: the site has no token for vault-private",
+      repoFullName(env, name),
+      name === "vault" ? env.GITHUB_VAULT_TOKEN : env.GITHUB_VAULT_PRIVATE_TOKEN,
+      name === "vault"
+        ? "editing public pages is not set up yet: the site has no token for the vault"
+        : "uploads are not set up yet: the site has no token for vault-private",
     )
   }
 
@@ -126,5 +144,12 @@ export class PrivateVault extends GitRepo {
       return { refused: reason || `GitHub refused the merge (${response.status})` }
     }
     return this.answer(response, "PUT", `/pulls/${number}/merge`)
+  }
+}
+
+/** vault-private, where members' uploads go. */
+export class PrivateVault extends DraftRepo {
+  constructor(env: Env, fetcher: RepoFetch) {
+    super(env, fetcher, "vault-private")
   }
 }

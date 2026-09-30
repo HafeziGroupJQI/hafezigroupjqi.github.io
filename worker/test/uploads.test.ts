@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { HttpError } from "../src/http"
 import { dueAt } from "../src/profile/routes"
 import { mergeTitle, plainName, summary, uploadTitle } from "../src/uploads/drafts"
-import { PrivateVault } from "../src/uploads/github"
+import { DraftRepo, PrivateVault } from "../src/uploads/github"
 import { mergeDue } from "../src/uploads/merge"
 import {
   FILE_MAX,
@@ -537,6 +537,28 @@ describe("uploads: drafts", () => {
     })
     const sha = await new PrivateVault(env as any, repo.fetch).streamBlob(stream, bytes.length)
     expect(repo.blobs.get(sha)).toEqual(bytes)
+  })
+
+  it("reads a vault's file and its blob, one over 1 MB through the blob API", async () => {
+    const big = new Uint8Array(1024 * 1024 + 7).fill(97)
+    repo.reset({ "files/big.csv": big, "notes/meeting.md": NOTE })
+    const vaultPrivate = new DraftRepo(env as any, repo.fetch, "vault-private")
+    expect(vaultPrivate.repo).toBe("HafeziGroupJQI/vault-private")
+    const file = await vaultPrivate.file("files/big.csv")
+    expect(file).toMatchObject({ sha: repo.sha("files/big.csv"), size: big.length })
+    expect(file!.bytes).toEqual(big)
+    expect(repo.calls.at(-1)).toBe(`GET /git/blobs/${repo.sha("files/big.csv")}`)
+    expect(await vaultPrivate.read("notes/meeting.md")).toBe(NOTE)
+    expect(await vaultPrivate.file("notes/gone.md")).toBeNull()
+    expect(await vaultPrivate.file("notes")).toBeNull()
+    // The public vault is the other repository, with its own token.
+    expect(new DraftRepo(env as any, repo.fetch, "vault").repo).toBe("HafeziGroupJQI/vault")
+    const unready = new DraftRepo({ ...(env as any), GITHUB_VAULT_TOKEN: "" }, repo.fetch, "vault")
+    expect(unready.ready).toBe(false)
+    await expect(unready.file("content/index.md")).rejects.toMatchObject({
+      status: 503,
+      detail: expect.stringContaining("no token for the vault"),
+    })
   })
 
   it("names a draft's commit in lowercase, short enough for the merge's words", () => {

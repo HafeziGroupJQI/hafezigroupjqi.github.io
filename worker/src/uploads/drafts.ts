@@ -2,7 +2,7 @@ import type { Env } from "../env"
 import { HttpError } from "../http"
 import { dueAt } from "../profile/routes"
 import { RepoConflict, RepoMissing } from "../repo"
-import type { PrivateVault } from "./github"
+import type { PrivateVault, RepoName } from "./github"
 
 // Members' upload drafts in D1 (upload_drafts, upload_changes) and R2 (uploads/<id>/<path>), and
 // what turns one into a pull request on vault-private: the routes (routes.ts), the hourly merge
@@ -20,6 +20,14 @@ export const LIVE_SQL = `status IN (${LIVE.map((s) => `'${s}'`).join(", ")})`
 export interface DraftRow {
   id: string
   login: string
+  /** The repository it changes: vault-private for uploads, either vault for page edits. */
+  repo: RepoName
+  /** upload: files staged on /uploads; edit: one page's text from the site's editor. */
+  kind: "upload" | "edit"
+  /** An edit's one-line summary of what it changes. */
+  summary: string | null
+  /** The name its commit is authored under, as the site showed it when it was sent. */
+  author: string | null
   note: string
   status: Status
   title: string | null

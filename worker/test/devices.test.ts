@@ -1,5 +1,5 @@
 import { SELF, env, runInDurableObject } from "cloudflare:test"
-import { beforeAll, describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 import { sign } from "../src/session"
 import { ORIGIN, SITE, member } from "./helpers"
 
@@ -313,12 +313,17 @@ describe("live plane: readings, SSE, commands, experiments", () => {
         result: { applied: true },
       }),
     )
-    await new Promise((resolve) => setTimeout(resolve, 50))
-
-    const { body: cmds } = await owner.json(`/api/devices/${code}/commands`)
-    const done = (cmds as any[]).find((c) => c.id === frame.command.id)
-    expect(done.status).toBe("done")
-    expect(done.result.applied).toBe(true)
+    // The hub records the result when its socket handler runs, which on a busy machine takes
+    // longer than any fixed wait: ask until it is there.
+    await vi.waitFor(
+      async () => {
+        const { body: cmds } = await owner.json(`/api/devices/${code}/commands`)
+        const done = (cmds as any[]).find((c) => c.id === frame.command.id)
+        expect(done.status).toBe("done")
+        expect(done.result.applied).toBe(true)
+      },
+      { timeout: 5000, interval: 50 },
+    )
     ws.close()
   })
 

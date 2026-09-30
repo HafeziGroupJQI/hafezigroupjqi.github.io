@@ -6,7 +6,8 @@ import { GitRepo, type ListEntry, type RepoFetch } from "../repo"
 // fine-grained token on that repository alone with Contents and Pull requests read/write and
 // Commit statuses read). Members' uploads become a branch and a pull request there; the hourly
 // cron reads the commit status vault-private's validate workflow reports on the pull request's
-// head (a fine-grained token can't read check runs) and squash-merges it when it is green.
+// head (a fine-grained token can't read check runs) and merges it by rebase when it is green, so
+// the member's own commit lands on main and the vault's history credits them, not the token.
 
 /** The commit status context vault-private's validate workflow reports on a pull request. */
 export const CHECK = "validate"
@@ -109,18 +110,15 @@ export class PrivateVault extends GitRepo {
   }
 
   /**
-   * Squash-merge a pull request, only if its head is still `sha` (the commit whose check passed).
-   * Returns the merge commit, or why GitHub refused.
+   * Merge a pull request by rebase, only if its head is still `sha` (the commit whose check
+   * passed): its one commit goes onto main as the member made it, their name and message and all
+   * (GitHub is only its committer). Returns main's new tip, or why GitHub refused.
    */
-  async merge(
-    number: number,
-    sha: string,
-    title: string,
-  ): Promise<{ merged: string } | { refused: string }> {
+  async merge(number: number, sha: string): Promise<{ merged: string } | { refused: string }> {
     const response = await this.request(
       "PUT",
       `/pulls/${number}/merge`,
-      JSON.stringify({ merge_method: "squash", sha, commit_title: title, commit_message: "" }),
+      JSON.stringify({ merge_method: "rebase", sha }),
     )
     if (response.ok) return { merged: ((await response.json()) as { sha: string }).sha }
     if ([405, 409, 422].includes(response.status)) {

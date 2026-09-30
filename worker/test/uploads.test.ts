@@ -426,7 +426,7 @@ describe("uploads: drafts", () => {
     expect(commit.parents).toEqual([main])
     expect(commit.author).toMatchObject({ name: "ada", email: "ada@users.noreply.github.com" })
     expect(commit.message).toBe(
-      "add 1 file, replace 1 file, rename 1 file and delete 1 file in files and notes by ada",
+      "add 1 file, replace 1 file, rename 1 file and delete 1 file in files and notes by ada from the members site uploads",
     )
     expect(repo.bytes("notes/scan.pdf", branch)).toEqual(PDF)
     expect(repo.text("notes/meeting.md", branch)).toBe(NOTE + "More.\n")
@@ -435,7 +435,13 @@ describe("uploads: drafts", () => {
     expect(repo.text("files/data.csv", branch)).toBeUndefined()
 
     const pull = repo.pulls.get(1)!
-    expect(pull).toMatchObject({ head: branch, base: "main", draft: true, title: commit.message })
+    expect(pull).toMatchObject({
+      head: branch,
+      base: "main",
+      draft: true,
+      title:
+        "add 1 file, replace 1 file, rename 1 file and delete 1 file in files and notes by ada",
+    })
     for (const line of [
       "- add `notes/scan.pdf` (195 kb)",
       "- replace `notes/meeting.md`",
@@ -468,7 +474,7 @@ describe("uploads: drafts", () => {
     expect(repo.text("notes/meeting.md", `uploads/ada/${id}`)).toBe(NOTE + "More.\n")
     expect(repo.bytes("notes/scan.pdf", `uploads/ada/${id}`)).toEqual(PDF)
     expect(repo.pulls.size).toBe(1)
-    expect(repo.pulls.get(1)!.title).toBe(second.message)
+    expect(`${repo.pulls.get(1)!.title} from the members site uploads`).toBe(second.message)
 
     repo.push("notes/meeting.md", NOTE + "Someone else's line.\n")
     const conflict = await send(ada, id)
@@ -630,11 +636,20 @@ describe("uploads: the hourly merge", () => {
     expect(repo.head).toBe(main)
 
     repo.report(head, "success")
+    // Someone else's push meanwhile: the member's commit is rebased onto it.
+    repo.push("files/other.csv", "x\n")
+    const moved = repo.head
     expect(await merge(due)).toMatchObject({ merged: [id] })
     const pull = repo.pulls.get(1)!
-    expect(pull).toMatchObject({ draft: false, merged: true, merge_message: "" })
-    expect(pull.merge_title).toBe("add notes/scan.pdf by ada from the members site uploads")
-    expect(repo.commit(repo.head)).toMatchObject({ parents: [main], message: pull.merge_title })
+    expect(pull).toMatchObject({ draft: false, merged: true, merge_method: "rebase" })
+    // Rebased, not squashed: main gets the member's own commit, their name, address and message,
+    // so the vault's history (and the site's history of the page) credits them.
+    expect(repo.commit(repo.head)).toMatchObject({
+      parents: [moved],
+      message: "add notes/scan.pdf by ada from the members site uploads",
+      author: { name: "ada", email: "ada@users.noreply.github.com" },
+    })
+    expect(repo.commit(moved).parents).toEqual([main])
     expect(repo.bytes("notes/scan.pdf")).toEqual(PDF)
     expect(repo.refs.has(`uploads/ada/${id}`)).toBe(false)
     expect((await env.ARTIFACTS.list({ prefix: `uploads/${id}/` })).objects).toEqual([])

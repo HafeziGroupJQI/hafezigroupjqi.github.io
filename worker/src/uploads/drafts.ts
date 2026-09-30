@@ -218,8 +218,8 @@ export function summary(
   return `${list(counts)} in ${list(folders)}`
 }
 
-/** A draft's commit and pull request title, lowercase like the vault's history, at most 110
- *  characters so the merge's "… from the members site uploads" stays under 150. */
+/** A draft's pull request title, lowercase like the vault's history, at most 110 characters so
+ *  its commit's message, "… from the members site uploads", stays under 150. */
 export function uploadTitle(
   changes: Pick<ChangeRow, "action" | "path" | "from_path">[],
   name: string,
@@ -234,6 +234,7 @@ export function uploadTitle(
 export const plainName = (name: string, login: string) =>
   name.replace(/[@`<>[\]]/g, "").trim() || login
 
+/** The message of a draft's commit, which a rebase merge puts on main as it is. */
 export const mergeTitle = (title: string) => `${title} from the members site uploads`
 
 const size = (bytes: number | null) =>
@@ -270,6 +271,8 @@ export function pullBody(row: DraftRow, changes: ChangeRow[], name: string, due:
  * it by force), and its draft pull request opened or updated. Each send is a single commit on
  * main, so the pull request's diff is always the whole draft and a revision never conflicts with
  * what main gained meanwhile. A change whose file changed on main since it was staged is refused.
+ * The commit is the member's, under their name and GitHub no-reply address, and the hourly merge
+ * rebases it onto main as it is: the vault's history credits them.
  */
 export async function send(
   env: Env,
@@ -333,13 +336,10 @@ export async function send(
   }
   const title = uploadTitle(changes, name)
   const commit = await repo.createCommit(
-    title,
+    mergeTitle(title),
     await repo.createTree(tip.tree, entries),
     [tip.commit],
-    {
-      name: row.login,
-      email: `${row.login}@users.noreply.github.com`,
-    },
+    { name, email: `${row.login}@users.noreply.github.com` },
   )
   const branch = row.branch ?? `uploads/${row.login.toLowerCase()}/${row.id}`
   if (!row.branch) await repo.createBranch(branch, commit)

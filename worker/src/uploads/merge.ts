@@ -1,20 +1,12 @@
 import { auditJob } from "../audit"
 import type { Env } from "../env"
 import type { RepoFetch } from "../repo"
-import {
-  type Detail,
-  type DraftRow,
-  type Status,
-  changesOf,
-  mergeTitle,
-  needsReview,
-  settle,
-} from "./drafts"
+import { type Detail, type DraftRow, type Status, changesOf, needsReview, settle } from "./drafts"
 import { PrivateVault } from "./github"
 
 // The hourly merge of members' uploads (the Worker's "0 * * * *" cron, beside the People page
 // publish): a draft sent in an earlier hour whose pull request's validate check is green is marked
-// ready and squash-merged into vault-private's main. A failed check or a conflict stays open for
+// ready and merged into vault-private's main by rebase, as the member's own commit. A failed check or a conflict stays open for
 // its author to revise or discard; a draft with something in it that runs waits, checked and
 // ready, for an admin to merge it on GitHub; a draft changed since it was sent waits for the next
 // send. Nothing reaches main without a green check. What GitHub doesn't answer is tried next hour.
@@ -134,7 +126,7 @@ async function settleDraft(
     result.review.push(row.id)
     return
   }
-  const merged = await repo.merge(number, sha, mergeTitle(row.title ?? `upload ${row.id}`))
+  const merged = await repo.merge(number, sha)
   if ("refused" in merged) {
     // A revision raced the merge, or GitHub isn't ready: the next hour tries again.
     await mark(env, row, "open", { message: merged.refused, url: pull.html_url })

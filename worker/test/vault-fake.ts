@@ -27,6 +27,7 @@ export interface FakePull {
   merge_commit_sha: string | null
   merge_title?: string
   merge_message?: string
+  merge_method?: string
 }
 
 export interface FakeStatus {
@@ -184,11 +185,10 @@ export class FakeVault {
     }
   }
 
-  /** Squash a pull request onto main: its branch's changes since its parent, applied to main. */
-  private squash(pull: FakePull, title: string): string {
-    const head = this.commit(this.refs.get(pull.head)!)
-    const before = this.snapshot(head.parents[0])
-    const after = this.trees.get(head.tree)!
+  /** main's snapshot with a commit's changes (since its first parent) applied over it. */
+  private applied(commit: Commit): Snapshot {
+    const before = this.snapshot(commit.parents[0])
+    const after = this.trees.get(commit.tree)!
     const snapshot = new Map(this.snapshot())
     for (const path of new Set([...before.keys(), ...after.keys()])) {
       const next = after.get(path)
@@ -196,10 +196,39 @@ export class FakeVault {
       if (next) snapshot.set(path, next)
       else snapshot.delete(path)
     }
-    this.head = this.addCommit(this.addTree(snapshot), [this.head], title, {
+    return snapshot
+  }
+
+  /** Squash a pull request onto main: its branch's changes since its parent, applied to main. */
+  private squash(pull: FakePull, title: string): string {
+    const head = this.commit(this.refs.get(pull.head)!)
+    this.head = this.addCommit(this.addTree(this.applied(head)), [this.head], title, {
       name: "merger",
       email: "",
     })
+    return this.head
+  }
+
+  /** Rebase a pull request onto main: each of its branch's commits (those main doesn't have),
+   *  replayed in order with its own message and author, as GitHub does. */
+  private rebase(pull: FakePull): string {
+    const onMain = new Set<string>()
+    for (let sha: string | undefined = this.head; sha; sha = this.commit(sha).parents[0])
+      onMain.add(sha)
+    const own: Commit[] = []
+    let sha = this.refs.get(pull.head)
+    while (sha && !onMain.has(sha)) {
+      const commit = this.commit(sha)
+      own.unshift(commit)
+      sha = commit.parents[0]
+    }
+    for (const commit of own)
+      this.head = this.addCommit(
+        this.addTree(this.applied(commit)),
+        [this.head],
+        commit.message,
+        commit.author,
+      )
     return this.head
   }
 
@@ -379,9 +408,11 @@ export class FakeVault {
         return Response.json({ message: "Pull Request is not mergeable" }, { status: 405 })
       if (body.sha !== this.refs.get(pull.head))
         return Response.json({ message: "Head branch was modified" }, { status: 409 })
+      pull.merge_method = body.merge_method ?? "merge"
       pull.merge_title = body.commit_title
       pull.merge_message = body.commit_message
-      pull.merge_commit_sha = this.squash(pull, body.commit_title)
+      pull.merge_commit_sha =
+        body.merge_method === "rebase" ? this.rebase(pull) : this.squash(pull, body.commit_title)
       pull.merged = true
       pull.state = "closed"
       return Response.json({ sha: pull.merge_commit_sha, merged: true })

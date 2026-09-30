@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { setLauncherHidden, shortcutAction } from "./launcher.js"
+import { shortcutAction } from "./launcher.js"
 
 const key = (name, modifiers = {}) => ({
   key: name,
@@ -26,10 +26,4 @@ test("other keys and chords are left alone", () => {
     { ctrlKey: true }, // a keydown without a key, as autofill sends
   ])
     assert.equal(shortcutAction(event, false), null)
-})
-
-test("hiding the button, as the scratchpad does over a lab with its own panel, keeps ctrl/⌘+j", () => {
-  setLauncherHidden(true)
-  assert.equal(shortcutAction(key("j", { ctrlKey: true }), false), "open")
-  setLauncherHidden(false)
 })

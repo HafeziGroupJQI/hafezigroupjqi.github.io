@@ -57,11 +57,8 @@ export function renderMarkdown(text, citations = []) {
   return DOMPurify.sanitize(html, { ADD_ATTR: ["target"], FORBID_TAGS: ["style", "form", "input"] })
 }
 
-/**
- * Add copy buttons to code blocks inside `root`, plus one button per `actions` entry
- * ({label, run(code, lang)}; the Scratchpad's "Insert below" / "Replace cell").
- */
-export function enhanceCode(root, actions = []) {
+/** Add copy buttons to code blocks inside `root`. */
+export function enhanceCode(root) {
   for (const pre of root.querySelectorAll("pre:not([data-copy])")) {
     if (pre.classList.contains("gpt-math")) continue
     pre.dataset.copy = ""
@@ -76,18 +73,6 @@ export function enhanceCode(root, actions = []) {
       setTimeout(() => (button.textContent = "Copy"), 1500)
     }
     pre.append(button)
-    if (!actions.length) continue
-    const lang = pre.querySelector("code")?.className.match(/language-(\S+)/)?.[1] ?? ""
-    const bar = document.createElement("div")
-    bar.className = "gpt-code-actions"
-    for (const action of actions) {
-      const b = document.createElement("button")
-      b.type = "button"
-      b.textContent = action.label
-      b.onclick = () => action.run(codeOf(), lang)
-      bar.append(b)
-    }
-    pre.after(bar)
   }
 }
 

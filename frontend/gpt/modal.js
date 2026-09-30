@@ -135,8 +135,7 @@ export function createModal({ api, session }) {
     chat.focus()
   }
 
-  /** `context` ({label, text}) is attached to the next message; `codeActions` go under code. */
-  function open({ context = null, codeActions = null } = {}) {
+  function open() {
     if (!dialog.open) {
       opener = document.activeElement
       dialog.showModal()
@@ -148,8 +147,6 @@ export function createModal({ api, session }) {
     })
     ready.then(() => {
       if (!chat) return
-      if (codeActions) chat.setCodeActions(codeActions)
-      if (context) chat.attachContext(context)
       chat.focus()
     })
   }

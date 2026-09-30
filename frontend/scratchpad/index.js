@@ -8,8 +8,6 @@
 // member-tools.js lazy-loads mountScratchpad() with its api() (JSON + 401 → login) and the session.
 
 import { h, present, setText } from "../dashboard/dom.js"
-import { openGpt, setLauncherHidden } from "../gpt/launcher.js"
-import { gptContext, insertMessage } from "./gpt.js"
 import {
   LAUNCHERS,
   PROFILES,
@@ -269,14 +267,11 @@ export function mountScratchpad(root, { api, session }) {
     }
   }
 
-  // The site's GPT button hides while the lab in the frame has its own panel (it says so once it
-  // has loaded), so it comes back with each new lab and when the lab closes.
   function open(url) {
     labReady = false
     frame.hidden = false
     frame.src = url
     root.classList.add("scratch-open")
-    setLauncherHidden(false)
   }
 
   function close() {
@@ -284,7 +279,6 @@ export function mountScratchpad(root, { api, session }) {
     frame.hidden = true
     frame.removeAttribute("src")
     root.classList.remove("scratch-open")
-    setLauncherHidden(false)
   }
 
   // ---- the lab in the frame, asked by message (launch.js) ----
@@ -501,20 +495,13 @@ export function mountScratchpad(root, { api, session }) {
     }
   }
 
-  // ---- Hafezi GPT ----
-  // The gpt-bridge lab extension posts {type: "hafezi-gpt:ask", context} from the iframe (its
-  // Ctrl/⌘+J or a cell's "Ask Hafezi GPT"). The modal opens with that code attached, and code in
-  // replies gets buttons that post it back into the lab; the member runs it themselves.
+  // ---- messages to and from the lab in the frame ----
+  // Hafezi GPT is the lab's own agent chat there; the site's button hides over an open lab (CSS).
   const labOrigin = () => (status?.lab ? new URL(status.lab).origin : null)
   const toLab = (message) => {
     const origin = labOrigin()
     if (origin) frame.contentWindow?.postMessage(message, origin)
   }
-  const sendToLab = (mode) => (code) => toLab(insertMessage(mode, code))
-  const codeActions = [
-    { label: "Insert below", run: sendToLab("below") },
-    { label: "Replace cell", run: sendToLab("replace") },
-  ]
   // The lab follows this site's light/dark mode: it asks once it has loaded, then gets each change.
   const theme = () => ({
     type: "hafezi-theme",
@@ -531,11 +518,6 @@ export function mountScratchpad(root, { api, session }) {
     // The lab can open launchers and files by message from now until the frame loads again.
     if (data?.type === "hafezi-lab:ready" && data.launch >= 1) labReady = true
     if (data?.type === "hafezi-launch:ack") acks.get(data.ref)?.()
-    // The lab has Hafezi GPT in its own panel (its Ctrl/⌘+J opens it): no site button over it.
-    // Ctrl/⌘+J outside the frame still opens the site's modal.
-    if (data?.type === "hafezi-gpt:panel") setLauncherHidden(true)
-    if (!data || data.type !== "hafezi-gpt:ask") return
-    openGpt({ context: gptContext(data.context), codeActions }).catch(showError)
   })
 
   let pending = requestedPath(location.search)

@@ -6,30 +6,11 @@ let deps = null
 let modal = null
 let loading = null
 let button = null
-let hidden = false
 
-async function open(options) {
+async function open() {
   loading ??= import("./modal.js").then(({ createModal }) => (modal = createModal(deps)))
   await loading
-  modal.open(options)
-}
-
-/**
- * Open the modal from page code, e.g. the Scratchpad asking about a notebook cell:
- * `openGpt({context: {label, text}, codeActions: [{label, run(code, lang)}]})`.
- */
-export async function openGpt(options = {}) {
-  if (!deps) throw new Error("Hafezi GPT is not available on this page")
-  await open(options)
-}
-
-/**
- * Hide or show the button, e.g. while the Scratchpad's lab has Hafezi GPT in its own panel. Only
- * the button: Ctrl/⌘+J on the rest of the page still opens the modal, and openGpt() still works.
- */
-export function setLauncherHidden(value) {
-  hidden = value
-  if (button) button.hidden = hidden
+  modal.open()
 }
 
 /** What a keydown does here: Ctrl/⌘+J opens the modal, or closes it when open; null otherwise. */

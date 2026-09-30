@@ -10,11 +10,13 @@ import {
   formatBytes,
   intentOf,
   joinPath,
-  replaceProblem,
   replaceDraft,
+  replaceProblem,
+  settleLabel,
   statusLabel,
   statusTarget,
   uploadsUrl,
+  withConflicts,
 } from "./model.js"
 
 const HOUR = 3_600_000
@@ -218,4 +220,35 @@ test("a changed draft replaces its card, keeping the others where they are", () 
   const staged = { ...a, changes: [{ action: "add", path: "notes/x.pdf", size: 10 }], bytes: 10 }
   assert.deepEqual(replaceDraft([a, b], staged), [staged, b])
   assert.deepEqual(replaceDraft([b], staged), [staged, b])
+})
+
+test("a held page edit says who settles it, and a conflict to settle says whose it is", () => {
+  const conflict = {
+    id: "c1",
+    draft: "d1",
+    login: "rai",
+    author: "Rai",
+    path: "content/a.md",
+    first_login: "anish",
+    first_author: "Anish",
+    opened_at: Date.UTC(2026, 8, 29, 14, 0),
+  }
+  const [held, plain] = withConflicts(
+    [
+      { id: "d1", kind: "edit", repo: "vault-private", status: "conflict", changes: [] },
+      { id: "d2", kind: "upload", repo: "vault-private", status: "conflict", changes: [] },
+    ],
+    [conflict],
+  )
+  assert.equal(statusLabel(held), "Waiting for Anish or an admin to settle it")
+  assert.match(statusLabel(plain), /Main changed the same files/)
+  assert.match(
+    settleLabel({ ...conflict, you_first: true }, "en-US"),
+    /^Rai's change to content\/a\.md conflicts with yours \(since Sep 29, /,
+  )
+  assert.match(settleLabel(conflict, "en-US"), /conflicts with Anish's/)
+  assert.match(
+    settleLabel({ ...conflict, first_login: null }, "en-US"),
+    /a change that went in first/,
+  )
 })

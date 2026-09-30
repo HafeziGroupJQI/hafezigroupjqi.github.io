@@ -13,6 +13,7 @@ import {
   tabUrl,
   usageByDay,
   usageLabel,
+  uploadsWaiting,
 } from "./model.js"
 
 test("a tab's URL keeps a conversations deep link only on that tab", () => {
@@ -213,4 +214,11 @@ test("admins' code reads read as sentences", () => {
     describe({ action: "admin.compute.files", target: "ada", detail: { rev: "0123456789abcdef" } }),
     "read the file history of ada · commit 0123456",
   )
+})
+
+test("the Uploads tab counts drafts to merge by hand and conflicts to settle", () => {
+  const drafts = [{ status: "review" }, { status: "open" }, { status: "conflict" }]
+  assert.equal(uploadsWaiting(drafts), 1)
+  assert.equal(uploadsWaiting(drafts, [{ id: "a" }, { id: "b" }]), 3)
+  assert.equal(uploadsWaiting([], []), 0)
 })

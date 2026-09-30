@@ -317,7 +317,7 @@ function historyDialog(url) {
               sent: "it goes in at the end of its hour, once the vault's check passes",
               review: "an admin merges it",
               failed: "the vault's check failed",
-              conflict: "the page changed on main meanwhile",
+              conflict: "it's waiting to be settled, since another change touches the same lines",
             }[change.state] ?? change.state,
             change.pull ? " (" : "",
             change.pull

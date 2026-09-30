@@ -20,7 +20,9 @@ import {
   joinPath,
   replaceProblem,
   replaceDraft,
+  settleLabel,
   statusLabel,
+  withConflicts,
   statusTarget,
 } from "./model.js"
 
@@ -59,8 +61,18 @@ export async function mountUploads(root, { api }) {
   }
   const fail = (error) => say(error.message, true)
 
+  // Page edits held in a conflict (the member's own, role=mine) and those they may settle.
+  const conflictsOf = (role) =>
+    api(`/api/edit/conflicts?role=${role}`)
+      .then((data) => data.conflicts)
+      .catch(() => [])
+  let conflicts = { mine: [], first: [] }
+  const loadConflicts = async () => {
+    const [mine, first] = await Promise.all([conflictsOf("mine"), conflictsOf("first")])
+    conflicts = { mine, first }
+  }
   try {
-    state = await api("/api/uploads")
+    ;[state] = await Promise.all([api("/api/uploads"), loadConflicts()])
   } catch (error) {
     fail(error)
     return
@@ -73,13 +85,14 @@ export async function mountUploads(root, { api }) {
   }
 
   async function reload() {
-    state = await api("/api/uploads")
+    ;[state] = await Promise.all([api("/api/uploads"), loadConflicts()])
     showList()
   }
 
   function showList() {
-    const live = state.drafts.filter(isLive)
-    const done = state.drafts.filter((draft) => !isLive(draft))
+    const drafts = withConflicts(state.drafts, conflicts.mine)
+    const live = drafts.filter(isLive)
+    const done = drafts.filter((draft) => !isLive(draft))
     const card = (draft) =>
       h(
         "li",
@@ -114,8 +127,36 @@ export async function mountUploads(root, { api }) {
           text: `${draft.changes.length} ${draft.changes.length === 1 ? "change" : "changes"}${draft.bytes ? `, ${formatBytes(draft.bytes)}` : ""}`,
         }),
       )
+    // Conflicts the member may settle: another member's change touches the same lines as theirs.
+    const toSettle = conflicts.first.length
+      ? [
+          h("h2", { text: "To settle" }),
+          h(
+            "ul",
+            { class: "admin-list uploads-settle" },
+            conflicts.first.map((conflict) =>
+              h(
+                "li",
+                { class: "cmd-card" },
+                h(
+                  "header",
+                  {},
+                  h("strong", { text: settleLabel(conflict) }),
+                  h("span", { class: "spacer" }),
+                  h("a", {
+                    class: "btn",
+                    href: `/edit?${new URLSearchParams({ conflict: conflict.id })}`,
+                    text: "Settle it",
+                  }),
+                ),
+              ),
+            ),
+          ),
+        ]
+      : null
     list.replaceChildren(
       ...present(
+        toSettle,
         h("h2", { id: "uploads-drafts", text: "Your drafts" }),
         h("p", {
           class: "muted",

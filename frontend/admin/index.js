@@ -20,10 +20,11 @@ import {
   parseBudget,
   sessionRuns,
   tabUrl,
+  uploadsWaiting,
   USAGE_SOURCES,
   usageByDay,
 } from "./model.js"
-import { changeLabel, draftName, statusLabel } from "../uploads/model.js"
+import { changeLabel, draftName, settleLabel, statusLabel } from "../uploads/model.js"
 
 const TABS = [
   ["audit", "Audit log"],
@@ -90,12 +91,17 @@ export function mountAdmin(root, { api, session }) {
     .catch(() => {})
   // Drafts with something in them that runs wait for an admin to merge them on GitHub.
   const uploadsButton = [...tabs.children].find((button) => button.dataset.tab === "uploads")
-  const countUploads = (drafts) => {
-    const n = drafts.filter((draft) => draft.status === "review").length
+  // So do conflicts between members' edits of a page (worker/src/edit/conflicts.ts).
+  const openConflicts = () =>
+    api("/api/edit/conflicts?role=all")
+      .then((data) => data.conflicts)
+      .catch(() => [])
+  const countUploads = (drafts, conflicts) => {
+    const n = uploadsWaiting(drafts, conflicts)
     uploadsButton.textContent = n ? `Uploads (${n})` : "Uploads"
   }
-  api("/api/admin/uploads")
-    .then((data) => countUploads(data.drafts))
+  Promise.all([api("/api/admin/uploads"), openConflicts()])
+    .then(([data, conflicts]) => countUploads(data.drafts, conflicts))
     .catch(() => {})
   // Arrow keys, Home and End move between tabs; Tab moves into the panel.
   tabs.addEventListener("keydown", (event) => {
@@ -416,8 +422,41 @@ export function mountAdmin(root, { api, session }) {
 
   // ---- members' uploads to the private vault ----
   async function uploadsTab(panel) {
-    const data = await api("/api/admin/uploads")
-    countUploads(data.drafts)
+    const [data, conflicts] = await Promise.all([api("/api/admin/uploads"), openConflicts()])
+    countUploads(data.drafts, conflicts)
+    // Conflicts first: each waits for an admin or its first editor to settle it.
+    if (conflicts.length)
+      panel.append(
+        h("h2", { text: `Conflicts (${conflicts.length})` }),
+        h("p", {
+          class: "muted",
+          text: "Two members changed the same lines of a page. The second change waits until its first editor or an admin settles it; an admin who sent the second change can't settle it.",
+        }),
+        h(
+          "ul",
+          { class: "admin-list" },
+          conflicts.map((conflict) =>
+            h(
+              "li",
+              { class: "cmd-card audit-admin" },
+              h(
+                "header",
+                {},
+                h("strong", { text: settleLabel(conflict) }),
+                h("span", { class: "spacer" }),
+                conflict.can_settle
+                  ? h("a", {
+                      class: "btn",
+                      href: `/edit?${new URLSearchParams({ conflict: conflict.id })}`,
+                      text: "Settle it",
+                    })
+                  : h("span", { class: "muted", text: "Yours: another admin settles it" }),
+              ),
+            ),
+          ),
+        ),
+        h("h2", { text: "Drafts" }),
+      )
     const drop = (draft) => async () => {
       if (
         !confirm(`Discard ${draft.login}'s draft "${draftName(draft)}"? Its pull request closes.`)

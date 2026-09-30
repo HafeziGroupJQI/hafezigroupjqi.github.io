@@ -1,7 +1,7 @@
 // Pure helpers for /uploads (frontend/uploads/index.js) and the admin console's Uploads tab, so
 // node:test covers them. A draft is the Worker's view of one (worker/src/uploads/drafts.ts).
 
-import { draftStatus } from "../edit/model.js"
+import { draftStatus, heldNotice } from "../edit/model.js"
 import { publishLabel } from "../settings/model.js"
 
 /** Drafts the member can still change, send or discard. */
@@ -62,6 +62,7 @@ export function statusLabel(draft, now = Date.now(), locale = undefined) {
     case "failed":
       return "The vault's check failed: fix the files and send it again"
     case "conflict":
+      if (draft.conflict) return heldLabel(draft.conflict)
       return "Main changed the same files: send it again to rebuild it on main"
     case "review":
       return "Checked: waiting for an admin to merge it on GitHub, since something in it runs"
@@ -148,3 +149,35 @@ export function draftForPage(drafts) {
 
 /** The /uploads link a page's tools use for a file of the vault. */
 export const uploadsUrl = (intent, path) => `/uploads?${new URLSearchParams({ [intent]: path })}`
+
+/** A held draft's line on /uploads: who may settle it. */
+export const heldLabel = (conflict) =>
+  heldNotice(conflict)
+    .replace(/^Your change is waiting/, "Waiting")
+    .replace(/ Withdraw it to change it yourself\.$/, "")
+    .replace(/\.$/, "")
+
+/** The drafts with the open conflict each is held in, if any (GET /api/edit/conflicts). */
+export const withConflicts = (drafts, conflicts) => {
+  const held = new Map((conflicts ?? []).map((conflict) => [conflict.draft, conflict]))
+  return drafts.map((draft) => ({
+    ...draft,
+    conflict: held.get(draft.id) ?? draft.conflict ?? null,
+  }))
+}
+
+/** A conflict to settle, in a line: whose change to which page, and since when. */
+export function settleLabel(conflict, locale = undefined) {
+  const since = new Date(conflict.opened_at).toLocaleString(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+  const against = conflict.you_first
+    ? "conflicts with yours"
+    : conflict.first_login
+      ? `conflicts with ${conflict.first_author || conflict.first_login}'s`
+      : "conflicts with a change that went in first"
+  return `${conflict.author || conflict.login}'s change to ${conflict.path} ${against} (since ${since})`
+}

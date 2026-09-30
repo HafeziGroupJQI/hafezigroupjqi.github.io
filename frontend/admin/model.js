@@ -254,3 +254,7 @@ export function nextTab(index, key, count) {
   if (key === "End") return count - 1
   return null
 }
+
+/** What waits for an admin on the Uploads tab: drafts to merge by hand and conflicts to settle. */
+export const uploadsWaiting = (drafts, conflicts = []) =>
+  drafts.filter((draft) => draft.status === "review").length + conflicts.length

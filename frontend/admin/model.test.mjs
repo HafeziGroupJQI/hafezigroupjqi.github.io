@@ -76,6 +76,10 @@ test("rows read as sentences", () => {
     describe({ action: "admin.uploads.discard", target: "0123456789ab", detail: { login: "ada" } }),
     "discarded the upload draft 0123456789ab of ada",
   )
+  assert.equal(
+    describe({ action: "edit.send", target: "content/people/ada.md" }),
+    "sent an edit of content/people/ada.md",
+  )
 })
 
 test("token and budget formatting", () => {

@@ -9,6 +9,7 @@ import { installLauncher } from "./gpt/launcher.js"
 import { h } from "./dashboard/dom.js"
 import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
+import { mountEditButton } from "./edit/link.js"
 import { uploadsUrl } from "./uploads/model.js"
 
 const zone = "America/New_York"
@@ -316,6 +317,15 @@ if (session.user) {
         h("a", { href: uploadsUrl("rename", vaultFile), text: "Rename or move…" }),
       ),
     )
+  // Edit: the page's own file in its vault (JqiFrame's [data-page-tools] names it), opened in the
+  // site's editor (frontend/edit/), never the page the site made from it.
+  const pageTools = document.querySelector("[data-page-tools][data-edit-path]")
+  if (pageTools) mountEditButton(pageTools)
+  mount("data-edit", (root) =>
+    import("./edit/index.js")
+      .then(({ mountEdit }) => mountEdit(root))
+      .catch((error) => showError(root, error)),
+  )
   // A member's own settings: their People page, photo and Wolfram Engine license.
   mount("data-settings", (root) =>
     import("./settings/index.js")

@@ -6,6 +6,7 @@
 // dropped on it: uploads are single requests of at most 25 MB, so a library like Uppy (resumable
 // uploads, remote sources) would add weight and nothing the Worker could use.
 import { h, present } from "../dashboard/dom.js"
+import { editUrl } from "../edit/link.js"
 import {
   changeLabel,
   crumbs,
@@ -87,8 +88,15 @@ export async function mountUploads(root, { api }) {
                 text: `Pull request #${draft.pull.number}`,
               })
             : null,
+          // A page edit is changed in the editor (frontend/edit/), an upload here.
           isLive(draft)
-            ? h("button", { type: "button", text: "Open", onclick: () => open(draft.id) })
+            ? draft.kind === "edit"
+              ? h("a", {
+                  class: "btn",
+                  href: editUrl({ repo: draft.repo, path: draft.path }),
+                  text: "Open in the editor",
+                })
+              : h("button", { type: "button", text: "Open", onclick: () => open(draft.id) })
             : null,
         ),
         h("p", { class: "muted", text: statusLabel(draft) }),

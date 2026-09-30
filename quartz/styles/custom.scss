@@ -4,6 +4,8 @@
 // 1. The vendored hafezi.jqi.umd.edu stylesheet (Tailwind build), refreshed with
 //    `npm run sync-theme`. It is unlayered, so it wins over Quartz's base layer.
 @use "./jqi-theme";
+// The page editor (/edit), and the Edit button in a page's tools row.
+@use "./page-editor";
 
 // 2. Additions from the original onboarding site: tables, callouts, materials tints.
 .table-wrap {

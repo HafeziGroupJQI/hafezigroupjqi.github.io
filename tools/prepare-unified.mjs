@@ -87,6 +87,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "settings",
       "uploads",
       "recent",
+      "edit",
       // The Scratchpad's JupyterLab: the service worker answers /jupyter/* from the compute relay.
       "jupyter",
     ]) {
@@ -438,6 +439,14 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "uploads",
       "Uploads",
       '<div class="member-tools dashboard" data-uploads><h1 class="dash-title">Uploads</h1><p class="muted">Loading…</p></div>',
+      [],
+      { layout: "dashboard" },
+    )
+    // The page editor (frontend/edit/): a page's own file in its vault, opened from its Edit button.
+    page(
+      "edit",
+      "Edit",
+      '<div class="member-tools dashboard" data-edit><h1 class="dash-title">Edit</h1><p class="muted">Loading…</p></div>',
       [],
       { layout: "dashboard" },
     )

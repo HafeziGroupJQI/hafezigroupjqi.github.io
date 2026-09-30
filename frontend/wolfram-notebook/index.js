@@ -55,7 +55,9 @@ export function mountWolframNotebook(root) {
 
   const fork = (status) => openInScratchpad(source, status)
 
-  if (source) {
+  // The page's Edit (frontend/edit/link.js) is "Edit in Scratchpad" already: no second button.
+  const editing = document.querySelector('[data-page-tools][data-edit-mode="scratchpad"]')
+  if (source && !editing) {
     const status = h("span", { class: "wl-status", role: "status" })
     placePageActions(
       [

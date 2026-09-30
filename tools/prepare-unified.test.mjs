@@ -116,6 +116,9 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     // Uploads to the private vault.
     assert.match(read("uploads.md"), /data-uploads/)
     assert.match(read("uploads.md"), /layout: dashboard/)
+    // The page editor.
+    assert.match(read("edit.md"), /data-edit/)
+    assert.match(read("edit.md"), /layout: dashboard/)
     assert.ok(!fs.existsSync(path.join(built.output, "resources/.git")))
     fs.mkdirSync(path.join(publicRoot, "resources"))
     assert.throws(() => prepareUnified(publicRoot, privateRoot, yaml), /collides/)

@@ -1,0 +1,101 @@
+// ---- The page editor (/edit, frontend/edit/): a page's own file in its vault ----
+// The Edit button leads a page's tools row (JqiFrame's .page-tools), dark like its neighbours.
+.page-tools > a.page-edit {
+  padding: 4px 10px;
+  background: #454545;
+  border: 1px solid #454545;
+  border-radius: 3px;
+  color: #fff;
+  text-decoration: none;
+  &:hover {
+    background: #222;
+  }
+}
+
+.edit-page {
+  max-width: 1400px;
+  .edit-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin: 8px 0;
+    font-size: 0.9rem;
+    a {
+      color: var(--jqi-red, #e21833);
+    }
+  }
+  .edit-summary-label {
+    display: grid;
+    gap: 4px;
+    margin: 12px 0 8px;
+    font-size: 0.85rem;
+    color: var(--jqi-muted);
+  }
+  .edit-summary {
+    width: 100%;
+    max-width: 48rem;
+    padding: 6px 8px;
+    border: 1px solid var(--jqi-rule);
+    border-radius: 4px;
+    font: inherit;
+  }
+  // Source beside its preview from 1000 px; one above the other, each tall, on phones.
+  .edit-panes {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    @media (min-width: 1000px) {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+  }
+  .edit-source,
+  .edit-preview {
+    height: 70vh;
+    min-height: 320px;
+    border: 1px solid var(--jqi-rule);
+    border-radius: 4px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .edit-source .cm-editor {
+    height: 100%;
+  }
+  .edit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 12px 0 4px;
+  }
+  .edit-status:empty {
+    display: none;
+  }
+  .edit-problems {
+    margin: 4px 0;
+    color: #b3261e;
+    font-size: 0.9rem;
+    &:empty {
+      display: none;
+    }
+  }
+  .edit-state,
+  .edit-hint {
+    margin: 4px 0;
+    font-size: 0.85rem;
+  }
+  .edit-compare:not([hidden]) {
+    margin: 12px 0;
+    padding: 10px 14px;
+    border: 1px solid var(--jqi-rule);
+    border-left: 4px solid var(--jqi-gold, #f0b323);
+    border-radius: 6px;
+    p {
+      margin: 0 0 8px;
+    }
+  }
+  // A difference from main's version, in the merge view: keep it, or take main's.
+  .cm-chunkButtons button {
+    padding: 1px 6px;
+    font-size: 0.75rem;
+  }
+}

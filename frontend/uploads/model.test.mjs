@@ -60,6 +60,15 @@ test("a draft is named by its note's first line, else when it was started", () =
   )
   assert.equal(draftName(draft({ note: "x".repeat(100) })).length, 80)
   assert.match(draftName(draft({}), "en-US"), /^Draft started Sep 29, \d+:05 [AP]M$/)
+  // A page edit is named by its summary, else its file.
+  assert.equal(
+    draftName(draft({ kind: "edit", summary: "Fix the date", path: "notes/a.md" })),
+    "Fix the date",
+  )
+  assert.equal(
+    draftName(draft({ kind: "edit", summary: null, path: "notes/a.md" })),
+    "Edit of notes/a.md",
+  )
 })
 
 test("a draft's status says what happens next", () => {
@@ -168,4 +177,6 @@ test("a page's tools open /uploads on the newest unsent draft", () => {
   const drafts = [draft({ id: "a", status: "open" }), draft({ id: "b" }), draft({ id: "c" })]
   assert.equal(draftForPage(drafts).id, "b")
   assert.equal(draftForPage([draft({ status: "open" })]), null)
+  // A page edit is changed in the editor, never added to.
+  assert.equal(draftForPage([draft({ kind: "edit" })]), null)
 })

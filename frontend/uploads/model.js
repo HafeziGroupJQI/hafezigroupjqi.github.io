@@ -23,8 +23,10 @@ export function changeLabel(change) {
   return `${verb} ${change.path}${change.size != null ? ` (${formatBytes(change.size)})` : ""}`
 }
 
-/** A draft's name on its card: the first line of its note, else when it was started. */
+/** A draft's name on its card: the first line of its note, else when it was started. A page
+ *  edit's is its summary, else its page's file. */
 export function draftName(draft, locale = undefined) {
+  if (draft.kind === "edit") return draft.summary || `Edit of ${draft.path}`
   const line = (draft.note ?? "").split("\n")[0].trim()
   if (line) return line.length > 80 ? `${line.slice(0, 79)}…` : line
   const started = new Date(draft.created_at).toLocaleString(locale, {
@@ -113,9 +115,9 @@ export function intentOf(search) {
   }
 }
 
-/** The draft a page's "Replace this file…" or "Move…" adds to: the newest one never sent. */
+/** The draft a page's "Replace this file…" or "Move…" adds to: the newest upload never sent. */
 export function draftForPage(drafts) {
-  return drafts.find((draft) => draft.status === "editing") ?? null
+  return drafts.find((draft) => draft.status === "editing" && draft.kind !== "edit") ?? null
 }
 
 /** The /uploads link a page's tools use for a file of the vault. */

@@ -1746,7 +1746,7 @@ article.popover-hint > *:first-child {
   color: var(--jqi-muted);
 }
 .member-tools .status-online {
-  color: #fff;
+  color: #fff; // fixed: white on a chart color
   background: var(--viz-online);
   border-color: var(--viz-online);
 }
@@ -1754,12 +1754,12 @@ article.popover-hint > *:first-child {
   color: var(--viz-offline);
 }
 .member-tools .status-running {
-  color: #fff;
+  color: #fff; // fixed: white on a chart color
   background: var(--viz-1);
   border-color: var(--viz-1);
 }
 .member-tools .status-failed {
-  color: #fff;
+  color: #fff; // fixed: white on a chart color
   background: var(--viz-8);
   border-color: var(--viz-8);
 }
@@ -2011,10 +2011,10 @@ a.device-card:hover {
 
 .member-tools.dashboard {
   --dash-stale: var(--jqi-gold, #f0b323);
-  --dash-surface: #fff;
-  --dash-surface-2: #fafafa;
+  --dash-surface: var(--light, #fff);
+  --dash-surface-2: var(--c-surface-1, #fafafa);
   --dash-radius: 6px;
-  --viz-offline: #6b6b6b; // 5.3:1 on white; the shared #8a8a8a fails 4.5:1 for text
+  --viz-offline: var(--c-muted, #6b6b6b); // 5.3:1 on white; the shared #8a8a8a fails 4.5:1 for text
   --dash-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-family: Roboto, system-ui, sans-serif;
   padding: 20px 0 48px;
@@ -2040,7 +2040,7 @@ a.device-card:hover {
   border: 1px solid var(--jqi-rule);
   border-radius: 4px;
   background: var(--dash-surface);
-  color: #222;
+  color: var(--dark, #222);
   font: inherit;
   font-size: 0.88rem;
   text-decoration: none;
@@ -2057,11 +2057,11 @@ a.device-card:hover {
 .dashboard :is(button, .btn).primary {
   background: var(--jqi-red, #e21833);
   border-color: var(--jqi-red, #e21833);
-  color: #fff;
+  color: var(--c-on-accent, #fff);
 }
 .dashboard :is(button, .btn).danger {
   border-color: var(--viz-8);
-  color: #b3261e;
+  color: var(--c-err, #b3261e);
 }
 .dashboard :is(button, a, [tabindex]):focus-visible {
   outline: 2px solid var(--viz-1);
@@ -2117,7 +2117,7 @@ a.device-card:hover {
 }
 .dashboard .dash-tabs [role="tab"][aria-selected="true"] {
   border-bottom-color: var(--jqi-red, #e21833);
-  color: #111;
+  color: var(--c-strong, #111);
   font-weight: 500;
 }
 .dash-toolbar {
@@ -2145,8 +2145,8 @@ a.device-card:hover {
   border-right: 0;
 }
 .dashboard .seg button[aria-checked="true"] {
-  background: #222;
-  color: #fff;
+  background: var(--c-band, #222);
+  color: var(--c-on-band, #fff);
 }
 .dash-error {
   display: flex;
@@ -2157,7 +2157,7 @@ a.device-card:hover {
   border: 1px solid var(--viz-8);
   border-left-width: 4px;
   border-radius: var(--dash-radius);
-  background: #fff5f5;
+  background: var(--c-err-soft, #fff5f5);
 }
 .dash-panel:focus {
   outline: none;
@@ -2209,12 +2209,12 @@ a.device-card:hover {
   white-space: nowrap;
 }
 .dashboard .status-online {
-  color: #fff;
+  color: #fff; // fixed: white on a chart color
   background: var(--viz-online);
   border-color: var(--viz-online);
 }
 .dashboard .status-stale {
-  color: #222;
+  color: var(--c-on-accent, #222);
   background: var(--dash-stale);
   border-color: var(--dash-stale);
 }
@@ -2233,12 +2233,12 @@ a.device-card:hover {
   font-style: italic;
 }
 .dashboard .status-running {
-  color: #fff;
+  color: #fff; // fixed: white on a chart color
   background: var(--viz-1);
   border-color: var(--viz-1);
 }
 .dashboard .status-generating {
-  color: #1d5fae;
+  color: var(--c-info, #1d5fae);
   border-color: var(--viz-1);
 }
 .dashboard .status-generating::before {
@@ -2256,21 +2256,21 @@ a.device-card:hover {
   border-color: var(--jqi-muted);
 }
 .dashboard .status-stopped {
-  color: #fff;
-  background: #454545;
-  border-color: #454545;
+  color: var(--c-on-band, #fff);
+  background: var(--c-band, #454545);
+  border-color: var(--c-band, #454545);
 }
 .dashboard .status-failed {
-  color: #fff;
-  background: #c62d2c; // --viz-8 deepened to pass 4.5:1 under white text
-  border-color: #c62d2c;
+  color: var(--c-on-accent, #fff);
+  background: var(--c-err, #c62d2c); // --viz-8 deepened to pass 4.5:1 under white text
+  border-color: var(--c-err, #c62d2c);
 }
 .dashboard .status-sent {
-  color: #1d5fae;
+  color: var(--c-info, #1d5fae);
   border-color: var(--viz-1);
 }
 .dashboard .status-done {
-  color: #006400;
+  color: var(--c-ok, #006400);
   border-color: var(--viz-online);
 }
 @keyframes dash-pulse {
@@ -2301,7 +2301,12 @@ a.device-card:hover {
   min-height: 150px;
 }
 .dev-card.skeleton {
-  background: linear-gradient(90deg, #f4f4f4, #fafafa, #f4f4f4);
+  background: linear-gradient(
+    90deg,
+    var(--c-surface-2, #f4f4f4),
+    var(--c-surface-1, #fafafa),
+    var(--c-surface-2, #f4f4f4)
+  );
   border-left-color: var(--jqi-rule);
 }
 .dev-card :is(p) {
@@ -2404,7 +2409,7 @@ a.device-card:hover {
   background: var(--dash-surface-2);
 }
 .dev-row.is-selected {
-  box-shadow: inset 3px 0 0 #222;
+  box-shadow: inset 3px 0 0 var(--dark, #222);
 }
 .dev-row strong {
   font-family: var(--dash-mono);
@@ -2489,7 +2494,7 @@ a.device-card:hover {
   bottom: 16px;
   padding: 6px 12px;
   border-radius: var(--dash-radius);
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--c-surface-1, rgba(255, 255, 255, 0.92));
   border: 1px solid var(--jqi-rule);
   font-variant-numeric: tabular-nums;
   font-size: 1.1rem;
@@ -2568,7 +2573,7 @@ a.device-card:hover {
 .dashboard .metric-value {
   font-family: var(--dash-mono);
   font-variant-numeric: tabular-nums;
-  color: #111;
+  color: var(--c-strong, #111);
 }
 .inst-split {
   display: grid;
@@ -2597,7 +2602,7 @@ a.device-card:hover {
   text-decoration: none;
 }
 .inst-chips .chip[aria-current="true"] {
-  border-color: #222;
+  border-color: var(--dark, #222);
   background: var(--dash-surface-2);
 }
 .latest-grid {
@@ -2703,10 +2708,10 @@ a.device-card:hover {
   color: var(--jqi-rule);
 }
 .cmd-steps li.reached {
-  color: #111;
+  color: var(--c-strong, #111);
 }
 .cmd-steps li.step-failed {
-  color: #b3261e;
+  color: var(--c-err, #b3261e);
 }
 .dashboard .builder fieldset {
   border: 0;
@@ -2868,10 +2873,10 @@ a.device-card:hover {
   min-height: 1.45em;
 }
 .admin-console .diff .diff-add {
-  background: rgba(0, 131, 0, 0.14);
+  background: var(--c-ok-soft, rgba(0, 131, 0, 0.14));
 }
 .admin-console .diff .diff-del {
-  background: rgba(227, 73, 72, 0.16);
+  background: var(--c-err-soft, rgba(227, 73, 72, 0.16));
 }
 .admin-console .diff .diff-hunk {
   color: var(--viz-1);
@@ -3033,7 +3038,7 @@ a.device-card:hover {
   border-bottom: 1px solid var(--jqi-rule);
 }
 .uploads-review {
-  color: #b3261e;
+  color: var(--c-err, #b3261e);
   font-size: 0.85rem;
 }
 .uploads-crumbs {
@@ -3069,7 +3074,7 @@ a.device-card:hover {
 }
 .uploads-drop.dragging {
   border-color: var(--jqi-red, #e21833);
-  background: #fdf1f2;
+  background: var(--c-accent-soft, #fdf1f2);
 }
 .uploads-drop p {
   margin: 6px 0 0;

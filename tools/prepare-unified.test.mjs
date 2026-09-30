@@ -192,13 +192,13 @@ test("notebooks are listed by path; list_pages works in nested folders", () => {
     assert.ok(
       fs.existsSync(path.join(built.output, "resources/code/wolfram-guide/01-starting-out.nb")),
     )
-    // A generated section index lists every page under it, nested ones included.
-    assert.match(read("resources/code/index.md"), /\[\[resources\/code\/analysis\|analysis\]\]/)
-    assert.match(read("resources/code/index.md"), /\[\[resources\/code\/note\|note\]\]/)
+    // A section without an index in the vault gets one: its description, marked for the automatic
+    // listing of its folder (no list of links is written into it), with the folder's vault path.
     assert.match(
       read("resources/code/index.md"),
-      /\[\[resources\/code\/wolfram-guide\/01-starting-out\|01-starting-out\]\]/,
+      /\nfolder_index: auto\nfolder_path: code\n---\n\nRunnable analyses and notes on the group's software repositories\.\n$/,
     )
+    assert.doesNotMatch(read("resources/code/index.md"), /\[\[|edit_path/)
     // No top-level section is made for a course folder any more.
     assert.ok(!fs.existsSync(path.join(built.output, "resources/wolfram-guide")))
     // A hand-written index in a nested folder keeps its text; with list_pages it also lists the

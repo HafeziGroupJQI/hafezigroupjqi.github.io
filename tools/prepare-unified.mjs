@@ -269,17 +269,18 @@ export function prepareUnified(publicSource, privateSource, yaml) {
           const relative = path.relative(prepared.output, file).replace(pageFile, "")
           return `- [[${relative}|${path.basename(file).replace(pageFile, "")}]]`
         })
-    for (const [title, slug] of sections) {
+    // A section without an index of its own in the vault gets one here: its one-line description,
+    // above the automatic listing of its folders, pages and files that every folder without an
+    // index gets (quartz/plugins/local/folder-index/).
+    for (const [title, slug, description] of sections) {
       const directory = path.join(destination, slug)
       fs.mkdirSync(directory, { recursive: true })
       const index = path.join(directory, "index.md")
       if (!fs.existsSync(index))
-        page(
-          `resources/${slug}/index`,
-          title,
-          pageLinks(directory, index).join("\n") || "No resources added yet.",
-          ["internal", slug],
-        )
+        page(`resources/${slug}/index`, title, description, ["internal", slug], {
+          folder_index: "auto",
+          folder_path: slug,
+        })
     }
     // Any hand-written index.md with `list_pages: true`, at any depth (a course folder under
     // code/, say), gets its folder's pages appended.

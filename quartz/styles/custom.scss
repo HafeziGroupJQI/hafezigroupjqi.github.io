@@ -374,6 +374,12 @@ body {
     font-weight: 600;
   }
 }
+// Member tools paint every button dark; here only the chosen tab and period keep that fill, so
+// which one is showing reads at a glance.
+.member-tools .recent-tabs button:not([aria-selected="true"]):not([aria-pressed="true"]) {
+  background: transparent;
+  color: inherit;
+}
 .recent-scores {
   overflow-x: auto;
   table {
@@ -386,14 +392,28 @@ body {
     padding: 6px 10px;
     border-bottom: 1px solid var(--jqi-rule);
     text-align: right;
+  }
+  // Articles let table cells wrap (`.text-content :is(th, td)`), which split "Changes" in two.
+  .text-content & :is(th, td),
+  .text-content & :is(th, td) a {
     white-space: nowrap;
   }
   th:nth-child(2) {
     text-align: left;
   }
+  // The header keeps the site's table look (light text on the dark row).
   thead th {
     font-size: 0.85rem;
-    color: var(--jqi-muted);
+  }
+  // Articles' tables are fixed-width with capitalised row headers; the leaderboard sizes its
+  // columns to their numbers and shows members' names as they write them.
+  .text-content & table {
+    table-layout: auto;
+  }
+  .text-content & tbody th {
+    text-transform: none;
+    font-size: inherit;
+    font-weight: 600;
   }
 }
 .recent-feed {

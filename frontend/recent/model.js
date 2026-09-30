@@ -171,18 +171,15 @@ export const SCORE_SENTENCE =
 export const scoreNotes = (bulkFiles = 50) =>
   `Only changes that are in the vault count. A bulk import (one commit with more than ${bulkFiles} files) counts once for each folder it touched. Ratings of pages are not part of the score. The formula is the one MediaWiki's Contribution Scores uses.`
 
-/** A leaderboard row's cells, as text, in the order of SCORE_COLUMNS. */
+/** A leaderboard row's cells, as text, in the order of SCORE_COLUMNS: few enough to fit the column. */
 export const SCORE_COLUMNS = [
   "Rank",
   "Member",
   "Score",
   "Files",
   "Changes",
-  "Pages created",
-  "Pages edited",
-  "Files added",
+  "New pages",
   "Lines",
-  "Active days",
   "Last change",
 ]
 export function scoreCells(member, locale = undefined) {
@@ -193,10 +190,7 @@ export function scoreCells(member, locale = undefined) {
     String(member.files),
     String(member.changes),
     String(member.pages_created),
-    String(member.pages_edited),
-    String(member.files_added),
     `+${member.added} −${member.removed}`,
-    String(member.active_days),
     new Date(member.last_at).toLocaleDateString(locale, {
       year: "numeric",
       month: "short",

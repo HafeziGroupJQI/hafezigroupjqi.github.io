@@ -134,19 +134,8 @@ test("a leaderboard row shows the score beside the numbers it comes from", () =>
   }
   const cells = scoreCells(member, "en-US")
   assert.equal(cells.length, SCORE_COLUMNS.length)
-  assert.deepEqual(cells.slice(0, 10), [
-    "1",
-    "Ada Lovelace",
-    "5.5",
-    "2",
-    "5",
-    "1",
-    "3",
-    "1",
-    "+120 −7",
-    "4",
-  ])
-  assert.match(cells[10], /Sep 29, 2026/)
+  assert.deepEqual(cells.slice(0, 7), ["1", "Ada Lovelace", "5.5", "2", "5", "1", "+120 −7"])
+  assert.match(cells[7], /Sep 29, 2026/)
   assert.equal(scoreCells({ ...member, author: "" })[1], "ada")
   assert.equal(scoreTitle(member), "2 files + 2 × √3 repeat changes = 5.5")
   // The page says the formula in one sentence, and what counts.

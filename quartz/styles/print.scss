@@ -1,0 +1,454 @@
+@use "sass:map";
+
+// Printing, and the PDFs in a page's Export menu (frontend/page-export/), which the build prints
+// with this same stylesheet in headless Chromium (tools/render-pdfs.mjs): the article column in
+// the site's own fonts, colours and light theme, without the site's chrome, on pages with a
+// running header and footer. Nothing here resets the site's styles; it only overrides what paper
+// needs. Before printing, the page readies itself (frontend/page-export/print.js): external links
+// get numbered notes listed at the end, embeds become boxed notes with their links, code gutters
+// widen to their largest line number, folded content opens, and tables and equations wider than
+// the page are zoomed to fit (.print-fit). The title block (.print-meta) and the header's strings
+// (--print-brand, --print-title, --print-url) come from the build (quartz/components/frames/printMeta.tsx).
+
+// The printed article is the screen's, scaled as a whole: 16 px body text prints at 10.5 pt, and
+// every measurement scales with it, so drawings measured on screen (Mermaid's labels) still fit.
+$zoom: 0.875;
+
+// The site's light theme (quartz.config.yaml, colors.lightMode; print.test.ts keeps them equal),
+// which paper always gets, whatever theme the screen is in.
+$light: (
+  "light": #ffffff,
+  "lightgray": #e6e6e6,
+  "gray": #b8b8b8,
+  "darkgray": #454545,
+  "dark": #222222,
+  "secondary": #e21833,
+  "tertiary": #9a1a2c,
+  "highlight": rgba(226, 24, 51, 0.08),
+  "textHighlight": #fdf6e5,
+);
+
+$muted: #6b6b6b;
+$rule: #d0d0d0;
+$red: map.get($light, "secondary");
+
+// The article as it prints: shared by the print media and by print.js's measuring pass, which
+// lays the page out with these rules on screen for a moment to find what is too wide for paper.
+@mixin article-layout {
+  // Everything around the article, and the controls inside it.
+  .site-header,
+  .site-footer,
+  .skip-nav-link,
+  .page-content__sidebar,
+  .page-content__aside,
+  .page-content__after,
+  .public-breadcrumbs,
+  .page-content__header .tags,
+  .page-tools,
+  .page-file-tools,
+  .section-links,
+  .wl-page-actions,
+  .wl-toolbar,
+  .wl-notebook-nav,
+  .wl-guide-nav,
+  .wl-controls,
+  .gpt-fab,
+  .popover,
+  .search,
+  .member-menu,
+  .mermaid-controls,
+  #mermaid-container,
+  .excalidraw-controls,
+  .excalidraw-sidebar-toggle,
+  .fold-callout-icon,
+  .external-icon,
+  .print-replaced,
+  [data-footnote-backref],
+  dialog,
+  button {
+    display: none !important;
+  }
+  .print-meta,
+  .print-links,
+  .print-embed {
+    display: block !important;
+  }
+  sup.print-ref {
+    display: inline !important;
+  }
+
+  .page-content,
+  .page-content__main,
+  .page-content__body,
+  .page-body {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .page-content__main {
+    zoom: $zoom;
+  }
+
+  // The title block under the title: edition, trail, authors, date and address.
+  .page-content__header h1 {
+    margin: 0 0 6px !important;
+  }
+  .print-meta {
+    font:
+      400 12px/1.5 Roboto,
+      sans-serif;
+    color: $muted;
+    letter-spacing: normal;
+    border-bottom: 2px solid $red;
+    padding: 0 0 8px;
+    margin: 0 0 22px;
+    a {
+      color: inherit !important;
+      font-weight: inherit !important;
+      text-decoration: none !important;
+    }
+  }
+  .print-meta__edition {
+    color: map.get($light, "tertiary");
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  // External links: a bracketed number after the link (unlike a footnote's), and the addresses
+  // listed at the end under the same numbers.
+  sup.print-ref {
+    font-size: 0.7em;
+    line-height: 0;
+    color: $muted;
+    margin-left: 1px;
+  }
+  .print-links {
+    margin-top: 28px;
+    border-top: 1px solid $rule;
+    padding-top: 10px;
+    font-size: 11px;
+    color: map.get($light, "darkgray");
+    h2 {
+      font-size: 16px !important;
+      margin: 0 0 6px !important;
+    }
+    ol {
+      margin: 0 !important;
+      padding-left: 2.6em !important;
+    }
+    li {
+      overflow-wrap: anywhere;
+      line-height: 1.45;
+      margin: 0;
+    }
+    li::marker {
+      content: "[" counter(list-item) "]  ";
+      color: $muted;
+    }
+  }
+  // Footnotes: their heading is for screen readers on screen; on paper it heads the notes.
+  section.footnotes h2.sr-only {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 28px 0 6px !important;
+    clip: auto !important;
+    clip-path: none !important;
+    overflow: visible !important;
+    white-space: normal !important;
+    font-size: 16px;
+  }
+
+  // Code: long lines wrap under the code with a hanging indent, never between a line number's
+  // digits; the gutter is as wide as the largest number (print.js sets the digits where the
+  // highlighter didn't). Short blocks stay whole (.print-keep); long ones break between lines.
+  pre {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+    overflow: visible !important;
+    break-inside: auto;
+  }
+  // Lines as a column, not the screen's grid rows: a page breaks between them where it's told to.
+  pre > code {
+    display: flex !important;
+    flex-direction: column;
+    overflow: visible !important;
+  }
+  // The site's code font (quartz.config.yaml), embedded, rather than whichever the printing
+  // machine has.
+  :is(code, kbd, samp, pre) {
+    font-family:
+      "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  }
+  pre > code > [data-line] {
+    --gutter: 1rem;
+    padding-left: calc(var(--gutter) + 1.25rem) !important;
+    text-indent: calc(-1 * (var(--gutter) + 1rem));
+    break-inside: avoid;
+  }
+  pre > code[data-line-numbers-max-digits="2"] > [data-line] {
+    --gutter: 2rem;
+  }
+  pre > code[data-line-numbers-max-digits="3"] > [data-line] {
+    --gutter: 3rem;
+  }
+  pre > code[data-line-numbers-max-digits="4"] > [data-line] {
+    --gutter: 4rem;
+  }
+  pre > code > [data-line]::before {
+    width: var(--gutter) !important;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    text-indent: 0;
+  }
+  pre.print-keep {
+    break-inside: avoid;
+  }
+  // A long block breaks, but not after its first two lines or before its last two.
+  pre > code > [data-line]:is(:nth-child(-n + 3), :nth-last-child(-n + 2)) {
+    break-before: avoid;
+  }
+
+  // Tables: columns sized by their content with whole words, the header row repeated on each
+  // page; one still too wide at the smallest zoom falls back to the screen's even columns.
+  .page-body table {
+    table-layout: auto !important;
+    width: 100% !important;
+    font-size: 12px !important;
+  }
+  .page-body :is(th, td),
+  .page-body :is(th, td) :is(a, code, p) {
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    hyphens: auto;
+    line-height: 1.35;
+  }
+  .page-body table.print-squeeze {
+    table-layout: fixed !important;
+    :is(th, td),
+    :is(th, td) :is(a, code, p) {
+      overflow-wrap: anywhere !important;
+    }
+  }
+  thead {
+    display: table-header-group;
+  }
+  .table-container,
+  .table-wrap,
+  .katex-display {
+    overflow: visible !important;
+  }
+  .print-fit {
+    zoom: var(--print-fit, 1);
+  }
+
+  // Prose: an address or hash with no break in it wraps rather than running off the page.
+  .page-body :is(p, li, td, th, dd, blockquote) {
+    overflow-wrap: anywhere;
+  }
+
+  // Pictures fit the column and a page (Letter's is about 242 mm tall, less a caption's room).
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100% !important;
+  }
+  // (245 mm inside the article's zoom prints 215 mm tall.)
+  .page-body img {
+    height: auto;
+    max-height: 245mm;
+    object-fit: contain;
+  }
+
+  // Folded content prints open (print.js opens it; this covers a print without it).
+  .callout > .callout-content {
+    height: auto !important;
+  }
+  .callout.is-collapsed > .callout-content {
+    grid-template-rows: 1fr !important;
+  }
+  .callout.is-collapsed .callout-content > * {
+    height: auto !important;
+    overflow-y: visible !important;
+  }
+  .callout,
+  .callout > .callout-content {
+    overflow: visible !important;
+  }
+  details > summary {
+    font-weight: 700;
+    list-style: none;
+    &::marker,
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+  // A task list's boxes, open and done, with the borders Quartz gives them (the theme's reset
+  // zeroes every border, which leaves an open box blank and a done one without its tick).
+  input[type="checkbox"] {
+    border: 1px solid #8a8a8a !important;
+    &:checked {
+      border-color: $red !important;
+    }
+    &:checked::after {
+      border: solid #fff !important;
+      border-width: 0 2px 2px 0 !important;
+    }
+  }
+
+  // Embeds and players: a boxed note with the address (print.js), and a Wolfram Manipulate's
+  // picture with a word that it moves online.
+  .print-embed {
+    border: 1px solid $rule;
+    border-left: 3px solid $red;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: map.get($light, "darkgray");
+    break-inside: avoid;
+    overflow-wrap: anywhere;
+    img {
+      display: block;
+      max-width: 60% !important;
+      margin: 0 0 8px;
+    }
+  }
+  .wl-manipulate::after {
+    content: "Interactive: move its controls in the online version.";
+    display: block;
+    font-size: 12px;
+    color: $muted;
+    margin-top: 4px;
+  }
+
+  // Page breaks: never right after a heading, a callout's title or an image's introduction;
+  // never inside a row, a picture, an equation, a card or a code line.
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .callout-title,
+  figcaption,
+  .wl-caption {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+  p:has(+ p > img:only-child),
+  p:has(+ figure) {
+    break-after: avoid;
+  }
+  tr,
+  img,
+  svg,
+  figure:not([data-rehype-pretty-code-figure]),
+  .katex-display,
+  .mermaid,
+  .wl-cell,
+  .person-card {
+    break-inside: avoid;
+  }
+  p,
+  li,
+  pre {
+    orphans: 3;
+    widows: 3;
+  }
+}
+
+@media print {
+  @page {
+    // No size: the build prints on Letter; a print dialog keeps the paper chosen in it.
+    margin: 19mm 17mm 18mm;
+    @top-left {
+      content: var(--print-brand, "Hafezi Group");
+      font:
+        500 7.5pt/1.2 Roboto,
+        sans-serif;
+      color: $muted;
+      vertical-align: bottom;
+      padding-bottom: 3mm;
+    }
+    @top-right {
+      content: var(--print-title, "");
+      font:
+        400 7.5pt/1.2 Roboto,
+        sans-serif;
+      color: $muted;
+      vertical-align: bottom;
+      padding-bottom: 3mm;
+    }
+    @bottom-left {
+      content: var(--print-url, "");
+      font:
+        400 7pt/1.2 Roboto,
+        sans-serif;
+      color: #8a8a8a;
+      vertical-align: top;
+      padding-top: 3mm;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font:
+        500 7.5pt/1.2 Roboto,
+        sans-serif;
+      color: $muted;
+      vertical-align: top;
+      padding-top: 3mm;
+    }
+  }
+  // The first page has the title block instead of the running header.
+  @page :first {
+    @top-left {
+      content: none;
+    }
+    @top-right {
+      content: none;
+    }
+  }
+
+  // Backgrounds (a table's dark header row, callout tints, code chips, highlights) print even
+  // with a dialog's "Background graphics" off.
+  html {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-scheme: light;
+    background: #fff !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  // Paper is light, whatever the screen's theme (print.js also sets the light theme while it
+  // prints; this covers a print without it).
+  :root:root[saved-theme] {
+    @each $name, $value in $light {
+      --#{$name}: #{$value};
+    }
+  }
+  :root[saved-theme] pre span[style*="--shiki-light"] {
+    color: var(--shiki-light) !important;
+  }
+
+  @include article-layout;
+}
+
+@media screen {
+  // What only paper shows, except while print.js measures the article as it would print.
+  html:not(.print-measure) :is(.print-meta, .print-links, .print-embed, sup.print-ref) {
+    display: none !important;
+  }
+  html.print-measure {
+    @include article-layout;
+  }
+}
+
+// The measuring pass pins the column to the paper's width (print.js sets it).
+html.print-measure .page-content {
+  width: var(--print-measure-width, 665px) !important;
+}

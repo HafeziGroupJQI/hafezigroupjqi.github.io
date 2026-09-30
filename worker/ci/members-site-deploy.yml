@@ -100,7 +100,7 @@ jobs:
           repository: HafeziGroupJQI/vault
           ref: ${{ needs.notebooks.outputs.vault }}
           path: vault
-          # The whole history: the "Recently modified" page reads it (tools/recent-changes.mjs).
+          # The whole history: pages' histories and the changes import read it (tools/history.mjs).
           fetch-depth: 0
       - name: checkout the private vault
         uses: actions/checkout@v5
@@ -109,6 +109,8 @@ jobs:
           ref: ${{ needs.notebooks.outputs.vault_private }}
           path: vault-private
           token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
+          # The whole history too, for its pages' histories and the changes import.
+          fetch-depth: 0
       - name: the notebook renders made for these commits
         uses: actions/download-artifact@v7
         with:
@@ -183,6 +185,17 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: website/worker
           command: d1 migrations apply hafezi-members --remote
+      - name: import both vaults' commits into the members' recent changes
+        # D1 changes (tools/changes-import.mjs): only commits it doesn't have, so a rerun changes
+        # nothing. It never holds up a deploy; the next one catches up. Website commits from before
+        # the importer have none, so this workflow still builds them.
+        if: hashFiles('website/tools/changes-import.mjs') != ''
+        continue-on-error: true
+        working-directory: website
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/changes-import.mjs --vault ../vault --vault-private ../vault-private --remote
       - name: deploy the worker and static assets
         uses: cloudflare/wrangler-action@v4
         with:

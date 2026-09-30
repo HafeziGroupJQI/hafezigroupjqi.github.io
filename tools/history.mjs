@@ -9,7 +9,8 @@ export const SITE_AUTHOR = "hafezi members site"
 /** Revisions kept per file; older ones are on GitHub. */
 export const MAX_REVISIONS = 100
 
-const KINDS = { A: "new", C: "new", M: "edit", T: "edit", D: "delete", R: "rename" }
+/** A change's kind by its git status. */
+export const KINDS = { A: "new", C: "new", M: "edit", T: "edit", D: "delete", R: "rename" }
 const FORMAT = "%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%aI%x1f%s"
 
 function git(dir, args) {

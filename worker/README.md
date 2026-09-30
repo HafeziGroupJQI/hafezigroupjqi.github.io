@@ -168,8 +168,9 @@ headless browser to walk the member pages. `ALLOWED_ORIGINS=http://localhost:808
 The private repo `HafeziGroupJQI/members-site` runs `ci/members-site-deploy.yml` on
 `repository_dispatch` from the website, vault, and vault-private repos, on a daily
 schedule, and by hand. It checks out the three repos, builds the member edition, runs the
-tests, applies D1 migrations, and runs `wrangler deploy`, which uploads the static assets
-and the Worker together. Calendar data lives in D1 and survives deploys.
+tests, applies D1 migrations, imports both vaults' new commits into D1 `changes`
+(`tools/changes-import.mjs`, for `/api/changes`), and runs `wrangler deploy`, which uploads the
+static assets and the Worker together. Calendar data lives in D1 and survives deploys.
 
 First-time setup: `wrangler d1 create hafezi-members` (paste the id into `wrangler.jsonc`),
 `wrangler deploy` once from a laptop to learn the `workers.dev` host, then create the OAuth

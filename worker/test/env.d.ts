@@ -11,3 +11,8 @@ interface TestEnv {
 declare namespace Cloudflare {
   interface Env extends TestEnv {}
 }
+// Text fixtures imported as strings (Vite's ?raw), e.g. the deploy's import SQL.
+declare module "*?raw" {
+  const text: string
+  export default text
+}

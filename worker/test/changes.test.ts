@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
+import importSql from "./fixtures/changes-import.sql?raw"
 import { ORIGIN, SITE, as } from "./helpers"
 
 const T0 = Date.UTC(2026, 8, 29, 12)
@@ -210,5 +211,41 @@ describe("changes: the members' feed", () => {
       ["vault", "sent", "members"],
       ["vault", "merged", "public"],
     ])
+  })
+
+  it("takes the deploy's import twice as once, and keeps what the Worker recorded", async () => {
+    // What tools/changes-import.mjs writes (tools/changes-import.test.mjs keeps them the same).
+    // The Worker recorded one of its files as it merged a member's upload.
+    await seed({
+      at: T0,
+      login: "ada",
+      repo: "vault-private",
+      path: "files/data.csv",
+      kind: "upload",
+      commit_sha: "e".repeat(40),
+      draft_id: "0123456789ab",
+      source: "site",
+    })
+    await env.DB.exec(importSql)
+    await env.DB.exec(importSql)
+    const { changes } = await feed()
+    const byPath = Object.fromEntries(changes.map((c) => [c.path, c]))
+    expect(changes).toHaveLength(4)
+    expect(byPath["files/data.csv"]).toMatchObject({ source: "site", draft: "0123456789ab" })
+    expect(byPath["content/lab-facilities.md"]).toMatchObject({
+      source: "git",
+      summary: "fix the santec laser's range; 1400-1600 nm",
+      slug: "lab-facilities",
+      visibility: "public",
+    })
+    expect(byPath["content/people/ada-lovelace.md"]).toMatchObject({
+      login: "ada",
+      author: "Ada Lovelace",
+    })
+    expect(byPath["notes/odd\nname.md"]).toMatchObject({
+      kind: "rename",
+      from: "notes/old.md",
+      visibility: "members",
+    })
   })
 })

@@ -291,5 +291,7 @@ export function mountPageExport(tools) {
 installPrint()
 window.hafeziPrint = { prepare, fit, cleanup }
 const tools = document.querySelector("[data-page-tools]")
-// Not where the page is a member tool (the calendar): it has nothing to export.
-if (tools && !document.querySelector(".page-body .member-tools")) mountPageExport(tools)
+// Not where the page is a member tool (the calendar) or has no source (an automatic folder page):
+// it has nothing to export.
+if (tools?.dataset.source && !document.querySelector(".page-body .member-tools"))
+  mountPageExport(tools)

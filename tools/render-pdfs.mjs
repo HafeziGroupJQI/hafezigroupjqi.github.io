@@ -70,9 +70,13 @@ const walk = (directory) =>
     return entry.isDirectory() ? walk(filename) : [filename]
   })
 
-/** Whether a built page has an Export menu (JqiFrame's [data-page-tools]) and isn't a member tool's page. */
+/**
+ * Whether a built page has an Export menu (JqiFrame's [data-page-tools] with the page's source) and
+ * isn't a member tool's page. An automatic folder page's tools row names no source: it isn't printed.
+ */
 export const hasExportMenu = (html) =>
-  /\sdata-page-tools(?:[\s=>])/.test(html) && !/\bclass="[^"]*\bmember-tools\b/.test(html)
+  /<[^<>]*\sdata-page-tools(?:[\s=>])[^<>]*\sdata-source=/.test(html) &&
+  !/\bclass="[^"]*\bmember-tools\b/.test(html)
 
 /** A page's HTML file in the output (relative) → its slug, its address and its PDF's path. */
 export function pdfTarget(relative, origin = DEFAULT_ORIGIN) {

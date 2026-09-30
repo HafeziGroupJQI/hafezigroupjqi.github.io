@@ -38,6 +38,11 @@ test("pages with an export menu print to /pdf/<slug>.pdf; a member tool's page d
   assert.equal(hasExportMenu(page), true)
   assert.equal(hasExportMenu(`${page}<div class="member-tools calendar">`), false)
   assert.equal(hasExportMenu('<div data-page-toolsx="1">'), false)
+  // An automatic folder page has tools (Upload to this folder) and no source: never printed.
+  assert.equal(
+    hasExportMenu('<div class="page-tools" data-page-tools="true" data-folder="notes/a"></div>'),
+    false,
+  )
   assert.deepEqual(pdfTarget("people/index.html"), {
     slug: "people/index",
     url: "https://hafezigroupjqi.github.io/people/",

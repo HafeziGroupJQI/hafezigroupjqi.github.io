@@ -118,13 +118,26 @@ export function replaceProblem(file, path, state) {
   return extension(file.name) === ext ? null : `${path} can only be replaced by a .${ext} file`
 }
 
-/** What /uploads was opened to do: show a draft, or replace or move a file (a page's tools). */
+/** A folder of the vault as a link names it ("notes/2026/"), or null when it isn't one. */
+export function folderIntent(value) {
+  if (typeof value !== "string") return null
+  const parts = value.split("/").filter(Boolean)
+  if (!parts.length || parts.some((part) => part === "." || part === ".." || part.startsWith(".")))
+    return null
+  return parts.join("/")
+}
+
+/**
+ * What /uploads was opened to do: show a draft, replace or move a file (a page's tools), or add
+ * files to a folder (an automatic folder page's tools, frontend/folder-tools.js).
+ */
 export function intentOf(search) {
   const params = new URLSearchParams(search)
   return {
     draft: params.get("draft"),
     replace: params.get("replace"),
     rename: params.get("rename"),
+    folder: folderIntent(params.get("folder")),
   }
 }
 

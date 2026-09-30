@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { editAttributes } from "./pageTools"
+import { automaticFolder, editAttributes, folderAttributes } from "./pageTools"
 
 test("a page made from a vault file names that file, its blob and its history", () => {
   assert.deepEqual(
@@ -45,4 +45,25 @@ test("a page the site makes whole has no file to edit or history", () => {
   assert.deepEqual(editAttributes("people/index", { title: "People" }), {})
   assert.deepEqual(editAttributes("tags/code", undefined), {})
   assert.deepEqual(editAttributes("x", { edit_path: 3, edit_repo: "vault" }), {})
+})
+
+test("an automatic folder page names its folder of the vault, in the members edition only", () => {
+  const frontmatter = {
+    title: "Group meeting 2026-09-29",
+    folder_index: "auto",
+    folder_path: "notes/group-meeting-2026-09-29",
+  }
+  const slug = "resources/notes/group-meeting-2026-09-29/index"
+  assert.equal(automaticFolder(frontmatter), true)
+  assert.deepEqual(folderAttributes(slug, frontmatter, true), {
+    "data-folder": "notes/group-meeting-2026-09-29",
+  })
+  // Never on the public site, outside /resources/, or on a page with an index of its own.
+  assert.deepEqual(folderAttributes(slug, frontmatter, false), {})
+  assert.deepEqual(folderAttributes("equipment/index", frontmatter, true), {})
+  assert.deepEqual(folderAttributes(slug, { ...frontmatter, folder_index: undefined }, true), {})
+  assert.deepEqual(folderAttributes(slug, { title: "x", folder_index: "auto" }, true), {})
+  assert.equal(automaticFolder({ title: "Notes" }), false)
+  // It has no file of its own: nothing to edit and no history.
+  assert.deepEqual(editAttributes(slug, frontmatter), {})
 })

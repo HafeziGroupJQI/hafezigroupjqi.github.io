@@ -545,7 +545,8 @@ export async function mountUploads(root, { api }) {
   }
 
   showList()
-  // A page's tools send members here to replace or move that page's file (?replace=, ?rename=).
+  // A page's tools send members here to replace or move that page's file (?replace=, ?rename=),
+  // and a folder page's to add files to its folder (?folder=).
   const intent = intentOf(location.search)
   try {
     if (intent.replace || intent.rename) {
@@ -554,6 +555,10 @@ export async function mountUploads(root, { api }) {
       await open(target.id, folderOf(path))
       if (intent.rename) moveDialog(path)
       else editor.prepend(h("div", { class: "settings-pending" }, replaceInput(path)))
+    } else if (intent.folder) {
+      // A folder page's "Upload to this folder": the newest unsent draft, opened at that folder.
+      const target = draftForPage(state.drafts) ?? (await create())
+      await open(target.id, intent.folder)
     } else if (intent.draft && state.drafts.some((d) => d.id === intent.draft && isLive(d)))
       await open(intent.draft)
   } catch (error) {

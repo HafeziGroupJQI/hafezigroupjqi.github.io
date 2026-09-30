@@ -7,7 +7,7 @@ import SectionNav from "../jqi/SectionNav"
 import { publicNav, resourceNav } from "../jqi/nav"
 import { FullSlug, resolveRelative } from "../../util/path"
 import { PrintMeta } from "./printMeta"
-import { editAttributes } from "./pageTools"
+import { automaticFolder, editAttributes, folderAttributes } from "./pageTools"
 import { folderTitle } from "../../plugins/local/folder-index/names"
 
 const JqiHeader = JqiHeaderConstructor()
@@ -81,7 +81,14 @@ export const JqiFrame: PageFrame = {
     // and an Export menu under its title (frontend/page-export/); folder and tag pages have neither,
     // and the dashboards have no title to put it under.
     const source =
-      !dashboard && componentData.fileData.filePath?.endsWith(".md") ? `/${slug}.md` : undefined
+      !dashboard &&
+      !automaticFolder(frontmatter) &&
+      componentData.fileData.filePath?.endsWith(".md")
+        ? `/${slug}.md`
+        : undefined
+    // An automatic folder page (quartz/plugins/local/folder-index/) has no source: its tools row
+    // names its folder of the private vault instead (frontend/folder-tools.js), members only.
+    const folderTools = folderAttributes(slug, frontmatter, internal)
     return (
       <div
         class={`base-layout site-public${home ? " site-home" : ""}${person ? " site-person" : ""}${internal ? " site-internal" : ""}${handbook ? " site-handbook" : ""}${tagPage ? " site-tag" : ""}${dashboard ? " site-dashboard" : ""}`}
@@ -151,6 +158,9 @@ export const JqiFrame: PageFrame = {
                         data-source={source}
                         {...editAttributes(slug, frontmatter)}
                       />
+                    )}
+                    {!source && folderTools["data-folder"] && (
+                      <div class="page-tools" data-page-tools {...folderTools} />
                     )}
                   </>
                 </div>

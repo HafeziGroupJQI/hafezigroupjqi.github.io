@@ -182,12 +182,23 @@ test("a page's tools open /uploads on the newest unsent draft", () => {
     draft: null,
     replace: "notes/a b.pdf",
     rename: null,
+    folder: null,
   })
   assert.deepEqual(intentOf("?draft=0123456789ab"), {
     draft: "0123456789ab",
     replace: null,
     rename: null,
+    folder: null,
   })
+  // A folder page's "Upload to this folder": the folder, never a path out of the vault.
+  assert.equal(
+    intentOf("?folder=notes%2Fgroup-meeting-2026-09-29").folder,
+    "notes/group-meeting-2026-09-29",
+  )
+  assert.equal(intentOf("?folder=/files/Nonlinear+code/").folder, "files/Nonlinear code")
+  assert.equal(intentOf("?folder=notes/../../etc").folder, null)
+  assert.equal(intentOf("?folder=.git/hooks").folder, null)
+  assert.equal(intentOf("?folder=").folder, null)
   const drafts = [draft({ id: "a", status: "open" }), draft({ id: "b" }), draft({ id: "c" })]
   assert.equal(draftForPage(drafts).id, "b")
   assert.equal(draftForPage([draft({ status: "open" })]), null)

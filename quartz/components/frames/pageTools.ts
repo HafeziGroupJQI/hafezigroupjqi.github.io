@@ -29,3 +29,22 @@ export function editAttributes(
   }
   return attributes
 }
+
+/** Whether the page is an automatic folder page (quartz/plugins/local/folder-index/): no file of its own. */
+export const automaticFolder = (frontmatter: Record<string, unknown> | undefined): boolean =>
+  frontmatter?.folder_index === "auto"
+
+/**
+ * What an automatic folder page's tools row says: the folder's own path in the private vault, for
+ * "Upload to this folder" (frontend/folder-tools.js). Only in the members edition and only under
+ * /resources/: the public site never names a private path.
+ */
+export function folderAttributes(
+  slug: string,
+  frontmatter: Record<string, unknown> | undefined,
+  internal: boolean,
+): Record<string, string> {
+  const path = frontmatter?.folder_path
+  if (!internal || !slug.startsWith("resources/") || !automaticFolder(frontmatter)) return {}
+  return typeof path === "string" && path ? { "data-folder": path } : {}
+}

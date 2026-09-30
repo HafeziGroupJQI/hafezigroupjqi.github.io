@@ -10,6 +10,7 @@ import { h } from "./dashboard/dom.js"
 import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
 import { mountEditButton } from "./edit/link.js"
+import { mountFolderTools } from "./folder-tools.js"
 import { uploadsUrl } from "./uploads/model.js"
 
 const zone = "America/New_York"
@@ -321,6 +322,9 @@ if (session.user) {
   // site's editor (frontend/edit/), never the page the site made from it.
   const pageTools = document.querySelector("[data-page-tools][data-edit-path]")
   if (pageTools) mountEditButton(pageTools)
+  // An automatic folder page (no file of its own): upload to its folder of the private vault.
+  const folderTools = document.querySelector("[data-page-tools][data-folder]")
+  if (folderTools) mountFolderTools(folderTools)
   mount("data-edit", (root) =>
     import("./edit/index.js")
       .then(({ mountEdit }) => mountEdit(root))

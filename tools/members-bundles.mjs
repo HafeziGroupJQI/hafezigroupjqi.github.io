@@ -1,11 +1,17 @@
+import fs from "node:fs"
+import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { build as bundle } from "esbuild"
 
+const require = createRequire(import.meta.url)
+
 // The three bundles that carry the members API origin (MEMBERS_API_ORIGIN):
 //   public edition:  /sw.js (the members service worker) and /static/members-auth.js (sign-in pages)
 //   member edition:  /static/member-tools.js (calendar, dashboard, admin, Hafezi GPT; streams call the API)
-// and, in both editions, /static/page-export.js: every page's Export menu, which needs no API.
+// and, in both editions, /static/page-export.js: every page's Export menu, which needs no API, and
+// /static/page-history.js: every page's History, whose comparisons (static/chunks/) load when asked
+// for, drawn with diff2html's stylesheet (/static/diff2html.css).
 export const DEFAULT_API = "https://hafezi-members.anishgoyal1108.workers.dev"
 
 export async function bundleMembers(output, mode, apiOrigin = DEFAULT_API) {
@@ -17,6 +23,18 @@ export async function bundleMembers(output, mode, apiOrigin = DEFAULT_API) {
     outfile: path.join(output, "static/page-export.js"),
     format: "esm",
   })
+  await bundle({
+    ...common,
+    entryPoints: { "page-history": "frontend/page-history/index.js" },
+    outdir: path.join(output, "static"),
+    chunkNames: "chunks/[name]-[hash]",
+    splitting: true,
+    format: "esm",
+  })
+  fs.copyFileSync(
+    require.resolve("diff2html/bundles/css/diff2html.min.css"),
+    path.join(output, "static/diff2html.css"),
+  )
   if (mode === "internal") {
     // Split so heavy tools (Hafezi GPT's Markdown renderer, the Scratchpad, the Wolfram guide and
     // its CodeMirror editor) load only when opened: static/member-tools.js on every member page,

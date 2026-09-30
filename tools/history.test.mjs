@@ -143,6 +143,7 @@ test("follows a page back through its rename, and credits each change to its per
     date: moved[0].date,
     author: "Ada Lovelace",
     login: "Ada",
+    page: "people/ada-lovelace",
     summary: "ada's own edit",
     kind: "edit",
     path: "content/notes/moved.md",

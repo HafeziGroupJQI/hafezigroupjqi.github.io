@@ -146,7 +146,7 @@ export function creditOf(commit, path, known) {
     : { login: noreply ?? null, name: commit.name }
 }
 
-/** One file's change in one commit, as a page's history lists it. */
+/** One file's change in one commit, as a page's history lists it, with its author's People page. */
 export function revision(commit, file, known) {
   const { login, name } = creditOf(commit, file.path, known)
   return {
@@ -155,6 +155,7 @@ export function revision(commit, file, known) {
     date: commit.date,
     author: name,
     login,
+    page: (login && known.byLogin.get(login.toLowerCase())?.slug) ?? null,
     summary: commit.subject,
     kind: KINDS[file.status] ?? "edit",
     path: file.path,

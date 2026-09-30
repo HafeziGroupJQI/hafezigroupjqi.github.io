@@ -178,6 +178,10 @@ export const JqiFrame: PageFrame = {
         ))}
         {internal && <script type="module" src="/static/member-tools.js" data-spa-preserve />}
         {source && <script type="module" src="/static/page-export.js" data-spa-preserve />}
+        {/* The page's History (frontend/page-history/), where its tools name a history file. */}
+        {source && editAttributes(slug, frontmatter)["data-history"] && (
+          <script type="module" src="/static/page-history.js" data-spa-preserve />
+        )}
         <script dangerouslySetInnerHTML={{ __html: navScript }} />
       </div>
     )

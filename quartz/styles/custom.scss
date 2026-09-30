@@ -4368,6 +4368,161 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
     }
   }
 }
+// A page's History (frontend/page-history/): its button, last in the page's tools row whichever
+// script loads first, and the dialog with the revisions and a comparison of two of them, which
+// diff2html's own stylesheet draws (static/diff2html.css).
+.page-history-button {
+  order: 1;
+}
+dialog.page-history {
+  box-sizing: border-box;
+  width: min(1000px, calc(100% - 24px));
+  max-height: 90vh;
+  padding: 0 0 12px;
+  border: 1px solid #b8b8b8;
+  border-radius: 4px;
+  color: var(--darkgray, #454545);
+  background: var(--light, #fff);
+  &::backdrop {
+    background: #0006;
+  }
+  > header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 18px 6px;
+    background: var(--light, #fff);
+  }
+  h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    overflow-wrap: anywhere;
+  }
+  > :not(header) {
+    margin-left: 18px;
+    margin-right: 18px;
+  }
+}
+.page-history__close {
+  padding: 2px 10px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.page-history__place,
+.page-history__status {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  color: var(--jqi-muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.page-history__waiting {
+  margin-top: 6px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid #eda100;
+  background: color-mix(in srgb, #eda100 12%, transparent);
+  font-size: 0.9rem;
+}
+.page-history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.page-history__revision {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--jqi-rule);
+  font-size: 0.92rem;
+}
+.page-history__pick {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  padding-top: 2px;
+}
+.page-history__entry {
+  min-width: 0;
+}
+.page-history__kind,
+.page-history__counts {
+  color: var(--jqi-muted);
+}
+.page-history__counts {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.page-history__summary {
+  margin: 2px 0 4px;
+  overflow-wrap: anywhere;
+}
+.page-history__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.page-history__action,
+.page-history__diff-head button,
+.page-history__form > button {
+  padding: 2px 10px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  &:hover:not(:disabled) {
+    border-color: var(--jqi-muted);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+.page-history__form > button {
+  margin: 10px 0 6px;
+  padding: 5px 12px;
+}
+.page-history__diff-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin: 14px 0 8px;
+}
+.page-history__diff-body {
+  overflow-x: auto;
+  font-size: 0.85rem;
+  // Not the site's table cells (base.scss), which would stretch every line; diff2html's own rules,
+  // loaded after these and no less specific, still apply.
+  :where(tr) {
+    border-bottom: 0;
+  }
+  :where(td, th) {
+    padding: 0;
+  }
+  :where(tbody) {
+    line-height: 1.45;
+  }
+  // The comparison's title says what is compared; diff2html's file header would only say "page".
+  .d2h-file-header {
+    display: none;
+  }
+  .d2h-file-wrapper {
+    margin-bottom: 0;
+  }
+}
 @media (hover: hover) and (min-width: 800px) {
   .wl-notebook figure.wl-cell .wl-toolbar {
     opacity: 0.8;

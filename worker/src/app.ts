@@ -14,6 +14,7 @@ import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
 import { type Upstream, serveDocument } from "./docs"
 import { editRoutes } from "./edit/routes"
+import { historyRoutes } from "./history"
 import type { DocsManifest, Env } from "./env"
 import type { AnthropicFetch } from "./gpt/chat"
 import { isLabGptPath, labGptRequest } from "./gpt/lab"
@@ -276,6 +277,8 @@ export function createHandler(
     if (edit) return edit
     const changes = await changeRoutes(request, url, env)
     if (changes) return changes
+    const history = await historyRoutes(request, url, env, ctx, upstream)
+    if (history) return history
     return problem(404, "not found")
   }
 

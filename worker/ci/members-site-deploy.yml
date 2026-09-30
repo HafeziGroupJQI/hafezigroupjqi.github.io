@@ -172,6 +172,9 @@ jobs:
           # Stage 2 (pages) runs in the build from the renders above; .ipynb render with Quarto.
           NOTEBOOK_RENDERS: ../notebook-renders
           NOTEBOOK_CACHE_PRUNE: "1"
+          # Page PDFs keyed on each page's article only, so a site-wide style or script change
+          # doesn't reprint all ~640 pages (12 min here); the daily run reprints with the full key.
+          PDF_CACHE_SCOPE: ${{ github.event_name == 'schedule' && 'full' || 'article' }}
           MEMBERS_BASE_URL: ${{ vars.MEMBERS_BASE_URL }}
           MEMBERS_API_ORIGIN: ${{ vars.MEMBERS_API_ORIGIN }}
       - run: npm run check

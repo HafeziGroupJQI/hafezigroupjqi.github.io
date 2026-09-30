@@ -8,6 +8,7 @@
 
 import { slugifyFilePath } from "@quartz-community/utils/path"
 import { h, present } from "../dashboard/dom.js"
+import { createNotebookEditor } from "./cells.js"
 import { createSourceEditor } from "./editor.js"
 import {
   REPO_LABELS,
@@ -169,29 +170,27 @@ export async function mountEdit(root) {
   })
   summary.value = saved.summary
   const pane = h("div", { class: "edit-source" })
-  // Pages are previewed beside their source (on phones, one or the other).
-  const previewed = source.kind === "md" || source.kind === "qmd"
-  const preview = previewed ? previewFrame() : null
+  // Pages are previewed beside their source (on phones, one or the other), a notebook as its
+  // Markdown and code.
+  const preview = previewFrame()
   const panes = h("div", { class: "edit-panes", "data-view": "source" }, pane, preview)
-  const views = previewed
-    ? h(
-        "div",
-        { class: "seg edit-views", role: "radiogroup", "aria-label": "Show" },
-        ["source", "preview"].map((view) =>
-          h("button", {
-            type: "button",
-            role: "radio",
-            "aria-checked": String(view === "source"),
-            text: view === "source" ? "Source" : "Preview",
-            onclick: (event) => {
-              panes.dataset.view = view
-              for (const button of event.target.parentElement.children)
-                button.setAttribute("aria-checked", String(button === event.target))
-            },
-          }),
-        ),
-      )
-    : null
+  const views = h(
+    "div",
+    { class: "seg edit-views", role: "radiogroup", "aria-label": "Show" },
+    ["source", "preview"].map((view) =>
+      h("button", {
+        type: "button",
+        role: "radio",
+        "aria-checked": String(view === "source"),
+        text: view === "source" ? "Source" : "Preview",
+        onclick: (event) => {
+          panes.dataset.view = view
+          for (const button of event.target.parentElement.children)
+            button.setAttribute("aria-checked", String(button === event.target))
+        },
+      }),
+    ),
+  )
   const yamlProblems = h("ul", {
     class: "edit-problems",
     "aria-label": "Problems in the front matter",
@@ -236,7 +235,9 @@ export async function mountEdit(root) {
     problems.replaceChildren(...list.map((problem) => h("li", { text: problem })))
 
   let copyTimer = null
-  const editor = createSourceEditor(pane, start.text, {
+  // A notebook is edited by its cells (cells.js), anything else as its text.
+  const create = source.kind === "ipynb" ? createNotebookEditor : createSourceEditor
+  const editor = create(pane, start.text, {
     kind: source.kind,
     separator: lineSeparator(saved.text),
     readOnly: !source.can_edit,
@@ -274,8 +275,10 @@ export async function mountEdit(root) {
       )
     const body = preview?.contentDocument?.querySelector(".page-body")
     if (!body) return
-    const { html, title } = renderPreview(text, {
-      kind: source.kind,
+    const notebook = source.kind === "ipynb"
+    const markdown = notebook ? editor.previewMarkdown() : text
+    const { html, title } = renderPreview(markdown, {
+      kind: notebook ? "md" : source.kind,
       repo: source.repo,
       path: source.path,
       slug,
@@ -284,7 +287,7 @@ export async function mountEdit(root) {
     })
     // Sanitized already, and the frame runs no script.
     body.innerHTML = html
-    preview.contentDocument.querySelector("h1").textContent = title
+    preview.contentDocument.querySelector("h1").textContent = notebook ? "" : title
   }
   function schedulePreview() {
     clearTimeout(previewTimer)
@@ -476,6 +479,12 @@ export async function mountEdit(root) {
     refresh()
   }
   saveButton.onclick = () => void save()
+  // Ctrl/⌘+S saves from anywhere on the page (the editors handle it themselves first).
+  root.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.key !== "s") return
+    event.preventDefault()
+    void save()
+  })
 
   // A draft is saved on the site every two minutes while it has unsaved changes, and leaving the
   // page with some asks first (this browser keeps a copy either way).

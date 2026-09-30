@@ -109,6 +109,64 @@
       margin: 0 0 8px;
     }
   }
+  // A notebook, by its cells (frontend/edit/cells.js): the pane scrolls, each cell a card.
+  .edit-source.edit-notebook {
+    overflow: auto;
+    padding: 8px;
+  }
+  .edit-notebook-view {
+    margin: 0 0 8px;
+  }
+  .edit-json .cm-editor {
+    height: 62vh;
+  }
+  .edit-cell {
+    margin: 0 0 12px;
+    border: 1px solid var(--jqi-rule);
+    border-radius: 4px;
+    > header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 4px 12px;
+      padding: 3px 8px;
+      border-bottom: 1px solid var(--jqi-rule);
+      color: var(--jqi-muted);
+      font-size: 0.8rem;
+    }
+  }
+  .edit-cell-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    button.link {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--jqi-muted);
+      font-size: 0.8rem;
+      cursor: pointer;
+      &:hover:not(:disabled) {
+        color: #111;
+        text-decoration: underline;
+      }
+    }
+  }
+  .edit-cell-outputs {
+    max-height: 320px;
+    overflow: auto;
+    padding: 4px 8px;
+    border-top: 1px dashed var(--jqi-rule);
+    font-size: 0.8rem;
+    pre {
+      margin: 4px 0;
+      white-space: pre-wrap;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+  }
   // A difference from main's version, in the merge view: keep it, or take main's.
   .cm-chunkButtons button {
     padding: 1px 6px;

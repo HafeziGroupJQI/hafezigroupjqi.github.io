@@ -4,6 +4,7 @@
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands"
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
+import { python } from "@codemirror/lang-python"
 import { yamlFrontmatter } from "@codemirror/lang-yaml"
 import {
   LanguageDescription,
@@ -51,6 +52,64 @@ function language(kind) {
   })
 }
 
+/** Ctrl/⌘+S saves (the browser's own save would download the page). */
+const saveKey = (onSave) => ({
+  key: "Mod-s",
+  preventDefault: true,
+  run: () => {
+    onSave?.()
+    return true
+  },
+})
+
+const cellTheme = EditorView.theme({
+  "&": { fontSize: "0.88rem", backgroundColor: "#fafafa" },
+  ".cm-scroller": { fontFamily: "var(--codeFont, ui-monospace, monospace)", lineHeight: "1.45" },
+  "&.cm-focused": { outline: "1px solid #bbb" },
+  ".cm-content": { padding: "6px 8px" },
+})
+
+/**
+ * One notebook cell's editor (cells.js): its code (Python, the notebook's language) or its
+ * Markdown, with undo and search but no line numbers. `onChange(text)` follows every edit.
+ */
+export function createCellEditor(parent, text, { type, readOnly, onChange, onSave }) {
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc: text,
+      extensions: [
+        history(),
+        drawSelection(),
+        bracketMatching(),
+        search({ top: true }),
+        type === "code"
+          ? python()
+          : type === "markdown"
+            ? markdown({ base: markdownLanguage, codeLanguages: codeLanguage })
+            : [],
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        keymap.of([
+          saveKey(onSave),
+          indentWithTab,
+          ...searchKeymap,
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
+        EditorView.lineWrapping,
+        EditorView.contentAttributes.of({ "aria-label": `${type} cell` }),
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) onChange?.(update.state.doc.toString())
+        }),
+        cellTheme,
+      ],
+    }),
+  })
+  return { view, getText: () => view.state.doc.toString(), focus: () => view.focus() }
+}
+
 /**
  * Mount an editor for a file of `kind` (md, qmd, ipynb) in `parent`. `onChange(text)` follows
  * every edit, `onSave()` is Ctrl/⌘+S. Returns the view and what the page needs of it.
@@ -75,14 +134,7 @@ export function createSourceEditor(parent, text, { kind, separator, readOnly, on
         language(kind),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         keymap.of([
-          {
-            key: "Mod-s",
-            preventDefault: true,
-            run: () => {
-              onSave?.()
-              return true
-            },
-          },
+          saveKey(onSave),
           indentWithTab,
           ...searchKeymap,
           ...defaultKeymap,
@@ -105,6 +157,7 @@ export function createSourceEditor(parent, text, { kind, separator, readOnly, on
     setText: (next) =>
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } }),
     focus: () => view.focus(),
+    previewMarkdown: () => view.state.doc.toString(),
     /**
      * Mark where this text differs from `original` (main's newer version of the file): each
      * difference can be kept as the member wrote it, or taken from main. null ends it.

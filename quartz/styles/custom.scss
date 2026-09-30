@@ -4140,6 +4140,26 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
 .scratchpad.scratch-open .scratch-launcher {
   margin: 8px 0;
 }
+// Phones: the lab's frame edge to edge and as tall as the screen (dvh: no jump with the address
+// bar), the launch buttons on one line that scrolls sideways, so the frame starts near the top.
+@media (max-width: 699px) {
+  .scratchpad .scratch-frame {
+    width: 100vw;
+    margin-inline: calc(50% - 50vw);
+    height: calc(100dvh - 64px);
+    min-height: 420px;
+    border-inline: 0;
+    border-radius: 0;
+  }
+  .scratchpad .scratch-launchers {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .scratchpad .scratch-launchers > * {
+    flex: none;
+  }
+}
 .scratchpad .scratch-servers {
   margin-top: 24px;
 }

@@ -8,12 +8,14 @@
 // After rendering, the generated <stem>.md is post-processed:
 //   - the `format:` key (PDF-only options) is removed,
 //   - `title`/`tags` are guaranteed,
-//   - any header-includes <script> tags (Plotly, htmlwidgets) are moved into the body.
+//   - any header-includes <script> tags (Plotly, htmlwidgets) are moved into the body
+//     (tools/qmd-scripts.mjs).
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import yaml from "yaml"
+import { hoistScripts } from "./qmd-scripts.mjs"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const contentDir = fs.realpathSync(path.resolve(here, "..", process.env.CONTENT_DIR ?? "content"))
@@ -60,13 +62,11 @@ for (const qmd of qmds) {
   if (fm.date instanceof Date) fm.date = fm.date.toISOString().slice(0, 10)
   if (typeof fm.date === "string" && /^\d{4}-\d{2}-\d{2}T00:00:00(\.000)?Z$/.test(fm.date))
     fm.date = fm.date.slice(0, 10)
-  // header-includes: hoist script tags into the body so raw-HTML widgets work
+  // header-includes: hoist script tags into the body so raw-HTML widgets work (not Quarto's
+  // RequireJS and jQuery on a page that doesn't use them: they stop the graph view's d3)
   const hi = fm["header-includes"]
   if (hi) {
-    const scripts = (Array.isArray(hi) ? hi : [hi]).filter(
-      (s) => typeof s === "string" && /<script/i.test(s),
-    )
-    if (scripts.length) body = scripts.join("\n") + "\n\n" + body
+    body = hoistScripts(hi, body)
     delete fm["header-includes"]
   }
   fm.rendered_from = path.relative(contentDir, qmd).split(path.sep).join("/")

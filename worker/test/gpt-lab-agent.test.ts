@@ -450,6 +450,12 @@ describe("the lab's coding agent endpoint", () => {
     expect(LAB_PROMPT).toContain('{"kernelId": "<that id>", "code": "…"}')
   })
 
+  it("asks for math the lab's chat renders: dollar signs, not \\( or \\[", () => {
+    // The agent wrote \[ … \], which the chat showed as "[ \int … ]".
+    expect(LAB_PROMPT).toContain("$…$ inline and $$…$$")
+    expect(LAB_PROMPT).toContain("\\( \\) and \\[ \\] as plain text")
+  })
+
   it("sends the lab's section upstream with the agent's request", async () => {
     const system = [
       { type: "text", text: "You are Jupyternaut.", cache_control: { type: "ephemeral" } },

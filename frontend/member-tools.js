@@ -11,6 +11,7 @@ import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
 import { mountEditButton } from "./edit/link.js"
 import { mountFolderTools } from "./folder-tools.js"
+import { startFigures } from "./theme/figures.js"
 import { startThemeSync } from "./theme/sync.js"
 import { uploadsUrl } from "./uploads/model.js"
 
@@ -262,6 +263,7 @@ if (session.user) {
   updateMenu()
   // The member's own theme (frontend/theme/), kept current across tabs and devices.
   startThemeSync()
+  startFigures()
   const mount = (attr, setup) => {
     const node = document.querySelector(`[${attr}]`)
     if (node) setup(node)

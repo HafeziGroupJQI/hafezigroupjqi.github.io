@@ -53,3 +53,16 @@ $always: (
     mix-blend-mode: var(--fig-blend, normal);
   }
 }
+
+// "Original colors" under each matched figure (frontend/theme/figures.js).
+:root[data-figures="match"] .fig-toggle {
+  display: block;
+  margin: -18px 0 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-muted);
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}

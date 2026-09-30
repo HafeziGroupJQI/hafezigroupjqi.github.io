@@ -85,3 +85,28 @@ export function comparable(path, text) {
   } catch {}
   return text
 }
+
+/**
+ * A revision's Restore and Undo, links to the page editor (frontend/edit/), for members: restore
+ * the file as it was after the commit (not the newest, nor a deletion), or undo the commit's
+ * change (an edit of a Markdown or Quarto page). None when the page's Edit doesn't open the
+ * editor (`edit` is its tools row's data-edit-*: a Wolfram notebook or a file replaced whole).
+ */
+export function revertLinks(revision, index, edit, page = null) {
+  const { editRepo: repo, editPath: path, editMode: mode } = edit ?? {}
+  if (!repo || !path || mode === "file" || mode === "scratchpad") return []
+  if (!/^[0-9a-f]{40}$/.test(revision.commit ?? "")) return []
+  const link = (key) => {
+    const params = new URLSearchParams({ repo, path })
+    if (page) params.set("page", page)
+    params.set(key, revision.commit)
+    if (revision.path && revision.path !== path) params.set("from", revision.path)
+    return `/edit?${params}`
+  }
+  const links = []
+  if (index > 0 && revision.kind !== "delete")
+    links.push({ label: "Restore this version", href: link("restore") })
+  if (revision.kind === "edit" && revision.parent && /\.(?:md|qmd)$/i.test(path))
+    links.push({ label: "Undo this change", href: link("undo") })
+  return links
+}

@@ -12,6 +12,7 @@ import {
   revisionUrl,
   versionAt,
   versionBefore,
+  revertLinks,
 } from "./model.js"
 
 const SHA = "27305400641f27926908e3b3f3912eb4a6ca9d26"
@@ -91,4 +92,44 @@ test("compares a notebook as the Quarto document it reads as, not its JSON", () 
   assert.equal(comparable("code/broken.ipynb", "{not json"), "{not json")
   assert.equal(comparable("notes/a.md", "# A\n"), "# A\n")
   assert.equal(comparable("notes/a.md", null), "")
+})
+
+test("members get Restore and Undo on a page's revisions, where its editor opens", () => {
+  const sha = "b".repeat(40)
+  const parent = "c".repeat(40)
+  const edit = { editRepo: "vault", editPath: "content/a.md" }
+  const revision = { commit: sha, parent, path: "content/a.md", kind: "edit" }
+  assert.deepEqual(revertLinks(revision, 1, edit, "/a"), [
+    {
+      label: "Restore this version",
+      href: `/edit?repo=vault&path=content%2Fa.md&page=%2Fa&restore=${sha}`,
+    },
+    {
+      label: "Undo this change",
+      href: `/edit?repo=vault&path=content%2Fa.md&page=%2Fa&undo=${sha}`,
+    },
+  ])
+  // The newest is the page as it is: nothing to restore, but its change can be undone.
+  assert.deepEqual(
+    revertLinks(revision, 0, edit).map((link) => link.label),
+    ["Undo this change"],
+  )
+  // A file that moved since is restored from its old name.
+  assert.match(
+    revertLinks({ ...revision, path: "content/old.md", kind: "rename" }, 2, edit)[0].href,
+    /from=content%2Fold\.md$/,
+  )
+  assert.deepEqual(revertLinks({ ...revision, kind: "delete" }, 1, edit), [])
+  assert.deepEqual(revertLinks({ ...revision, kind: "new", parent: null }, 1, edit).length, 1)
+  // Notebooks are restored, not undone; a Wolfram notebook or a file replaced whole, neither.
+  assert.deepEqual(
+    revertLinks(revision, 1, { editRepo: "vault-private", editPath: "x/fit.ipynb" }).map(
+      (l) => l.label,
+    ),
+    ["Restore this version"],
+  )
+  assert.deepEqual(revertLinks(revision, 1, { ...edit, editMode: "scratchpad" }), [])
+  assert.deepEqual(revertLinks(revision, 1, { ...edit, editMode: "file" }), [])
+  assert.deepEqual(revertLinks(revision, 1, {}), [])
+  assert.deepEqual(revertLinks({ ...revision, commit: "abc" }, 1, edit), [])
 })

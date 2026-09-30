@@ -19,6 +19,7 @@ import {
   revisionUrl,
   versionAt,
   versionBefore,
+  revertLinks,
 } from "./model.js"
 
 // Signed-in members are shown the member edition (its pages carry .site-internal).
@@ -68,7 +69,7 @@ function diffStyles() {
   )
 }
 
-function historyDialog(url) {
+function historyDialog(url, edit = {}) {
   const title = h("h2", { id: "page-history-title", text: "History" })
   const close = h("button", {
     type: "button",
@@ -236,6 +237,12 @@ function historyDialog(url) {
               `From ${at} to now`,
               index === 0 || revision.kind === "delete",
             ),
+          // Members: open this version, or the page without this change, in the editor.
+          ...(members
+            ? revertLinks(revision, index, edit, location.pathname).map((link) =>
+                h("a", { class: "page-history__action", href: link.href, text: link.label }),
+              )
+            : []),
           h("a", {
             href: commitUrl(page.repo, revision.commit),
             text: revision.commit.slice(0, 7),
@@ -348,7 +355,7 @@ export function mountPageHistory(tools) {
   let panel = null
   const open = () => {
     if (!panel) {
-      panel = historyDialog(url)
+      panel = historyDialog(url, tools.dataset)
       document.body.append(panel.dialog)
     }
     if (!panel.dialog.open) panel.dialog.showModal()

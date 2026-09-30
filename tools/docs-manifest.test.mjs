@@ -99,7 +99,12 @@ test("uncommitted documents are reported and stray manifest files are pruned", (
     fs.writeFileSync(path.join(output, "resources", "files", "scripts", "run.py"), "print(1)\n")
     fs.writeFileSync(path.join(output, "resources", "files", "scripts", "index.html"), "<p>")
     fs.writeFileSync(path.join(output, "resources", "files", "scripts", "figure.png"), "png")
+    // A page's revisions (page-history) sit beside it: the members deploy refused them once.
+    fs.writeFileSync(path.join(output, "resources", "files", "scripts", "index.history.json"), "[]")
     assert.equal(pruneDocuments(output, manifest), 1)
+    assert.ok(
+      fs.existsSync(path.join(output, "resources", "files", "scripts", "index.history.json")),
+    )
     assert.ok(!fs.existsSync(path.join(output, "resources", "files", "scripts", "run.py")))
     assert.ok(fs.existsSync(path.join(output, "resources", "files", "scripts", "index.html")))
     fs.writeFileSync(path.join(output, "resources", "files", "scripts", "stray.txt"), "x")

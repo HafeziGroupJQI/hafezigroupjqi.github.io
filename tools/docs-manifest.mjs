@@ -114,12 +114,16 @@ export function untrackedDocuments(stageDir, manifest, prefix = "resources") {
     .filter((relative) => !(slugifyFilePath(relative) in manifest))
 }
 
+// A page's revisions, which the build writes beside it (quartz/plugins/local/page-history).
+const isPageHistory = (file) => file.endsWith(".history.json")
+
 // Remove any manifest document that still reached the built site (Quartz ignores their
-// extensions, so this is a safety net) and refuse anything else that is not a page or image.
+// extensions, so this is a safety net) and refuse anything else that is not a page, a page's
+// history or an image.
 export function pruneDocuments(outputDir, manifest, prefix = "resources") {
   let pruned = 0
   for (const file of walk(path.join(outputDir, prefix))) {
-    if (file.endsWith(".html") || !isDocument(file)) continue
+    if (file.endsWith(".html") || isPageHistory(file) || !isDocument(file)) continue
     const relative = normalize(path.relative(outputDir, file))
     if (!(relative in manifest))
       throw new Error(`untracked document in the private vault (commit it first): ${relative}`)

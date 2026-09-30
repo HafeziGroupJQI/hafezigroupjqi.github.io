@@ -230,4 +230,40 @@ describe("admin console", () => {
     const after = await owner.json("/api/admin/usage")
     expect(after.body.members.find((m: any) => m.login === "frank")).toBeUndefined()
   })
+
+  it("splits a month's GPT usage by model and source, ghost text apart, and by day", async () => {
+    const owner = await as("olivia", "owner")
+    const insert = env.DB.prepare(
+      `INSERT INTO gpt_usage_daily
+         (login, day, model, source, input, output, cache_read, cache_write, cost_usd, requests)
+       VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+    )
+    const haiku = "claude-haiku-4-5-20251001"
+    await env.DB.batch([
+      insert.bind("gia", "2031-02-01", haiku, "completion", 100, 10, 0.25, 40),
+      insert.bind("hal", "2031-02-01", haiku, "completion", 50, 5, 0.125, 20),
+      insert.bind("gia", "2031-02-03", "claude-sonnet-5", "agent", 1000, 100, 3, 2),
+      insert.bind("gia", "2031-02-03", "offline", "chat", 0, 0, 0, 1),
+      insert.bind("gia", "2031-03-01", "claude-sonnet-5", "chat", 9, 9, 9, 9), // the next month
+    ])
+    const { body } = await owner.json("/api/admin/usage?month=2031-02")
+    const sums = (input: number, output: number, cost_usd: number, requests: number) => ({
+      input,
+      output,
+      cache_read: 0,
+      cache_write: 0,
+      cost_usd,
+      requests,
+    })
+    expect(body.models).toEqual([
+      { model: "claude-sonnet-5", label: "Sonnet 5", source: "agent", ...sums(1000, 100, 3, 2) },
+      { model: haiku, label: "Haiku 4.5", source: "completion", ...sums(150, 15, 0.375, 60) },
+      { model: "offline", label: "offline", source: "chat", ...sums(0, 0, 0, 1) },
+    ])
+    expect(body.days.map((d: any) => [d.day, d.label, d.source, d.cost_usd, d.requests])).toEqual([
+      ["2031-02-01", "Haiku 4.5", "completion", 0.375, 60],
+      ["2031-02-03", "Sonnet 5", "agent", 3, 2],
+      ["2031-02-03", "offline", "chat", 0, 1],
+    ])
+  })
 })

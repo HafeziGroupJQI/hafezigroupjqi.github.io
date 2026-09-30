@@ -2,6 +2,7 @@ import { requireMutation } from "../auth"
 import { type Auditor, requireAdmin } from "../audit"
 import type { Env } from "../env"
 import { displayTurns } from "../gpt/chat"
+import { AGENT_MODELS } from "../gpt/lab-agent"
 import { GptStore } from "../gpt/store"
 import { HttpError, decodeSegment, json, readJson } from "../http"
 import { decideClaim, pendingClaims } from "../profile/routes"
@@ -190,7 +191,27 @@ export async function adminRoutes(
     )
       .bind(m)
       .all()
-    return json({ month: m, members: results })
+    // The month by model and source (ghost text apart), and by day: gpt_usage_daily, counted
+    // since migration 0015.
+    const sums = `SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cache_read,
+      SUM(cache_write) AS cache_write, SUM(cost_usd) AS cost_usd, SUM(requests) AS requests
+      FROM gpt_usage_daily WHERE day BETWEEN ?1 || '-01' AND ?1 || '-31'`
+    const [models, days] = await env.DB.batch<{ model: string }>([
+      env.DB.prepare(
+        `SELECT model, source, ${sums} GROUP BY model, source ORDER BY cost_usd DESC, model, source`,
+      ).bind(m),
+      env.DB.prepare(
+        `SELECT day, model, source, ${sums} GROUP BY day, model, source ORDER BY day, model, source`,
+      ).bind(m),
+    ])
+    const labelled = (rows: Array<{ model: string }>) =>
+      rows.map((row) => ({ ...row, label: AGENT_MODELS[row.model]?.label ?? row.model }))
+    return json({
+      month: m,
+      members: results,
+      models: labelled(models.results),
+      days: labelled(days.results),
+    })
   }
 
   const budget = path.match(/^\/budgets\/([^/]+)$/)

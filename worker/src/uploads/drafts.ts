@@ -130,6 +130,8 @@ export function draftView(repo: string, row: DraftRow, changes: ChangeRow[]) {
     summary: row.summary,
     note: row.note,
     status: row.status,
+    // Counts its saves: the editor names the one it typed over (src/edit/routes.ts).
+    version: row.version ?? 0,
     title: row.title,
     created_at: row.created_at,
     edited_at: row.edited_at,

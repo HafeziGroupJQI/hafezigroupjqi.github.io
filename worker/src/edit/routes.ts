@@ -210,16 +210,24 @@ export async function editRoutes(
     await env.ARTIFACTS.put(stagedKey(id, file), text, {
       httpMetadata: { contentType: CONTENT_TYPES[kind] },
     })
-    await env.DB.batch([
+    // One live edit of a page per member: two first saves at once (two tabs, two devices) make
+    // one draft, not two that would later overwrite each other. The check above is for the
+    // message; this one is in the same statement as the insert.
+    const [inserted] = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO upload_drafts
            (id, login, repo, kind, summary, note, created_at, edited_at, updated_at)
-         VALUES (?, ?, ?, 'edit', ?, '', ?, ?, ?)`,
-      ).bind(id, session.login, name, summary, now, now, now),
+         SELECT ?1, ?2, ?3, 'edit', ?4, '', ?5, ?5, ?5
+         WHERE NOT EXISTS (
+           SELECT 1 FROM upload_drafts d JOIN upload_changes c ON c.draft_id = d.id
+           WHERE d.login = ?2 COLLATE NOCASE AND d.kind = 'edit' AND d.repo = ?3 AND c.path = ?6
+             AND d.${LIVE_SQL})`,
+      ).bind(id, session.login, name, summary, now, file),
       env.DB.prepare(
         `INSERT INTO upload_changes
            (draft_id, path, action, from_path, base_sha, size, content_type, review, staged_at)
-         VALUES (?, ?, 'replace', NULL, ?, ?, ?, ?, ?)`,
+         SELECT ?1, ?2, 'replace', NULL, ?3, ?4, ?5, ?6, ?7
+         WHERE EXISTS (SELECT 1 FROM upload_drafts WHERE id = ?1)`,
       ).bind(
         id,
         file,
@@ -230,6 +238,11 @@ export async function editRoutes(
         now,
       ),
     ])
+    if (!inserted.meta.changes) {
+      await env.ARTIFACTS.delete(stagedKey(id, file))
+      const other = await liveEdit(env, session.login, name, file)
+      return json({ detail: "you already have a draft of this page", draft: other?.row.id }, 409)
+    }
     record("edit.create", file, { draft: id, repo: name })
     const row = (await draftRow(env, id))!
     return json({ ...(await view(row)), base_sha: base, problems: report.problems }, 201)
@@ -269,6 +282,20 @@ export async function editRoutes(
     const base = "base_sha" in body ? blobSha(body.base_sha) : null
     if (text === null && summary === null && base === null)
       throw new HttpError(422, "send the text, the summary or a base_sha")
+    // A save names the version it was typed over: one made over an older version (a stale tab,
+    // another device) is refused with the newer text, so it is never overwritten unseen.
+    if ("version" in body && body.version !== row.version)
+      return json(
+        {
+          detail: "you saved a newer version of this draft somewhere else",
+          kind: "stale",
+          text: await stagedText(env, row, change.path),
+          summary: row.summary,
+          version: row.version,
+          edited_at: row.edited_at,
+        },
+        409,
+      )
     if (base !== null && (await repoOf(row.repo).file(change.path))?.sha !== base)
       throw new HttpError(409, "that isn't main's version of the page; load it again")
     const statements: D1PreparedStatement[] = []
@@ -297,11 +324,9 @@ export async function editRoutes(
         ).bind(base, row.id, change.path),
       )
     statements.push(
-      env.DB.prepare("UPDATE upload_drafts SET edited_at = ?, updated_at = ? WHERE id = ?").bind(
-        now,
-        now,
-        row.id,
-      ),
+      env.DB.prepare(
+        "UPDATE upload_drafts SET edited_at = ?, updated_at = ?, version = version + 1 WHERE id = ?",
+      ).bind(now, now, row.id),
     )
     await env.DB.batch(statements)
     record("edit.save", change.path, { draft: row.id, fields: Object.keys(body) })

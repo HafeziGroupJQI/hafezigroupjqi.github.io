@@ -59,6 +59,10 @@ const when = (at, locale) =>
     minute: "2-digit",
   })
 
+/** What to say when the draft was saved somewhere else since this tab loaded it. */
+export const staleNotice = (newer, locale = undefined) =>
+  `You saved a newer version of this draft somewhere else (${when(newer.edited_at, locale)}). Use that version, or keep the text in this window and save it over that one.`
+
 /** Where the member's draft stands, in a sentence. */
 export function draftStatus(draft, now = Date.now(), locale = undefined) {
   if (!draft) return "Not saved yet."

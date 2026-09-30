@@ -10,6 +10,7 @@ import {
   othersNotice,
   sendHint,
   sendLabel,
+  staleNotice,
   startingText,
   storageKey,
 } from "./model.js"
@@ -176,5 +177,12 @@ test("others' drafts of the same file are named, with when they go in", () => {
       NOW,
     ),
     /Other members have .*: eve \(not sent yet\) and bob \(failed\)\./,
+  )
+})
+
+test("a save over a newer one made elsewhere says when that one was made", () => {
+  assert.match(
+    staleNotice({ edited_at: NOW }, "en-US"),
+    /^You saved a newer version of this draft somewhere else \(Sep 29, .*\)\. Use that version/,
   )
 })

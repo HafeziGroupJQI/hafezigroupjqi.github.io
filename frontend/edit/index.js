@@ -20,6 +20,7 @@ import {
   othersNotice,
   sendHint,
   sendLabel,
+  staleNotice,
   startingText,
   storageKey,
 } from "./model.js"
@@ -340,7 +341,7 @@ export async function mountEdit(root) {
       const answer = draft
         ? await call(`/api/edit/drafts/${draft.id}`, {
             method: "PUT",
-            body: JSON.stringify({ text, summary: summary.value }),
+            body: JSON.stringify({ text, summary: summary.value, version: draft.version }),
           })
         : await call("/api/edit/drafts", {
             method: "POST",
@@ -352,6 +353,10 @@ export async function mountEdit(root) {
               summary: summary.value,
             }),
           })
+      if (answer.status === 409 && answer.body.kind === "stale") {
+        stale(answer.body)
+        return false
+      }
       if (!answer.ok) {
         say(answer.body.detail ?? `Saving failed (${answer.status}).`, true)
         return false
@@ -366,6 +371,44 @@ export async function mountEdit(root) {
       busy = false
       refresh()
     }
+  }
+
+  // This draft was saved somewhere else since this tab loaded it (another tab or device): the
+  // member picks which text stays. Nothing is overwritten until they do.
+  let staleNote = null
+  function stale(newer) {
+    say("You saved a newer version of this draft somewhere else.", true)
+    staleNote?.remove()
+    staleNote = h(
+      "div",
+      { class: "settings-pending", role: "alert" },
+      h("p", { text: staleNotice(newer) }),
+      h("button", {
+        type: "button",
+        text: "Use that version",
+        onclick: () => {
+          draft = { ...draft, version: newer.version, edited_at: newer.edited_at, text: newer.text }
+          saved = { text: newer.text, summary: newer.summary ?? saved.summary }
+          summary.value = saved.summary
+          editor.setText(newer.text)
+          browserCopy.drop(key)
+          staleNote.remove()
+          say("This is the version you saved last.")
+          refresh()
+        },
+      }),
+      h("button", {
+        type: "button",
+        text: "Keep this one",
+        onclick: () => {
+          draft = { ...draft, version: newer.version }
+          staleNote.remove()
+          void save()
+        },
+      }),
+    )
+    notices.append(staleNote)
+    staleNote.scrollIntoView({ block: "nearest" })
   }
 
   // Someone changed the file on main since this draft's base: mark each difference to keep or
@@ -388,7 +431,12 @@ export async function mountEdit(root) {
             const text = editor.getText()
             const answer = await call(`/api/edit/drafts/${draft.id}`, {
               method: "PUT",
-              body: JSON.stringify({ base_sha: incoming.sha, text, summary: summary.value }),
+              body: JSON.stringify({
+                base_sha: incoming.sha,
+                text,
+                summary: summary.value,
+                version: draft.version,
+              }),
             })
             if (!answer.ok) return say(answer.body.detail ?? "That didn't save.", true)
             took(answer.body, text)

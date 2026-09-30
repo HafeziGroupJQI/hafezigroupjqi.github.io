@@ -90,6 +90,19 @@ describe("compute frames and tokens (shared vectors)", () => {
     expect(await sign(tokens.valid.claims, secret)).toBe(tokens.valid.token)
     for (const bad of [tokens.tampered, tokens.expired, tokens.wrong_typ, tokens.wrong_aud])
       expect(await verifyAssertion(bad, secret)).toBeNull()
+    // An admin's read of one member's code names the member; other assertions name no one.
+    expect(await verifyAssertion(tokens.admin_read.token, secret)).toEqual(tokens.admin_read.claims)
+    expect(await sign(tokens.admin_read.claims, secret)).toBe(tokens.admin_read.token)
+    const plain = await verifyAssertion(
+      await issueAssertion(workerEnv, { login: "olivia", role: "owner" }),
+      secret,
+    )
+    expect(plain).not.toHaveProperty("admin_read")
+    const read = await verifyAssertion(
+      await issueAssertion(workerEnv, { login: "Olivia", role: "member" }, "Alice"),
+      secret,
+    )
+    expect(read).toMatchObject({ login: "olivia", role: "member", admin_read: "alice" })
   })
 
   it("issues 60 s assertions and session-bounded tickets", async () => {
@@ -1260,3 +1273,149 @@ describe(
     })
   },
 )
+
+describe("the admin console's Code tab: a member's code, read-only", { timeout: 30_000 }, () => {
+  let host: FakeHost
+  const exp = () => Math.floor(Date.now() / 1000) + 3600
+  const bearer = (login: string, role: "member" | "owner", extra: object = {}) =>
+    sign(
+      { typ: "session", login, name: login, role, exp: exp(), ...extra },
+      workerEnv.SESSION_SECRET,
+    )
+  /** GET an admin route with `token`, owner access on (COMPUTE_OWNER_ACCESS) unless `access` is false. */
+  const get = async (token: string, path: string, access = true) => {
+    const ctx = createExecutionContext()
+    const response = await (worker as ExportedHandler).fetch!(
+      new Request(`${ORIGIN}${path}`, {
+        headers: { authorization: `Bearer ${token}`, origin: SITE },
+      }) as any,
+      { ...env, ...(access ? { COMPUTE_OWNER_ACCESS: "true" } : {}) } as any,
+      ctx,
+    )
+    await waitOnExecutionContext(ctx)
+    return { status: response.status, body: (await response.json()) as any }
+  }
+  /** The host answers its next `op` with `result` (or an error), handing back what it was asked. */
+  const answer = (op: string, result: unknown, error?: string) =>
+    host
+      .next((f) => f.type === FrameType.CONTROL && readJsonPayload<any>(f).op === op)
+      .then((frame) => {
+        const rpc = readJsonPayload<any>(frame)
+        host.send(
+          jsonFrame(FrameType.CONTROL_RESULT, 0, {
+            rpc_id: rpc.rpc_id,
+            ...(error ? { ok: false, error } : { ok: true, result }),
+            done: true,
+          }),
+        )
+        return rpc
+      })
+  const controls = () => host.frames.filter(ofType(FrameType.CONTROL))
+  const codeRows = async (login: string) =>
+    (
+      await env.DB.prepare(
+        "SELECT action, target, detail_json FROM audit_log WHERE login = ? AND action LIKE 'admin.compute.%' ORDER BY id",
+      )
+        .bind(login)
+        .all()
+    ).results as any[]
+
+  beforeAll(async () => {
+    host = await connectHost()
+    await env.DB.prepare(
+      "INSERT INTO admins (login, added_by, added_at) VALUES ('pat', 'ursula', ?)",
+    )
+      .bind(Date.now())
+      .run()
+  })
+  afterAll(() => host?.ws.close())
+
+  it("is closed to members, lab sessions and lab tickets", async () => {
+    const quinn = await bearer("quinn", "member")
+    const labSession = await bearer("ursula", "owner", { lab: true })
+    const ticket = await issueLabTicket(
+      workerEnv,
+      { login: "ursula", role: "owner", exp: exp() },
+      "ursula",
+    )
+    for (const path of ["/api/admin/compute/members", "/api/admin/compute/sessions?login=nell"]) {
+      expect((await get(quinn, path)).status).toBe(403)
+      expect((await get(labSession, path)).status).toBe(403)
+      expect((await get(ticket, path)).status).toBe(401)
+    }
+    expect(controls()).toHaveLength(0)
+  })
+
+  it("lists members, the latest to use the Scratchpad first", async () => {
+    const now = Date.now()
+    const rows = [
+      ["nell", "auth.login", now - 5000],
+      ["nell", "compute.start", now - 4000],
+      ["omar", "auth.login", now - 3000],
+      ["pia", "compute.start", now - 1000],
+    ] as const
+    for (const [login, action, at] of rows)
+      await env.DB.prepare("INSERT INTO audit_log (at, login, action) VALUES (?, ?, ?)")
+        .bind(at, login, action)
+        .run()
+    const ursula = await bearer("ursula", "owner")
+    const { status, body } = await get(ursula, "/api/admin/compute/members")
+    expect(status).toBe(200)
+    const logins = body.members.map((m: any) => m.login)
+    expect(logins.indexOf("pia")).toBeLessThan(logins.indexOf("nell"))
+    expect(logins.indexOf("nell")).toBeLessThan(logins.indexOf("omar"))
+    expect(body.members.find((m: any) => m.login === "nell")).toMatchObject({
+      last_start: now - 4000,
+      last_login: now - 5000,
+    })
+    expect(body.access).toBe(true)
+    expect((await get(ursula, "/api/admin/compute/members", false)).body.access).toBe(false)
+  })
+
+  it("reads a member's live sessions for any admin, naming the member, and records it", async () => {
+    const pat = await bearer("pat", "member") // promoted, not an org owner
+    const live = {
+      login: "nell",
+      server: "running",
+      status: { started: "2026-09-29T19:00:00Z", last_activity: null, connections: 1, kernels: 1 },
+      sessions: [{ id: "s1", path: "rings.ipynb", name: "rings.ipynb", type: "notebook" }],
+      kernels: [{ id: "k1", name: "hafezi-base", execution_state: "idle" }],
+      terminals: [],
+    }
+    const asked = answer("admin_sessions", live)
+    const { status, body } = await get(pat, "/api/admin/compute/sessions?login=Nell")
+    expect(status).toBe(200)
+    expect(body).toEqual(live)
+    const rpc = await asked
+    expect(rpc.args).toEqual({ login: "nell" })
+    expect(await verifyAssertion(rpc.assertion, vectors.secret)).toMatchObject({
+      login: "pat",
+      role: "member",
+      admin_read: "nell",
+    })
+    expect(await codeRows("pat")).toEqual([
+      { action: "admin.compute.sessions", target: "nell", detail_json: null },
+    ])
+    // What the host refuses reaches the admin as its reason.
+    const refused = answer(
+      "admin_sessions",
+      null,
+      "reading members' code is off on the compute host",
+    )
+    const off = await get(pat, "/api/admin/compute/sessions?login=nell")
+    await refused
+    expect(off.status).toBe(502)
+    expect(off.body.detail).toBe("reading members' code is off on the compute host")
+  })
+
+  it("refuses a bad login, or owner access off, before asking the host or recording", async () => {
+    const ursula = await bearer("ursula", "owner")
+    expect((await get(ursula, "/api/admin/compute/sessions?login=../x")).status).toBe(422)
+    expect((await get(ursula, "/api/admin/compute/sessions")).status).toBe(422)
+    const off = await get(ursula, "/api/admin/compute/sessions?login=nell", false)
+    expect(off.status).toBe(403)
+    expect(off.body.detail).toContain("COMPUTE_OWNER_ACCESS")
+    expect(controls()).toHaveLength(0)
+    expect(await codeRows("ursula")).toEqual([])
+  })
+})

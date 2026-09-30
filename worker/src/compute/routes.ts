@@ -243,11 +243,12 @@ async function control(
   op: string,
   args: unknown,
   options: Partial<ControlRequest> = {},
+  adminRead?: string,
 ): Promise<Response> {
   const body: ControlRequest = {
     op,
     args,
-    assertion: await issueAssertion(env, session),
+    assertion: await issueAssertion(env, session, adminRead),
     login: session.login.toLowerCase(),
     ...options,
   }
@@ -256,6 +257,22 @@ async function control(
     body: JSON.stringify(body),
   })
   return withPrivateHeaders(response)
+}
+
+/**
+ * A read-only op an admin runs on one member's code (the admin console's Code tab,
+ * src/admin/routes.ts, which checks the caller is an admin and records the read). The assertion
+ * names the member (admin_read), and the host serves its admin_* ops for that member only.
+ */
+export function adminControl(
+  env: Env,
+  session: Session,
+  member: string,
+  op: string,
+  args: Record<string, unknown>,
+  options: Partial<ControlRequest> = {},
+): Promise<Response> {
+  return control(env, session, op, { ...args, login: member }, options, member)
 }
 
 function requireOwner(session: Session): void {

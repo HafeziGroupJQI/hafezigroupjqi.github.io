@@ -17,6 +17,9 @@ export interface Assertion {
   aud: typeof ASSERTION_AUDIENCE
   login: string
   role: "member" | "owner"
+  /** An admin reading one member's code (the admin console's Code tab): that member. The host
+   *  serves its read-only admin_* ops only for the member named here. */
+  admin_read?: string
   iat: number
   exp: number
 }
@@ -30,13 +33,18 @@ export function assertionSecret(env: Env): string {
   return env.COMPUTE_ASSERTION_SECRET
 }
 
-export async function issueAssertion(env: Env, principal: Principal): Promise<string> {
+export async function issueAssertion(
+  env: Env,
+  principal: Principal,
+  adminRead?: string,
+): Promise<string> {
   const iat = now()
   const claims: Assertion = {
     typ: "compute",
     aud: ASSERTION_AUDIENCE,
     login: principal.login.toLowerCase(),
     role: principal.role,
+    ...(adminRead ? { admin_read: adminRead.toLowerCase() } : {}),
     iat,
     exp: iat + ASSERTION_TTL,
   }

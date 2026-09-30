@@ -15,7 +15,19 @@
     "tampered": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.d0fct4L_QEHBJXqJ47GWx5X0n9NTSg89sWIFTx1hXAA",
     "expired": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjoxMDAwfQ.g791poorQWYJij38F7-s4BbM5WzbAjX5UP5eQPDg8dM",
     "wrong_typ": "eyJ0eXAiOiJzZXNzaW9uIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.b5lRzCnraaqE6nPEglMJqQZwfoDiPvOMsZ-5jyIWK74",
-    "wrong_aud": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoib3RoZXIiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.8_hiEizuKtn6rMygkNx4pwWklcjEiqNDX3izgzxPzzA"
+    "wrong_aud": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoib3RoZXIiLCJsb2dpbiI6ImFsaWNlIiwicm9sZSI6Im1lbWJlciIsImlhdCI6MTc5MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.8_hiEizuKtn6rMygkNx4pwWklcjEiqNDX3izgzxPzzA",
+    "admin_read": {
+      "token": "eyJ0eXAiOiJjb21wdXRlIiwiYXVkIjoiaGFmZXppLWNvbXB1dGUiLCJsb2dpbiI6Im9saXZpYSIsInJvbGUiOiJtZW1iZXIiLCJhZG1pbl9yZWFkIjoiYWxpY2UiLCJpYXQiOjE3OTAwMDAwMDAsImV4cCI6NDEwMjQ0NDgwMH0.-ggFjDJ8IsiV_KUkN6iRKGicgJN0B_8w-Xi9_JWNqaM",
+      "claims": {
+        "typ": "compute",
+        "aud": "hafezi-compute",
+        "login": "olivia",
+        "role": "member",
+        "admin_read": "alice",
+        "iat": 1790000000,
+        "exp": 4102444800
+      }
+    }
   },
   "host_key": {
     "key": "hk_test_0123456789",

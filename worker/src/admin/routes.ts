@@ -1,5 +1,6 @@
 import { requireMutation } from "../auth"
 import { type Auditor, requireAdmin } from "../audit"
+import { adminControl } from "../compute/routes"
 import type { Env } from "../env"
 import { displayTurns } from "../gpt/chat"
 import { AGENT_MODELS } from "../gpt/lab-agent"
@@ -13,11 +14,21 @@ import { discard, draftRow, liveDrafts } from "../uploads/drafts"
 import { PrivateVault } from "../uploads/github"
 
 // Group-admin console: the audit log, the admin allow-list, Hafezi GPT usage + budgets,
-// members' claims of People pages, members' upload drafts, and members' Hafezi GPT conversations (read-only). Everything here is admin-only (org owners, or
-// members an admin promoted).
+// members' claims of People pages, members' upload drafts, members' Hafezi GPT conversations and
+// members' code on the compute host (both read-only). Everything here is admin-only (org owners,
+// or members an admin promoted).
 
 const PAGE = 100
 const LOGIN = /^[A-Za-z0-9-]{1,39}$/
+// A login as the compute host takes it (its LOGIN_RE).
+const MEMBER = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/
+
+/** The member a Code tab read is for (?login=). */
+function memberParam(url: URL): string {
+  const login = (url.searchParams.get("login") ?? "").trim().toLowerCase()
+  if (!MEMBER.test(login)) throw new HttpError(422, "login must be a GitHub login")
+  return login
+}
 
 export interface AuditRow {
   id: number
@@ -308,6 +319,28 @@ export async function adminRoutes(
     if (!row) throw new HttpError(404, "no such conversation")
     const turns = displayTurns(await new GptStore(env.DB).messages(id))
     return json({ conversation: row, turns })
+  }
+
+  // ---- members' code on the compute host (read-only; every read recorded) ----
+  // Unlike the conversations above, each read writes an admin.compute.<view> row. The host serves
+  // them only for an assertion naming the member, and only while owner access is on there too.
+  if (path === "/compute/members" && request.method === "GET") {
+    // Everyone seen signing in, the ones who used the Scratchpad most recently first.
+    const { results } = await env.DB.prepare(
+      `SELECT login, MAX(CASE WHEN action = 'compute.start' THEN at END) AS last_start,
+              MAX(CASE WHEN action = 'auth.login' THEN at END) AS last_login
+       FROM audit_log WHERE action IN ('auth.login', 'compute.start')
+       GROUP BY login ORDER BY last_start IS NULL, last_start DESC, login`,
+    ).all()
+    return json({ members: results, access: env.COMPUTE_OWNER_ACCESS === "true" })
+  }
+
+  if (path === "/compute/sessions" && request.method === "GET") {
+    const login = memberParam(url)
+    if (env.COMPUTE_OWNER_ACCESS !== "true")
+      throw new HttpError(403, "reading members' code is off (COMPUTE_OWNER_ACCESS)")
+    record("admin.compute.sessions", login)
+    return adminControl(env, session, login, "admin_sessions", {}, { timeout_ms: 20_000 })
   }
 
   throw new HttpError(404, "not found")

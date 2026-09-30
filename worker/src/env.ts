@@ -43,7 +43,8 @@ export interface Env {
   COMPUTE_LIMIT?: RateLimit
   /** Optional rate limit for the lab's ghost-text completions (src/gpt/lab-agent.ts). */
   COMPLETE_LIMIT?: RateLimit
-  /** "true" lets owners open any member's server (every such request is logged). */
+  /** "true" lets owners open any member's server (every such request is logged), and admins read
+   *  members' live sessions and code history in /admin (every read is audited). */
   COMPUTE_OWNER_ACCESS?: string
 }
 

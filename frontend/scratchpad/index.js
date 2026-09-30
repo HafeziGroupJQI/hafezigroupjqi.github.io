@@ -2,7 +2,9 @@
 // itself is an iframe on its own origin (the Worker's, /lab/<ticket>/jupyter/user/<login>/lab), so
 // code running in it can never reach this site or the members token; the two talk only through
 // postMessage with explicit origins. This page shows host status, starts and stops the member's
-// server, and launches consoles and documents into the iframe.
+// server, and launches consoles and documents into the iframe: by message to a lab already running
+// there (it says when it's ready and acks each request), else by loading the lab with the request
+// in its URL.
 // member-tools.js lazy-loads mountScratchpad() with its api() (JSON + 401 → login) and the session.
 
 import { h, present, setText } from "../dashboard/dom.js"
@@ -16,6 +18,9 @@ import {
   describeStatus,
   formatMemory,
   keepProfile,
+  launchMessage,
+  launchPlan,
+  launchRef,
   launchUrl,
   ownProfiles,
   pendingStatus,
@@ -30,6 +35,8 @@ export function mountScratchpad(root, { api, session }) {
   const isOwner = session.user.role === "owner"
   let status = null
   let busy = false
+  // Whether the lab now loaded in the frame said it takes launches by message (launch.js).
+  let labReady = false
 
   // ---- chrome ----
   root.replaceChildren()
@@ -241,6 +248,12 @@ export function mountScratchpad(root, { api, session }) {
     noteProfile("")
     try {
       const chosen = await chosenProfile()
+      // A lab that is up in the frame opens it where it is, with no reload.
+      if (await askLab(launchMessage(id, chosen, pending ?? "", nextRef()))) {
+        pending = null
+        await refresh()
+        return
+      }
       await ensureServer(chosen)
       open(launchUrl(status.lab, id, chosen, pending ?? ""))
       pending = null
@@ -259,6 +272,7 @@ export function mountScratchpad(root, { api, session }) {
   // The site's GPT button hides while the lab in the frame has its own panel (it says so once it
   // has loaded), so it comes back with each new lab and when the lab closes.
   function open(url) {
+    labReady = false
     frame.hidden = false
     frame.src = url
     root.classList.add("scratch-open")
@@ -266,11 +280,37 @@ export function mountScratchpad(root, { api, session }) {
   }
 
   function close() {
+    labReady = false
     frame.hidden = true
     frame.removeAttribute("src")
     root.classList.remove("scratch-open")
     setLauncherHidden(false)
   }
+
+  // ---- the lab in the frame, asked by message (launch.js) ----
+  // Ready once the lab now loaded in the frame says so; a load of anything else, or a lab that
+  // doesn't ack in time, makes the page load the lab at the request's URL instead.
+  let refs = 0
+  const nextRef = () => launchRef(++refs)
+  const acks = new Map()
+  frame.addEventListener("load", () => (labReady = false))
+  function sendToLabAndWait(message, ms = 3000) {
+    return new Promise((resolve) => {
+      const done = (ok) => {
+        clearTimeout(timer)
+        acks.delete(message.ref)
+        resolve(ok)
+      }
+      const timer = setTimeout(() => done(false), ms)
+      acks.set(message.ref, () => done(true))
+      toLab(message)
+    })
+  }
+  // Whether the running lab took the request (false: navigate instead).
+  const askLab = async (message) =>
+    !!message &&
+    launchPlan({ labReady, running: status?.server?.server === "running" }) === "message" &&
+    (await sendToLabAndWait(message))
 
   async function stopServer() {
     if (!confirm("Stop your server? Unsaved notebook changes are lost.")) return
@@ -448,7 +488,8 @@ export function mountScratchpad(root, { api, session }) {
       url.searchParams.delete("fork")
       url.searchParams.set("open", data.path)
       history.replaceState(history.state, "", url)
-      open(launchUrl(status.lab, null, profile.value, data.path))
+      if (!(await askLab(launchMessage(null, profile.value, data.path, nextRef()))))
+        open(launchUrl(status.lab, null, profile.value, data.path))
       await refresh()
       refreshServers()
     } catch (error) {
@@ -487,6 +528,9 @@ export function mountScratchpad(root, { api, session }) {
     if (event.origin !== labOrigin() || event.source !== frame.contentWindow) return
     const data = event.data
     if (data?.type === "hafezi-theme:ready") toLab(theme())
+    // The lab can open launchers and files by message from now until the frame loads again.
+    if (data?.type === "hafezi-lab:ready" && data.launch >= 1) labReady = true
+    if (data?.type === "hafezi-launch:ack") acks.get(data.ref)?.()
     // The lab has Hafezi GPT in its own panel (its Ctrl/⌘+J opens it): no site button over it.
     // Ctrl/⌘+J outside the frame still opens the site's modal.
     if (data?.type === "hafezi-gpt:panel") setLauncherHidden(true)

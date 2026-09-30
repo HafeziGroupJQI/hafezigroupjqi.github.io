@@ -7,6 +7,9 @@ import {
   formatMemory,
   keepProfile,
   kernelFor,
+  launchMessage,
+  launchPlan,
+  launchRef,
   launchUrl,
   ownProfiles,
   pendingStatus,
@@ -34,6 +37,45 @@ test("launchers open the member's own lab with the requested kernel", () => {
     launchUrl(ROOT, "notebook", "base", "proj/a b.ipynb"),
     `${ROOT}lab/tree/proj/a%20b.ipynb`,
   )
+})
+
+test("a running lab gets the same launch as a message, and a file to open by its path", () => {
+  const ref = launchRef(3, Date.UTC(2026, 8, 29))
+  assert.match(ref, /^[A-Za-z0-9._-]{1,64}$/)
+  assert.notEqual(launchRef(4, Date.UTC(2026, 8, 29)), ref)
+  assert.deepEqual(launchMessage("ipython", "gds", "", ref), {
+    type: "hafezi-launch",
+    ref,
+    id: "ipython",
+    view: "console",
+    kernel: "hafezi-gds",
+  })
+  const url = new URL(launchUrl(ROOT, "quarto", "user-rings"))
+  const quarto = launchMessage("quarto", "user-rings", "", ref)
+  assert.deepEqual(
+    [quarto.id, quarto.view, quarto.kernel],
+    ["hafezi-launch", "hafezi-view", "kernel"].map((key) => url.searchParams.get(key)),
+  )
+  assert.equal(quarto.kernel, "hafezi-user-rings")
+  assert.equal(launchMessage("wolfram", "gds", "", ref).kernel, "wolfram")
+  assert.deepEqual(launchMessage("notebook", "base", "forks/published/a b.qmd", ref), {
+    type: "hafezi-open",
+    ref,
+    path: "forks/published/a b.qmd",
+  })
+  assert.deepEqual(launchMessage(null, "base", "x.ipynb", ref), {
+    type: "hafezi-open",
+    ref,
+    path: "x.ipynb",
+  })
+  assert.equal(launchMessage("nope", "base", "", ref), null)
+})
+
+test("only a lab that said it is ready, on a running server, is asked by message", () => {
+  assert.equal(launchPlan({ labReady: true, running: true }), "message")
+  assert.equal(launchPlan({ labReady: false, running: true }), "navigate")
+  assert.equal(launchPlan({ labReady: true, running: false }), "navigate")
+  assert.equal(launchPlan({}), "navigate")
 })
 
 test("profiles only apply to IPython kernels and fall back to base", () => {

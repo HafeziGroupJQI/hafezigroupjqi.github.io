@@ -1,5 +1,6 @@
-// Pure pieces of the Scratchpad page: the launcher vocabulary, the lab URLs it opens, and the
-// NDJSON reader for the start-server progress stream. No DOM, so node:test covers them.
+// Pure pieces of the Scratchpad page: the launcher vocabulary, the lab URLs it opens and the
+// messages it sends a lab already running in its frame, and the NDJSON reader for the
+// start-server progress stream. No DOM, so node:test covers them.
 
 /** IPython profiles (compute/hafezi_profiles); each has a kernelspec named hafezi-<profile>. */
 export const PROFILES = [
@@ -79,6 +80,38 @@ export function launchUrl(root, launcherId, profile = "base", path = "") {
   })
   return `${root}lab?${query}`
 }
+
+// A lab already running in the page's frame opens a launcher or a file when asked by message,
+// with no reload (compute's labextensions/src/launch.ts). It says {type: "hafezi-lab:ready",
+// launch: 1} once it has loaded, and {type: "hafezi-launch:ack", ref} as soon as it takes a
+// request; one it doesn't take (not ready, not a lab, a bad request) gets no answer.
+
+/** A request's ref, which the lab's ack echoes: the nth of this page, at `now`. */
+export const launchRef = (n, now = Date.now()) => `l${now.toString(36)}-${n.toString(36)}`
+
+/**
+ * What launchUrl asks for, as a message for the running lab: {type: "hafezi-open", ref, path} for
+ * a file, else {type: "hafezi-launch", ref, id, view, kernel}. null for an unknown launcher.
+ */
+export function launchMessage(launcherId, profile = "base", path = "", ref = launchRef(0)) {
+  if (path) return { type: "hafezi-open", ref, path }
+  const launcher = LAUNCHERS.find((item) => item.id === launcherId)
+  if (!launcher) return null
+  return {
+    type: "hafezi-launch",
+    ref,
+    id: launcher.id,
+    view: launcher.view,
+    kernel: kernelFor(launcher, profile),
+  }
+}
+
+/**
+ * How to open a launcher or a file: "message" when the lab in the frame said it was ready since it
+ * last loaded and the server is running, else "navigate" (load the lab at launchUrl). A message
+ * the lab doesn't ack in time falls back to navigating too.
+ */
+export const launchPlan = ({ labReady, running }) => (labReady && running ? "message" : "navigate")
 
 /** Feed text chunks; `onLine` gets each complete JSON line (blank and malformed lines skipped). */
 export function createNdjsonParser(onLine) {

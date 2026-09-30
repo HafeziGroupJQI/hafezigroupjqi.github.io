@@ -12,7 +12,8 @@
   }
 }
 
-.edit-page {
+// Under .dashboard too, so the dashboards' own rules (later in custom.scss) don't win.
+.dashboard.edit-page {
   max-width: 1400px;
   .edit-links {
     display: flex;
@@ -39,7 +40,7 @@
     border-radius: 4px;
     font: inherit;
   }
-  // Source beside its preview from 1000 px; one above the other, each tall, on phones.
+  // Source beside its preview from 1000 px; below that, one or the other (the Source/Preview switch).
   .edit-panes {
     display: grid;
     gap: 12px;
@@ -47,6 +48,21 @@
     @media (min-width: 1000px) {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
+    @media (max-width: 999px) {
+      &[data-view="source"] .edit-preview,
+      &[data-view="preview"] .edit-source {
+        display: none;
+      }
+    }
+  }
+  .edit-views {
+    margin: 0 0 8px;
+    @media (min-width: 1000px) {
+      display: none;
+    }
+  }
+  .edit-preview {
+    width: 100%;
   }
   .edit-source,
   .edit-preview {

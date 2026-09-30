@@ -6,6 +6,7 @@
 // once the vault's check passes. If someone else changed the file on main meanwhile, sending is
 // refused with their version, and the editor marks each difference to keep or take.
 
+import { slugifyFilePath } from "@quartz-community/utils/path"
 import { h, present } from "../dashboard/dom.js"
 import { createSourceEditor } from "./editor.js"
 import {
@@ -20,6 +21,8 @@ import {
   startingText,
   storageKey,
 } from "./model.js"
+
+/* global fetchData */
 
 /** A call to the Worker that keeps the answer's body, since a refusal can carry data. */
 async function call(path, options = {}) {
@@ -60,6 +63,35 @@ const browserCopy = {
 
 /** Only a path on this site: the page the editor was opened from. */
 const sitePath = (page) => (typeof page === "string" && /^\/(?!\/)/.test(page) ? page : null)
+
+/** The page's slug on the site, which its links are resolved from. */
+function pageSlug(source, page) {
+  if (page) return decodeURIComponent(page).replace(/^\/+|\/+$/g, "") || "index"
+  const file =
+    source.repo === "vault"
+      ? source.path.replace(/^content\//, "")
+      : `resources/${source.path.replace(/\.(?:qmd|ipynb)$/i, ".md")}`
+  return slugifyFilePath(file)
+}
+
+const escapeAttribute = (text) => text.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+
+// The preview's frame: the site's own stylesheets (and KaTeX's), and nothing that runs. Its
+// sandbox allows no scripts; it keeps the site's origin, so the page's images load as they do on
+// the page, and its links open in a new tab.
+function previewFrame() {
+  const styles = [...document.querySelectorAll('link[rel="stylesheet"]')]
+    .map((link) => `<link rel="stylesheet" href="${escapeAttribute(link.href)}">`)
+    .join("")
+  const frame = h("iframe", {
+    class: "edit-preview",
+    title: "Preview of the page",
+    sandbox: "allow-same-origin allow-popups allow-popups-to-escape-sandbox",
+    referrerpolicy: "no-referrer",
+  })
+  frame.srcdoc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><base target="_blank">${styles}<style>body{margin:0;padding:12px 20px;background:#fff}body>div>h1{margin:8px 0 16px;font-size:1.9rem;font-weight:600}.edit-runs{display:inline-block;margin:8px 0 4px;padding:1px 8px;border-radius:10px;background:#fff3cd;color:#664d03;font-size:.75rem}</style></head><body><div class="page-content__main"><h1></h1><article class="text-content page-body"></article></div></body></html>`
+  return frame
+}
 
 export async function mountEdit(root) {
   root.replaceChildren()
@@ -136,6 +168,33 @@ export async function mountEdit(root) {
   })
   summary.value = saved.summary
   const pane = h("div", { class: "edit-source" })
+  // Pages are previewed beside their source (on phones, one or the other).
+  const previewed = source.kind === "md" || source.kind === "qmd"
+  const preview = previewed ? previewFrame() : null
+  const panes = h("div", { class: "edit-panes", "data-view": "source" }, pane, preview)
+  const views = previewed
+    ? h(
+        "div",
+        { class: "seg edit-views", role: "radiogroup", "aria-label": "Show" },
+        ["source", "preview"].map((view) =>
+          h("button", {
+            type: "button",
+            role: "radio",
+            "aria-checked": String(view === "source"),
+            text: view === "source" ? "Source" : "Preview",
+            onclick: (event) => {
+              panes.dataset.view = view
+              for (const button of event.target.parentElement.children)
+                button.setAttribute("aria-checked", String(button === event.target))
+            },
+          }),
+        ),
+      )
+    : null
+  const yamlProblems = h("ul", {
+    class: "edit-problems",
+    "aria-label": "Problems in the front matter",
+  })
   const status = h("span", { class: "edit-status", role: "status", "aria-live": "polite" })
   const problems = h("ul", {
     class: "edit-problems",
@@ -162,7 +221,8 @@ export async function mountEdit(root) {
     ...present(
       source.can_edit ? h("label", { class: "edit-summary-label" }, "Summary", summary) : null,
     ),
-    pane,
+    ...present(views, yamlProblems),
+    panes,
     ...present(source.can_edit ? [actions, problems, stateLine, hint] : null),
   )
 
@@ -182,6 +242,7 @@ export async function mountEdit(root) {
     onSave: () => void save(),
     onChange: (text) => {
       refresh()
+      schedulePreview()
       clearTimeout(copyTimer)
       copyTimer = setTimeout(
         () =>
@@ -192,6 +253,43 @@ export async function mountEdit(root) {
       )
     },
   })
+  // The preview follows the text, 300 ms after typing stops; the front matter's problems too.
+  const slug = pageSlug(source, page)
+  const slugs =
+    typeof fetchData === "undefined"
+      ? Promise.resolve([])
+      : fetchData.then((index) => Object.keys(index ?? {})).catch(() => [])
+  let previewTimer = null
+  // The preview's renderer (unified, KaTeX) loads beside the editor, not before it.
+  const previewing = import("./preview.js")
+  async function showPreview() {
+    const { frontMatterProblems, renderPreview } = await previewing
+    const text = editor.getText()
+    if (source.kind !== "ipynb")
+      yamlProblems.replaceChildren(
+        ...frontMatterProblems(text).map((problem) =>
+          h("li", { text: `Front matter, line ${problem.line}: ${problem.message}` }),
+        ),
+      )
+    const body = preview?.contentDocument?.querySelector(".page-body")
+    if (!body) return
+    const { html, title } = renderPreview(text, {
+      kind: source.kind,
+      repo: source.repo,
+      path: source.path,
+      slug,
+      allSlugs: await slugs,
+      origin: location.origin,
+    })
+    // Sanitized already, and the frame runs no script.
+    body.innerHTML = html
+    preview.contentDocument.querySelector("h1").textContent = title
+  }
+  function schedulePreview() {
+    clearTimeout(previewTimer)
+    previewTimer = setTimeout(() => void showPreview().catch(console.error), 300)
+  }
+  preview?.addEventListener("load", () => void showPreview().catch(console.error))
   const dirty = () =>
     editor.getText() !== saved.text || cleanSummary(summary.value) !== (saved.summary ?? "")
   function refresh() {
@@ -201,6 +299,8 @@ export async function mountEdit(root) {
     discardButton.disabled = busy || (!draft && !dirty())
     sendButton.textContent = draft?.pull ? "Send the new version" : "Send"
     stateLine.textContent = dirty() ? "Unsaved changes." : draftStatus(draft)
+    // When a send would go in says nothing once it is sent and unchanged.
+    hint.hidden = sent && !dirty()
   }
   summary.addEventListener("input", refresh)
   if (start.restored)

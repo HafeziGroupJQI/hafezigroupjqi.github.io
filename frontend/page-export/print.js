@@ -8,10 +8,13 @@
 //     its thumbnail;
 //   - code blocks widen their line-number gutter to their largest number, and short ones are kept
 //     on one page;
-//   - folded sections and callouts open, lazy images load, and the light theme is set;
+//   - folded sections and callouts open, lazy images load, and the light theme is set (a
+//     member's own theme is taken off: paperLight());
 //   - fit(): tables and display equations wider than the paper are zoomed down to fit it, and a
 //     table still too wide at the smallest zoom gets the screen's even columns.
 // The build calls window.hafeziPrint's prepare(), then fit() under print media, then prints.
+
+import { TOKENS } from "../theme/tokens.js"
 
 /** The column's width in CSS px inside the page margins (print.scss's @page): Letter and A4. */
 export const PAPER_WIDTH = { letter: 688, a4: 665 }
@@ -154,6 +157,58 @@ const element = (tag, attributes = {}, ...children) => {
 const link = (href, text) => element("a", { href }, text)
 
 /**
+ * The site's own light look on `root` for as long as paper or a document needs it: a dark
+ * saved-theme, and a member's theme (frontend/theme/: its data-palette, data-figures and the tokens
+ * set inline), are taken off. Returns the function that puts them back, or null when the page
+ * already has the site's look and nothing was changed.
+ */
+export function paperLight(root) {
+  const theme = root.getAttribute("saved-theme")
+  const palette = root.getAttribute("data-palette")
+  if (!palette && (!theme || theme === "light")) return null
+  const figures = root.getAttribute("data-figures")
+  const style = root.getAttribute("style")
+  root.setAttribute("saved-theme", "light")
+  root.removeAttribute("data-palette")
+  root.removeAttribute("data-figures")
+  for (const token of TOKENS) root.style.removeProperty(token)
+  const put = (name, value) =>
+    value === null ? root.removeAttribute(name) : root.setAttribute(name, value)
+  return () => {
+    put("saved-theme", theme)
+    put("data-palette", palette)
+    put("data-figures", figures)
+    put("style", style)
+  }
+}
+
+const announce = () =>
+  document.dispatchEvent(
+    new CustomEvent("themechange", {
+      detail: {
+        theme: document.documentElement.getAttribute("saved-theme") === "dark" ? "dark" : "light",
+      },
+    }),
+  )
+
+/**
+ * `make()` run with the page in the site's light look and its Mermaid diagrams redrawn in it (they
+ * redraw on Quartz's themechange), for an export that copies the page: a document is paper too.
+ */
+export async function inLightLook(make, settle = 400) {
+  const restore = paperLight(document.documentElement)
+  if (!restore) return make()
+  announce()
+  await new Promise((resolve) => setTimeout(resolve, settle))
+  try {
+    return await make()
+  } finally {
+    restore()
+    announce()
+  }
+}
+
+/**
  * Ready the article for printing, synchronously (a beforeprint handler can't wait): what the list
  * at the top says, except loading. Returns {notes, embeds}; undone by cleanup().
  */
@@ -165,12 +220,8 @@ export function prepareSync() {
   const later = (step) => undo.push(step)
 
   // The light theme: paper is light, whatever the screen's.
-  const root = document.documentElement
-  const theme = root.getAttribute("saved-theme")
-  if (theme && theme !== "light") {
-    root.setAttribute("saved-theme", "light")
-    later(() => root.setAttribute("saved-theme", theme))
-  }
+  const restore = paperLight(document.documentElement)
+  if (restore) later(restore)
 
   // Folded sections and callouts open.
   for (const details of article.querySelectorAll("details:not([open])")) {

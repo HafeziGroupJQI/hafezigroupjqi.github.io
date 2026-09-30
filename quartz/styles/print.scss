@@ -28,6 +28,45 @@ $light: (
   "textHighlight": #fdf6e5,
 );
 
+// A member's theme's other tokens (frontend/theme/tokens.js; tools/themes/print.test.mjs keeps
+// the lists equal): unset on paper, so every use falls back to the site's own color.
+$themed: (
+  "--c-surface-1",
+  "--c-surface-2",
+  "--c-rule",
+  "--c-muted",
+  "--c-strong",
+  "--c-band",
+  "--c-on-band",
+  "--c-band-rule",
+  "--c-on-accent",
+  "--c-accent-soft",
+  "--c-accent-softer",
+  "--c-ok",
+  "--c-ok-soft",
+  "--c-ok-softer",
+  "--c-warn",
+  "--c-warn-soft",
+  "--c-warn-softer",
+  "--c-err",
+  "--c-err-soft",
+  "--c-err-softer",
+  "--c-info",
+  "--c-info-soft",
+  "--c-info-softer",
+  "--c-focus",
+  "--syn-comment",
+  "--syn-variable",
+  "--syn-constant",
+  "--syn-class",
+  "--syn-string",
+  "--syn-support",
+  "--syn-function",
+  "--syn-keyword",
+  "--fig-filter",
+  "--fig-blend"
+);
+
 $muted: #6b6b6b;
 $rule: #d0d0d0;
 $red: map.get($light, "secondary");
@@ -425,10 +464,14 @@ $red: map.get($light, "secondary");
     background: #fff !important;
   }
   // Paper is light, whatever the screen's theme (print.js also sets the light theme while it
-  // prints; this covers a print without it).
+  // prints; this covers a print without it). A member's theme sets its tokens inline on <html>,
+  // which only !important overrides.
   :root:root[saved-theme] {
     @each $name, $value in $light {
-      --#{$name}: #{$value};
+      --#{$name}: #{$value} !important;
+    }
+    @each $token in $themed {
+      #{$token}: initial !important;
     }
   }
   :root[saved-theme] pre span[style*="--shiki-light"] {

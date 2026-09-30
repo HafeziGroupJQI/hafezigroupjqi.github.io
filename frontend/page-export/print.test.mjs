@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { FLOOR, embedNote, fitZoom, gutterDigits, linkNotes } from "./print.js"
+import { TOKENS } from "../theme/tokens.js"
+import { FLOOR, embedNote, fitZoom, gutterDigits, linkNotes, paperLight } from "./print.js"
 
 const page = "https://hafezigroupjqi.github.io/resources/onboarding/git"
 
@@ -136,4 +137,51 @@ test("wide content is zoomed to fit with 2% to spare, never below its floor", ()
   assert.equal(fitZoom(993, 786, FLOOR.equation), 0.77)
   assert.equal(fitZoom(4000, 786, FLOOR.equation), 0.5)
   assert.equal(fitZoom(800, 0), 1)
+})
+
+function root(attributes = {}, properties = {}) {
+  const attrs = new Map(Object.entries(attributes))
+  const props = new Map(Object.entries(properties))
+  const style = () => [...props].map(([name, value]) => `${name}: ${value};`).join(" ")
+  return {
+    attrs,
+    props,
+    getAttribute: (name) => (name === "style" ? style() || null : (attrs.get(name) ?? null)),
+    setAttribute: (name, value) => {
+      if (name !== "style") return attrs.set(name, value)
+      props.clear()
+      for (const part of value.split(";").filter((text) => text.trim())) {
+        const [key, ...rest] = part.split(":")
+        props.set(key.trim(), rest.join(":").trim())
+      }
+    },
+    removeAttribute: (name) => (name === "style" ? props.clear() : attrs.delete(name)),
+    style: { removeProperty: (name) => props.delete(name) },
+  }
+}
+
+test("paper takes a member's theme off the page, and puts it back after", () => {
+  const page = root(
+    { "saved-theme": "dark", "data-palette": "nord", "data-figures": "match" },
+    { "--light": "#2e3440", "--c-rule": "#434c5e", "--print-title": "x" },
+  )
+  const restore = paperLight(page)
+  assert.deepEqual(Object.fromEntries(page.attrs), { "saved-theme": "light" })
+  // Only the theme's tokens go; the page's own properties (the print header's) stay.
+  assert.deepEqual(Object.fromEntries(page.props), { "--print-title": "x" })
+  assert.ok(TOKENS.includes("--c-rule"))
+  restore()
+  assert.deepEqual(Object.fromEntries(page.attrs), {
+    "saved-theme": "dark",
+    "data-palette": "nord",
+    "data-figures": "match",
+  })
+  assert.equal(page.props.get("--light"), "#2e3440")
+})
+
+test("the site's own look is left exactly as it is", () => {
+  const page = root({}, { "--print-title": "x" })
+  assert.equal(paperLight(page), null)
+  assert.equal(paperLight(root({ "saved-theme": "light" })), null)
+  assert.deepEqual(Object.fromEntries(page.props), { "--print-title": "x" })
 })

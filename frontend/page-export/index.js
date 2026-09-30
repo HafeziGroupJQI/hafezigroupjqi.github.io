@@ -23,7 +23,7 @@ import {
 } from "./drive.js"
 import { exportItems, pageStem } from "./menu.js"
 import { MissingPdf, pdfLoader, pdfPath } from "./pdf.js"
-import { cleanup, fit, installPrint, prepare } from "./print.js"
+import { cleanup, fit, inLightLook, installPrint, prepare } from "./print.js"
 import { markdownToQmd } from "./quarto.js"
 import { save } from "./save.js"
 
@@ -230,7 +230,8 @@ export function mountPageExport(tools) {
       const html = docDocument({
         title,
         url: location.href,
-        body: await articleHtml(article, { source: markdown }),
+        // In the site's light look, whatever the member's theme: a document is paper.
+        body: await inLightLook(() => articleHtml(article, { source: markdown })),
       })
       const size = new Blob([html]).size
       if (size > DOC_LIMIT)

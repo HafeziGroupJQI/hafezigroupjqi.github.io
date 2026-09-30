@@ -11,7 +11,10 @@ test("paper's light theme is the site's (print.scss $light and quartz.config.yam
   const css = sass.compile(here("./print.scss")).css
   const block = css.match(/:root:root\[saved-theme\] \{([^}]*)\}/)?.[1] ?? ""
   const printed = Object.fromEntries(
-    [...block.matchAll(/--(\w+): ([^;]+);/g)].map(([, name, value]) => [name, value.trim()]),
+    [...block.matchAll(/--(\w+): ([^;]+);/g)].map(([, name, value]) => [
+      name,
+      value.replace(/\s*!important\s*$/, "").trim(),
+    ]),
   )
   const config = yaml.parse(fs.readFileSync(here("../../quartz.config.yaml"), "utf8"))
   const light = config.configuration.theme.colors.lightMode as Record<string, string>

@@ -4,6 +4,7 @@ import type { RepoFetch } from "../repo"
 import { settleChanges } from "../changes"
 import { type Detail, type DraftRow, type Status, changesOf, needsReview, settle } from "./drafts"
 import { PrivateVault } from "./github"
+import { firstState, openConflict } from "../edit/conflicts"
 
 // The hourly merge of members' uploads and private page edits (the Worker's "2 * * * *" cron): a draft sent in an earlier hour whose pull request's validate check is green is marked
 // ready and merged into vault-private's main by rebase, as the member's own commit. A failed check or a conflict stays open for
@@ -54,6 +55,32 @@ async function settleDraft(
   if (row.status === "open" && row.sent_at !== null && row.edited_at > row.sent_at) {
     await mark(env, row, "open", { message: "changed since it was sent: send it again" })
     result.waiting.push(row.id)
+    return
+  }
+  // Made on top of another member's change (src/edit/conflicts.ts): never before it, and not at
+  // all without it, or the first change would go in under the second member's name.
+  const first = await firstState(env, row)
+  if (first === "waiting") {
+    await mark(env, row, "open", { message: "it goes in after the change it was made on top of" })
+    result.waiting.push(row.id)
+    return
+  }
+  if (first === "gone") {
+    await mark(env, row, "conflict", {
+      message: "the change you edited on top of was taken back: send the draft again",
+    })
+    await env.DB.batch([
+      openConflict(env, {
+        repo: row.repo,
+        path: (await changesOf(env, row.id))[0]?.path ?? "",
+        draft: row.id,
+        login: row.login,
+        reason: "base-gone",
+        now: Date.now(),
+      }),
+    ])
+    await auditJob(env, row.login, `${kind(row)}.conflict`, row.id, { reason: "base-gone" })
+    result.conflicts.push(row.id)
     return
   }
   let pull = await repo.pull(number)
@@ -117,6 +144,18 @@ async function settleDraft(
       message: "main changed the same files: send the draft again to rebuild it on main",
       url: pull.html_url,
     })
+    // A page edit's conflict is listed for its member and admins, like a public page's.
+    if (row.kind === "edit")
+      await env.DB.batch([
+        openConflict(env, {
+          repo: row.repo,
+          path: (await changesOf(env, row.id))[0]?.path ?? "",
+          draft: row.id,
+          login: row.login,
+          reason: "main",
+          now: Date.now(),
+        }),
+      ])
     await auditJob(env, row.login, `${kind(row)}.conflict`, row.id, { pull: number })
     result.conflicts.push(row.id)
     return

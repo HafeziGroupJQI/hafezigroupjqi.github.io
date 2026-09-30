@@ -364,7 +364,10 @@ export async function send(
     const current = files.get(source)
     if (change.action !== "add") {
       if (current?.type !== "blob") problems.push(`${source} is no longer on main`)
-      else if (current.sha !== change.base_sha) problems.push(`${source} changed on main`)
+      // A page edit made on top of another member's pending change has that change's text as
+      // its base; the route checked it against main (src/edit/conflicts.ts).
+      else if (current.sha !== change.base_sha && !(row.kind === "edit" && row.after_draft))
+        problems.push(`${source} changed on main`)
     }
     // A new name, even one that differs only in case (the vault is checked out on Windows and
     // macOS too), mustn't be taken; a rename may change just the case of its own name.

@@ -7,7 +7,7 @@ import { RepoConflict, type RepoFetch, type TreeEntry } from "../repo"
 import { draftChanges, recordChanges, settleChanges, unsentChanges } from "../changes"
 import { type ChangeRow, type DraftRow, publishedKey, settle } from "../uploads/drafts"
 import { DraftRepo } from "../uploads/github"
-import { baseText, mergeable, newId as newConflict, openConflict } from "./conflicts"
+import { baseText, firstState, mergeable, newId as newConflict, openConflict } from "./conflicts"
 import { threeWay } from "./merge"
 import { type VaultView, pageProblems, vaultProblems } from "./public"
 import { editMessage, editTitle } from "./rules"
@@ -157,6 +157,16 @@ export async function commitDue(
     .bind(now + SLACK_MS, perRun)
     .all<Due>()
   if (!results.length) return result
+  // A draft made on top of another due in this run comes after it, whichever hour is earlier.
+  const due: Due[] = []
+  const place = (row: Due, seen = new Set<string>()) => {
+    if (due.includes(row) || seen.has(row.id)) return
+    seen.add(row.id)
+    const first = results.find((other) => other.id === row.after_draft)
+    if (first) place(first, seen)
+    due.push(row)
+  }
+  for (const row of results) place(row)
   const tip = await repo.head()
   const files = await repo.tree(tip.tree)
   const vault = vaultView(repo, files)
@@ -166,11 +176,43 @@ export async function commitDue(
   // Each page's text as this run has it so far, and whose edit wrote it: main's tree above was
   // read once, so a second due edit of the same page is checked against the first one's text.
   const written = new Map<string, { text: string; row: Due }>()
-  for (const row of results) {
+  for (const row of due) {
     try {
       if (row.sent_at === null || row.edited_at > row.sent_at) {
         await mark(env, row, "open", "changed since you published it: publish it again")
         result.waiting.push(row.id)
+        continue
+      }
+      // Made on top of another member's change: never before it, and not at all without it.
+      const first = await firstState(env, row)
+      const firstHere = made.some((item) => item.row.id === row.after_draft)
+      if (first === "waiting" && !firstHere) {
+        await mark(env, row, "open", "it goes in after the change it was made on top of")
+        result.waiting.push(row.id)
+        continue
+      }
+      if (first === "gone") {
+        await mark(
+          env,
+          row,
+          "conflict",
+          "the change you edited on top of was taken back: take its lines out, or keep them, and publish again",
+          [
+            openConflict(env, {
+              repo: "vault",
+              path: row.path,
+              draft: row.id,
+              login: row.login,
+              reason: "base-gone",
+              now,
+            }),
+          ],
+        )
+        await auditJob(env, row.login, "edit.conflict", row.id, {
+          path: row.path,
+          reason: "base-gone",
+        })
+        result.conflicts.push(row.id)
         continue
       }
       const object = await env.ARTIFACTS.get(publishedKey(row.id, row.path))

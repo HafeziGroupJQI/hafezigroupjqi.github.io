@@ -427,3 +427,104 @@ describe("another member's sent change to the same page", () => {
     expect(await statusOf(second)).toBe("conflict")
   })
 })
+
+describe("editing on top of another member's sent change", () => {
+  it("goes in after theirs, with both changes, and never before it", async () => {
+    const { ada, bob, first, second, due } = await overlapping()
+    const both = edit("Third paragraph.", "Third, as Ada has it, and Bob too.")
+    const stacked = await put(bob, second, { stack_on: first, text: both })
+    expect(stacked.status).toBe(200)
+    const row = await env.DB.prepare("SELECT after_draft FROM upload_drafts WHERE id = ?")
+      .bind(second)
+      .first<any>()
+    expect(row.after_draft).toBe(first)
+    expect(await auditRows("action = 'edit.stack'")).toHaveLength(1)
+    // On top of Ada's text, Bob's send is clean.
+    const sent = await send(bob, second)
+    expect(sent.status).toBe(200)
+    // Ada revises hers: Bob's waits for it, even when its own hour comes first.
+    await env.DB.prepare("UPDATE upload_drafts SET due_at = ? WHERE id = ?")
+      .bind(due - 3_600_000, second)
+      .run()
+    await put(ada, first, { text: ADA_LINE + "\nAda's afterthought.\n" })
+    expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({
+      merged: [],
+      waiting: [first, second],
+    })
+    expect(vault.text(PAGE)).toBe(TEXT)
+    // Published again, Ada's goes in, then Bob's on top of it, in one run.
+    const again = (await send(ada, first)).body.due_at
+    expect(await commitDue(env as any, vault.fetch, again)).toMatchObject({
+      merged: [first, second],
+    })
+    expect(vault.text(PAGE)).toBe(both + "\nAda's afterthought.\n")
+  })
+
+  it("holds the second when the first is taken back, and says why", async () => {
+    const { ada, bob, first, second, due } = await overlapping()
+    await put(bob, second, { stack_on: first, text: BOB_LINE })
+    expect((await send(bob, second)).status).toBe(200)
+    await ada.json(`/api/edit/drafts/${first}`, { method: "DELETE" })
+    expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ conflicts: [second] })
+    expect((await bob.json(`/api/edit/drafts/${second}`)).body).toMatchObject({
+      status: "conflict",
+      detail: { message: expect.stringContaining("taken back") },
+    })
+    expect((await conflicts()).map((row) => [row.draft_id, row.reason])).toEqual([
+      [second, "base-gone"],
+    ])
+  })
+
+  it("stacks only on a sent change to the same page by someone else", async () => {
+    const { ada, bob, first, second } = await overlapping()
+    const other = (await draft(ada, TEXT + "x\n", "x", "content/research/optics.md")).body.id
+    const eve = await as("eve")
+    const unsent = (await draft(eve, TEXT + "eve\n")).body.id
+    const own = (await draft(await as("cy"), TEXT + "cy\n")).body.id
+    for (const target of [other, unsent, own.replace(/./, "f"), second, "nope"])
+      expect(
+        (await put(bob, second, { stack_on: target, text: BOB_LINE })).status,
+      ).toBeGreaterThanOrEqual(409)
+    await ada.json(`/api/edit/drafts/${first}`, { method: "DELETE" })
+    expect((await put(bob, second, { stack_on: first, text: BOB_LINE })).status).toBe(409)
+    const row = await env.DB.prepare("SELECT after_draft FROM upload_drafts WHERE id = ?")
+      .bind(second)
+      .first<any>()
+    expect(row.after_draft).toBeNull()
+  })
+
+  it("keeps a private stacked draft out of the hourly merge until the first is merged", async () => {
+    const path = "notes/meeting.md"
+    const base = privateVault.text(path)!
+    const ada = await as("ada")
+    const bob = await as("bob")
+    const create = (client: Client, text: string) =>
+      post(client, "/api/edit/drafts", {
+        repo: "vault-private",
+        path,
+        base_sha: privateVault.sha(path),
+        text,
+        summary: "a change",
+      })
+    const first = (await create(ada, base.replace("Third paragraph.", "Ada's third."))).body.id
+    const due = (await send(ada, first)).body.due_at
+    const second = (await create(bob, base.replace("Third paragraph.", "Bob's third."))).body.id
+    const both = base.replace("Third paragraph.", "Ada's third, and Bob's.")
+    expect((await put(bob, second, { stack_on: first, text: both })).status).toBe(200)
+    const sent = await send(bob, second)
+    expect(sent.status).toBe(200)
+    for (const branch of [`edits/ada/${first}`, `edits/bob/${second}`])
+      privateVault.report(privateVault.refs.get(branch)!, "success")
+    // Bob's is due first; it waits for Ada's all the same.
+    await env.DB.prepare("UPDATE upload_drafts SET due_at = ? WHERE id = ?")
+      .bind(due - 3_600_000, second)
+      .run()
+    expect((await mergeDue(env as any, privateVault.fetch, due - 3_600_000)).waiting).toEqual([
+      second,
+    ])
+    const run = await mergeDue(env as any, privateVault.fetch, due)
+    expect(run.merged).toEqual([first])
+    expect((await mergeDue(env as any, privateVault.fetch, due)).merged).toEqual([second])
+    expect(privateVault.text(path)).toBe(both)
+  })
+})

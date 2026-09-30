@@ -216,8 +216,14 @@ export async function checkSend(
   const mainText = decoder.decode(main.bytes)
   if (main.sha === change.base_sha)
     return pendingCheck(env, repo, row, change, text, mainText, main, admin)
-  const incoming = { sha: main.sha, text: mainText }
   const base = await baseText(env, repo, row, change)
+  // Made on top of another member's change that hasn't gone in yet: it goes in after that one,
+  // and is checked against it (and main again) then.
+  if (base !== null && (await firstState(env, row)) === "waiting")
+    return pendingCheck(env, repo, row, change, text, base, main, admin)
+  if (base !== null && base === mainText)
+    return pendingCheck(env, repo, row, change, text, mainText, main, admin)
+  const incoming = { sha: main.sha, text: mainText }
   if (base !== null && mergeable(change.path)) {
     const merged = threeWay(base, mainText, text)
     if (merged.clean && !mergedProblems(row.repo, change.path, merged.text, mainText, admin).length)
@@ -225,6 +231,26 @@ export async function checkSend(
     return { kind: "main", incoming, base_text: base, proposed: merged.text }
   }
   return { kind: "main", incoming, base_text: base, proposed: text }
+}
+
+/**
+ * Where the change a draft was made on top of (after_draft) stands: "none" when there is none or
+ * it went in, "waiting" while it is sent and hasn't gone in, "gone" when it was taken back or
+ * can't go in as it was sent.
+ */
+export async function firstState(
+  env: Env,
+  row: Pick<DraftRow, "after_draft">,
+): Promise<"none" | "waiting" | "gone"> {
+  if (!row.after_draft) return "none"
+  const first = await env.DB.prepare(
+    "SELECT status, sent_at, edited_at FROM upload_drafts WHERE id = ?",
+  )
+    .bind(row.after_draft)
+    .first<Pick<DraftRow, "status" | "sent_at" | "edited_at">>()
+  if (!first || first.status === "merged") return first ? "none" : "gone"
+  if (first.status === "open" || first.status === "review") return "waiting"
+  return "gone"
 }
 
 /** The member's text against each other member's sent change to the page: the first that
@@ -241,6 +267,8 @@ async function pendingCheck(
 ): Promise<SendCheck> {
   const beside: Other[] = []
   for (const other of await sentOthers(env, row, change.path)) {
+    // Made on top of this one: it goes in after it, and is merged with it then.
+    if (other.after_draft === row.id) continue
     const theirs = await sentText(env, repo, other, change.path)
     if (theirs === null) continue
     // Both began from main's version, or the member began from theirs (edit on top).

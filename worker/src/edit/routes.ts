@@ -25,6 +25,7 @@ import {
   CONFLICTS_OPEN_MAX,
   CONFLICT_SELECT,
   type ConflictRow,
+  baseKey,
   baseText,
   checkSend,
   conflictView,
@@ -32,8 +33,9 @@ import {
   openConflict,
   openConflictOf,
   refusal,
+  sentText,
 } from "./conflicts"
-import { threeWay } from "./merge"
+import { gitBlobSha, threeWay } from "./merge"
 import { readPage } from "./public"
 import { publishEdit } from "./publish"
 import {
@@ -71,6 +73,13 @@ const CONTENT_TYPES: Record<EditKind, string> = {
   md: "text/markdown; charset=utf-8",
   qmd: "text/markdown; charset=utf-8",
   ipynb: "application/x-ipynb+json",
+}
+
+/** A draft's id, as a request names one. */
+function draftId(value: unknown): string {
+  if (typeof value !== "string" || !/^[0-9a-f]{12}$/.test(value))
+    throw new HttpError(422, "that isn't a draft's id")
+  return value
 }
 
 function repoParam(value: unknown): RepoName {
@@ -332,8 +341,11 @@ export async function editRoutes(
     const text = "text" in body ? editText(body.text) : null
     const summary = "summary" in body ? cleanSummary(body.summary) : null
     const base = "base_sha" in body ? blobSha(body.base_sha) : null
-    if (text === null && summary === null && base === null)
-      throw new HttpError(422, "send the text, the summary or a base_sha")
+    const stackOn = "stack_on" in body ? draftId(body.stack_on) : null
+    if (text === null && summary === null && base === null && stackOn === null)
+      throw new HttpError(422, "send the text, the summary, a base_sha or stack_on")
+    if (base !== null && stackOn !== null)
+      throw new HttpError(422, "a draft is made on main's version or on another change, not both")
     // A save names the version it was typed over: one made over an older version (a stale tab,
     // another device) is refused with the newer text, so it is never overwritten unseen.
     if ("version" in body && body.version !== row.version)
@@ -369,6 +381,26 @@ export async function editRoutes(
         }
       }
     }
+    // Edit on top of another member's sent change to the page: its text becomes this draft's
+    // base, kept beside it, and this draft goes in after it (conflicts.ts firstState).
+    let stacked: { on: string; text: string; sha: string } | null = null
+    if (stackOn !== null) {
+      const first = await draftRow(env, stackOn)
+      const [theirs] = first ? await changesOf(env, first.id) : []
+      if (
+        !first ||
+        first.kind !== "edit" ||
+        first.repo !== row.repo ||
+        theirs?.path !== change.path ||
+        first.login.toLowerCase() === session.login.toLowerCase() ||
+        !(first.status === "open" || first.status === "review") ||
+        first.sent_at === null
+      )
+        throw new HttpError(409, "that isn't a sent change to this page")
+      const their = await sentText(env, repoOf(row.repo), first, change.path)
+      if (their === null) throw new HttpError(409, "that change's text is gone")
+      stacked = { on: first.id, text: their, sha: await gitBlobSha(their) }
+    }
     const statements: D1PreparedStatement[] = []
     let problems: string[] = []
     if (text !== null) {
@@ -388,12 +420,21 @@ export async function editRoutes(
       statements.push(
         env.DB.prepare("UPDATE upload_drafts SET summary = ? WHERE id = ?").bind(summary, row.id),
       )
-    if (base !== null)
+    if (base !== null || stacked !== null)
       statements.push(
         env.DB.prepare(
           "UPDATE upload_changes SET base_sha = ? WHERE draft_id = ? AND path = ?",
-        ).bind(base, row.id, change.path),
+        ).bind(stacked?.sha ?? base, row.id, change.path),
+        env.DB.prepare("UPDATE upload_drafts SET after_draft = ? WHERE id = ?").bind(
+          stacked?.on ?? null,
+          row.id,
+        ),
       )
+    if (stacked !== null)
+      await env.ARTIFACTS.put(baseKey(row.id, change.path), stacked.text, {
+        httpMetadata: { contentType: change.content_type ?? "text/plain; charset=utf-8" },
+      })
+    else if (base !== null) await env.ARTIFACTS.delete(baseKey(row.id, change.path))
     statements.push(
       env.DB.prepare(
         "UPDATE upload_drafts SET edited_at = ?, updated_at = ?, version = version + 1 WHERE id = ?",
@@ -402,6 +443,7 @@ export async function editRoutes(
     await env.DB.batch(statements)
     record("edit.save", change.path, { draft: row.id, fields: Object.keys(body) })
     if (rebase) record("edit.rebase", change.path, { draft: row.id, ...rebase })
+    if (stacked) record("edit.stack", change.path, { draft: row.id, on: stacked.on })
     const [saved] = await changesOf(env, row.id)
     return json({
       ...(await view((await draftRow(env, row.id))!)),

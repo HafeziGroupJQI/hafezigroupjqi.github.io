@@ -3,6 +3,8 @@
 // /auth/callback on the github.io site; the Worker is only ever called with fetch().
 
 import { forgetAccount } from "../page-export/drive.js"
+import { clearCache } from "../theme/cache.js"
+import { primeTheme } from "../theme/sign-in.js"
 import { API_ORIGIN, FLAG_KEY, clearAuth, readAuth, safeNext, writeAuth } from "./auth.js"
 
 const NONCE_KEY = "hafezi.loginNonce"
@@ -39,6 +41,11 @@ async function finish({ token, exp, user, next }) {
     /* the service worker still has the token */
   }
   status(`Signed in as ${user.login}. Loading…`)
+  // The member's own theme, so the first page is already in it (at most a few seconds' wait).
+  await Promise.race([
+    primeTheme(API_ORIGIN, token).catch(() => {}),
+    new Promise((done) => setTimeout(done, 3000)),
+  ])
   await registerWorker()
   location.replace(safeNext(next))
 }
@@ -88,6 +95,8 @@ export async function logout() {
   try {
     localStorage.removeItem(FLAG_KEY)
     sessionStorage.clear()
+    // The member's own theme: the next person at this browser sees the site's look.
+    clearCache(localStorage)
   } catch {
     /* ignore */
   }

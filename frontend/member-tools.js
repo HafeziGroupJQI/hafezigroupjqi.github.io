@@ -11,6 +11,7 @@ import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
 import { mountEditButton } from "./edit/link.js"
 import { mountFolderTools } from "./folder-tools.js"
+import { startThemeSync } from "./theme/sync.js"
 import { uploadsUrl } from "./uploads/model.js"
 
 const zone = "America/New_York"
@@ -259,6 +260,8 @@ function setupCalendar(root) {
 // run them when signed in. Gated tool pages are unreachable logged-out anyway.
 if (session.user) {
   updateMenu()
+  // The member's own theme (frontend/theme/), kept current across tabs and devices.
+  startThemeSync()
   const mount = (attr, setup) => {
     const node = document.querySelector(`[${attr}]`)
     if (node) setup(node)

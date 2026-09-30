@@ -332,6 +332,12 @@ if (session.user) {
       .then(({ mountSettings }) => mountSettings(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
+  // Recently modified: the live feed of both vaults' changes and each member's contributions.
+  mount("data-recent", (root) =>
+    import("./recent/index.js")
+      .then(({ mountRecent }) => mountRecent(root, { api, session }))
+      .catch((error) => showError(root, error)),
+  )
   // Uploads to the private vault: drafts that become pull requests merged hourly (src/uploads/).
   mount("data-uploads", (root) =>
     import("./uploads/index.js")

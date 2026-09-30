@@ -314,6 +314,96 @@ body {
   font-size: 0.85rem;
   color: var(--jqi-muted);
 }
+// The live feed over it (frontend/recent/): filters, then each day's changes.
+.recent-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-end;
+  margin: 16px 0;
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.85rem;
+    color: var(--jqi-muted);
+  }
+  input,
+  select {
+    padding: 6px 8px;
+    border: 1px solid var(--jqi-rule);
+    border-radius: 3px;
+    font: inherit;
+    font-size: 0.95rem;
+    background: var(--light, #fff);
+    color: inherit;
+  }
+  input {
+    width: 12em;
+  }
+  button {
+    padding: 6px 14px;
+  }
+}
+.recent-heading {
+  margin: 20px 0 4px;
+  font-size: 1.15rem;
+}
+.recent-feed {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+}
+.recent-feed > li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--jqi-rule);
+  overflow-wrap: anywhere;
+}
+.recent-feed > .recent-day {
+  padding: 18px 0 4px;
+  font-weight: 600;
+  border-bottom: 2px solid var(--jqi-rule);
+}
+.recent-change time {
+  display: inline-block;
+  min-width: 5.5em;
+  color: var(--jqi-muted);
+  font-variant-numeric: tabular-nums;
+}
+.recent-change--discarded > div:first-child {
+  opacity: 0.65;
+}
+.recent-change .recent-meta {
+  margin-left: 5.8em;
+}
+.recent-file {
+  font-family: var(--codeFont, monospace);
+  font-size: 0.9em;
+}
+.recent-badge {
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--jqi-rule);
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: var(--jqi-muted);
+}
+.recent-change .status {
+  margin-left: 8px;
+}
+.recent-change .status-conflict {
+  color: #fff;
+  background: var(--viz-8);
+  border-color: var(--viz-8);
+}
+.recent-counts {
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 600px) {
+  .recent-change .recent-meta {
+    margin-left: 0;
+  }
+}
 
 // Folder / tag listing pages.
 .page-listing ul.section-ul {

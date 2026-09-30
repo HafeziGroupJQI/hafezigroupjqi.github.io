@@ -100,8 +100,12 @@ test("combined content keeps homepage, namespaces private links and aliases, and
     assert.ok(!fs.existsSync(path.join(built.output, "tags/private-tag.md")))
     assert.match(read("resources/index.md"), /\/resources\/equipment\//)
     assert.ok(fs.existsSync(path.join(built.output, "calendar.md")))
-    // Recently modified is a member page (no history in this fixture, so an empty list).
-    assert.match(read("recent.md"), /title: Recently modified[\s\S]*No changes to list yet/)
+    // Recently modified is a member page: the live feed, over the build's list of the public
+    // vault's changes (none in this fixture) until it loads.
+    assert.match(
+      read("recent.md"),
+      /title: Recently modified[\s\S]*<div class="member-tools recent" data-recent><p>No changes to list yet/,
+    )
     // The devices dashboard renders full-bleed; the legacy pages still exist and redirect to it.
     assert.match(read("devices.md"), /layout: dashboard/)
     assert.match(read("devices.md"), /data-dashboard/)

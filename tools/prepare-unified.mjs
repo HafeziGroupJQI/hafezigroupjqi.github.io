@@ -362,15 +362,14 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       ].join("\n\n"),
       ["internal"],
     )
-    // Members only: the public site's pages, newest-changed first, and who changed them, from the
-    // public vault's history (the real vault, not the staged copy).
+    // Members only: every change to both vaults, newest first, live from the Worker's changes
+    // table (frontend/recent/), with each member's contributions (?user=). Until it loads, and
+    // without it, the public site's pages newest-changed first, from the public vault's history
+    // (the real vault, not the staged copy).
     page(
       "recent",
       "Recently modified",
-      [
-        "The public site's pages, most recently changed first, and who changed them. It is updated with every site update.",
-        recentPage(recentChanges(prepared.input, prepared.records)),
-      ].join("\n\n"),
+      `<div class="member-tools recent" data-recent>${recentPage(recentChanges(prepared.input, prepared.records))}</div>`,
     )
     page(
       "calendar",

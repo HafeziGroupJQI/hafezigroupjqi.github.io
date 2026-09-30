@@ -49,6 +49,8 @@ import {
   editText,
   editTitle,
   editablePath,
+  indexTemplate,
+  newIndexPath,
 } from "./rules"
 
 // The site's page editor (/edit, frontend/edit/): a page's own file in its vault, as its author
@@ -196,6 +198,8 @@ export async function editRoutes(
   if (path === "/api/edit/source" && request.method === "GET") {
     const name = repoParam(url.searchParams.get("repo"))
     const { path: file, kind } = editablePath(name, url.searchParams.get("path"))
+    // A folder's own page that isn't there yet (from its automatic folder page).
+    const making = url.searchParams.get("new") === "1" ? newIndexPath(name, file) : null
     const repo = repoOf(name)
     const [main, mine, others, admin] = await Promise.all([
       repo.file(file),
@@ -212,7 +216,8 @@ export async function editRoutes(
       .bind(name, file)
       .all<ConflictRow & { author: string | null; summary: string | null }>()
     const conflicts = open.map((row) => conflictView(row, viewer))
-    if (!main && !mine) throw new HttpError(404, `${file} isn't in the vault`)
+    if (!main && !mine && (!making || !(await repo.list(making.folder))))
+      throw new HttpError(404, `${making ? making.folder : file} isn't in the vault`)
     const text = main ? decode(main.bytes, file) : null
     return json({
       repo: name,
@@ -220,6 +225,9 @@ export async function editRoutes(
       path: file,
       kind,
       main: main ? { sha: main.sha, size: main.size, text } : null,
+      // A new page's first text, until the member saves one.
+      new: Boolean(making) && !main,
+      template: making && !main ? indexTemplate(making.folder) : null,
       ...(await editAccess(env, session, name, file)),
       // Something in a private page runs (Quarto code cells, HTML): an admin merges it on GitHub.
       review: text === null || name === "vault" ? null : contentReport(file, text).review,
@@ -299,7 +307,9 @@ export async function editRoutes(
     const name = repoParam(body.repo)
     const { path: file, kind } = editablePath(name, body.path)
     const text = editText(body.text)
-    const base = blobSha(body.base_sha)
+    // A folder's new page (index.md) has no base: it isn't in the vault yet.
+    const making = body.new === true ? newIndexPath(name, file) : null
+    const base = making ? null : blobSha(body.base_sha)
     const summary = cleanSummary(body.summary)
     // A revert from the page's History says what it restores or undoes.
     const revert =
@@ -325,7 +335,12 @@ export async function editRoutes(
     await underLimit(env, session.login, ["edit.create", "edit.save"], SAVES_PER_DAY, "saves")
     // The base is a version of a file the vault holds: main's, or an older one the member's
     // page was built from. A made-up base would hide what changed since.
-    if ((await repo.file(file))?.sha !== base && !(await repo.blobBytes(base)))
+    if (making) {
+      if (await repo.file(file))
+        throw new HttpError(409, "this page is in the vault now: open it and edit that")
+      if (!(await repo.list(making.folder)))
+        throw new HttpError(404, `${making.folder} isn't a folder of the vault`)
+    } else if ((await repo.file(file))?.sha !== base && !(await repo.blobBytes(base!)))
       throw new HttpError(409, "that isn't a version of this page; load it again")
     const report = checkEdit(name, file, text)
     const id = [...crypto.getRandomValues(new Uint8Array(6))]
@@ -351,7 +366,7 @@ export async function editRoutes(
       env.DB.prepare(
         `INSERT INTO upload_changes
            (draft_id, path, action, from_path, base_sha, size, content_type, review, staged_at)
-         SELECT ?1, ?2, 'replace', NULL, ?3, ?4, ?5, ?6, ?7
+         SELECT ?1, ?2, ?8, NULL, ?3, ?4, ?5, ?6, ?7
          WHERE EXISTS (SELECT 1 FROM upload_drafts WHERE id = ?1)`,
       ).bind(
         id,
@@ -361,6 +376,7 @@ export async function editRoutes(
         CONTENT_TYPES[kind],
         report.review,
         now,
+        making ? "add" : "replace",
       ),
     ])
     if (!inserted.meta.changes) {

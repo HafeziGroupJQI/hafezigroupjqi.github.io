@@ -869,3 +869,90 @@ describe("reverting from a page's history", () => {
     await env.DB.prepare("DELETE FROM profiles WHERE login = 'ada'").run()
   })
 })
+
+describe("a folder's new page", () => {
+  const open = (client: Client, path: string) =>
+    client.json(
+      `/api/edit/source?${new URLSearchParams({ repo: "vault-private", path, new: "1" })}`,
+    )
+  const make = (client: Client, path: string, text: string) =>
+    post(client, "/api/edit/drafts", {
+      repo: "vault-private",
+      path,
+      new: true,
+      text,
+      summary: "add the folder's page",
+    })
+
+  it("opens with a first text, and is sent as a pull request that adds the file", async () => {
+    privateVault.push("notes/group-meeting/2026-09-29.md", "x")
+    const ada = await as("ada")
+    const opened = await open(ada, "notes/group-meeting/index.md")
+    expect(opened.body).toMatchObject({
+      main: null,
+      new: true,
+      template: '---\ntitle: "Group meeting index"\ntype: note\ntags: [internal]\n---\n\n',
+    })
+    const text = opened.body.template + "The group's meetings.\n"
+    const made = await make(ada, "notes/group-meeting/index.md", text)
+    expect(made.status).toBe(201)
+    const sent = await send(ada, made.body.id)
+    expect(sent.body).toMatchObject({ status: "open", pull: { number: 1 } })
+    expect(privateVault.text("notes/group-meeting/index.md", `edits/ada/${made.body.id}`)).toBe(
+      text,
+    )
+    const change = await env.DB.prepare("SELECT kind FROM changes WHERE draft_id = ?")
+      .bind(made.body.id)
+      .first<any>()
+    expect(change.kind).toBe("new")
+  })
+
+  it("makes only a missing index.md in a folder of the private vault", async () => {
+    const ada = await as("ada")
+    const text = "---\ntitle: X\ntype: note\ntags: [internal]\n---\n"
+    // Not an index page, not in a folder, a folder that isn't there, a page that is, the public
+    // vault, and a path out of the vault.
+    expect((await make(ada, "notes/other.md", text)).status).toBe(422)
+    expect((await make(ada, "index.md", text)).status).toBe(422)
+    expect((await make(ada, "notes/nowhere/index.md", text)).status).toBe(404)
+    expect((await open(ada, "notes/nowhere/index.md")).status).toBe(404)
+    privateVault.push("notes/index.md", text)
+    expect((await make(ada, "notes/index.md", text)).status).toBe(409)
+    expect(
+      (
+        await post(ada, "/api/edit/drafts", {
+          repo: "vault",
+          path: "content/research/index.md",
+          new: true,
+          text,
+        })
+      ).status,
+    ).toBe(422)
+    for (const path of [
+      "notes/../tools/index.md",
+      "notes/./index.md",
+      ".github/index.md",
+      "notes/%2e%2e/index.md",
+    ])
+      expect((await make(ada, path, text)).status).toBeGreaterThanOrEqual(400)
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM upload_drafts").first<any>())!.n).toBe(
+      0,
+    )
+  })
+
+  it("isn't sent over a page someone made meanwhile", async () => {
+    privateVault.push("notes/group-meeting/a.md", "x")
+    const ada = await as("ada")
+    const made = await make(
+      ada,
+      "notes/group-meeting/index.md",
+      "---\ntitle: X\ntype: note\ntags: [internal]\n---\n",
+    )
+    privateVault.push(
+      "notes/group-meeting/index.md",
+      "---\ntitle: Y\ntype: note\ntags: [internal]\n---\n",
+    )
+    expect(await send(ada, made.body.id)).toMatchObject({ status: 409, body: { kind: "main" } })
+    expect(privateVault.pulls.size).toBe(0)
+  })
+})

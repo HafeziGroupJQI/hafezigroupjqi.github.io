@@ -79,6 +79,28 @@ export function editablePath(repo: RepoName, raw: unknown): { path: string; kind
   return { path, kind }
 }
 
+/**
+ * A new page the editor may make: a folder's own page, index.md, in the private vault, where the
+ * folder has none (the site shows an automatic folder page there). Any other new file is added on
+ * /uploads. The path is checked as any edit's is (no "..", no hidden or reserved names).
+ */
+export function newIndexPath(repo: RepoName, raw: unknown): { path: string; folder: string } {
+  if (repo !== "vault-private")
+    throw new HttpError(422, "the editor makes new pages only in the private vault")
+  const { path } = editablePath(repo, raw)
+  const segments = path.split("/")
+  if (segments.length < 2 || segments.at(-1) !== "index.md")
+    throw new HttpError(422, "the editor makes only a folder's own page, <folder>/index.md")
+  return { path, folder: segments.slice(0, -1).join("/") }
+}
+
+/** A new folder page's first text: front matter the vault's check takes, named for the folder. */
+export function indexTemplate(folder: string): string {
+  const name = folder.split("/").pop()!.replace(/[-_]+/g, " ").trim()
+  const title = `${name.charAt(0).toUpperCase()}${name.slice(1)} index`
+  return `---\ntitle: ${JSON.stringify(title)}\ntype: note\ntags: [internal]\n---\n\n`
+}
+
 /** The text of an edit as the member sent it: well-formed Unicode, no NUL, at most EDIT_MAX. */
 export function editText(value: unknown): string {
   if (typeof value !== "string") throw new HttpError(422, "the page's text is missing")

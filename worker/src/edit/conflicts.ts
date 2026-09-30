@@ -129,7 +129,7 @@ export function mergedProblems(
 export const mergeable = (path: string) => !/\.ipynb$/i.test(path)
 
 export type SendCheck =
-  | { kind: "ok"; main: RepoBlob; mainText: string; beside: Other[] }
+  | { kind: "ok"; main: RepoBlob | null; mainText: string; beside: Other[] }
   /** The page is gone from main: moved or deleted. */
   | { kind: "moved" }
   /** Main changed other lines: the merged text, for the member to look over. */
@@ -214,6 +214,16 @@ export async function checkSend(
   { admin }: { admin: boolean },
 ): Promise<SendCheck> {
   const main = await repo.file(change.path)
+  // A new page (a folder's index.md): someone else may have made it meanwhile.
+  if (change.action === "add")
+    return main
+      ? {
+          kind: "main",
+          incoming: { sha: main.sha, text: decoder.decode(main.bytes) },
+          base_text: null,
+          proposed: text,
+        }
+      : { kind: "ok", main: null, mainText: "", beside: [] }
   if (!main) return { kind: "moved" }
   const mainText = decoder.decode(main.bytes)
   if (main.sha === change.base_sha)

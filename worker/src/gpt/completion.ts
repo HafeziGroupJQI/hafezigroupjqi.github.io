@@ -164,18 +164,25 @@ export function postProcessSuggestion(
 // follows: code has `let me`, `I = …`, `Hello()` or `Note: int`, never "Let me", "I need",
 // "Hello," or "Note: The".
 const OPENER =
-  /^(?:I(?:'m|'d|'ll|’m|’d|’ll| am| need| can(?:'t|’t|not)?| cannot| would| will| don't| don’t| do not| see| notice| think| understand| apologi[sz]e)\b|(?:Could|Can|Would|Will) you\b|Please (?:provide|share|clarify|specify|tell|give|let)\b|(?:Sure|Certainly|Of course|Unfortunately|Sorry|Hello|Hi there)(?:[,!.:]| I\b)|Here(?:'s|’s| is| are)\b|(?:It|This|That) (?:looks|seems|appears|is unclear)\b|Without (?:more|additional|further|knowing)\b|To (?:complete|help|finish)\b|Based on\b|(?:What|Which) (?:programming )?language\b|(?:What|How) (?:would|do|should) you\b|Let me\b|You (?:need|should|could|can|might|want)\b|The (?:code|snippet|fragment|completion|cursor|context) (?:you|is|seems|appears|provided|above)\b|(?:Note|Explanation): [A-Z]|\d+\. [A-Z][a-z]+ [a-z])/
+  /^(?:I(?:'m|'d|'ll|’m|’d|’ll| am| need| can(?:'t|’t|not)?| cannot| would| will| don't| don’t| do not| see| notice| think| understand| apologi[sz]e)\b|(?:Could|Can|Would|Will) you\b|Please (?:provide|share|clarify|specify|tell|give|let)\b|(?:Sure|Certainly|Of course|Unfortunately|Sorry|Hello|Hi there)(?:[,!.:]| I\b)|Here(?:'s|’s| is| are)\b|(?:It|This|That) (?:looks|seems|appears|is unclear)\b|Without (?:more|additional|further|knowing)\b|To (?:complete|help|finish)\b|Based on\b|(?:What|Which) (?:programming )?language\b|(?:What|How) (?:would|do|should) you\b|Let me\b|You (?:need|should|could|can|might|want)\b|The (?:code|snippet|fragment|completion|cursor|context) (?:you|is|seems|appears|provided|above)\b|(?:This|That|The) (?:code|cell|snippet|line|input) (?:has|was|is|looks|seems|appears|already|will|would|can)\b|(?:Note|Explanation): [A-Z]|\d+\. [A-Z][a-z]+ [a-z])/
 // A question, or a plain sentence: words only (no code's operators, brackets, digits or dots).
 const QUESTION = /^[A-Z][\w'’-]*(?:,? [\w'’-]+){2,}\?$/
 const SENTENCE = /^[A-Z][a-z'’]*(?:,? [A-Za-z'’-]+){3,}[.!:…]$/
 const NOTHING =
   /^(?:[([](?:nothing|no completion|empty)[)\]]|No (?:completion|suggestion)(?: is)?(?: needed)?\.?)$/i
 
+// A line's first sentence: "This code has already been executed." of a line that goes on.
+const FIRST_SENTENCE = /^.*?[.!?:…](?=\s|$)/
+
 /** An answer that talks to the member instead of completing their code. */
 export function looksLikeProse(text: string): boolean {
   const first = text.trim().split("\n")[0].trim()
   if (!first) return false
-  return OPENER.test(first) || QUESTION.test(first) || SENTENCE.test(first) || NOTHING.test(first)
+  const sentence = first.match(FIRST_SENTENCE)?.[0] ?? first
+  return (
+    [first, sentence].some((s) => OPENER.test(s) || QUESTION.test(s) || SENTENCE.test(s)) ||
+    NOTHING.test(first)
+  )
 }
 
 /**

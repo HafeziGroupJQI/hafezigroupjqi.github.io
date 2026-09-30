@@ -93,6 +93,9 @@ describe("the prose guard", () => {
       "1. What programming language this is?",
       "This computes the norm of the vector.",
       "(no completion)",
+      // Seen live in an empty console prompt after a cell ran: a sentence, then more of them.
+      "This code has already been executed. If you want to run it again or modify it, you could continue with something like:",
+      "This cell was already run, so",
     ])
       expect(looksLikeProse(prose), prose).toBe(true)
   })
@@ -111,6 +114,8 @@ describe("the prose guard", () => {
       "None",
       "for i in range(10):",
       "SELECT name FROM users WHERE id = 1",
+      "x = 1.5; y = x ** 2",
+      "Print[Integrate[Exp[-x^2], {x, -Infinity, Infinity}]]",
       "",
     ])
       expect(looksLikeProse(code), code).toBe(false)

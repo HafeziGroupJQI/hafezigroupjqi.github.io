@@ -15,6 +15,7 @@ import {
   draftRow,
   draftView,
   plainName,
+  publishedKey,
   send,
   stagedKey,
 } from "../uploads/drafts"
@@ -32,12 +33,13 @@ import {
   newId,
   openConflict,
   openConflictOf,
+  mergeable,
   refusal,
   sentText,
 } from "./conflicts"
 import { gitBlobSha, threeWay } from "./merge"
-import { readPage } from "./public"
-import { publishEdit } from "./publish"
+import { pageProblems, readPage, vaultProblems } from "./public"
+import { publishEdit, vaultView } from "./publish"
 import {
   type EditKind,
   blobSha,
@@ -306,7 +308,40 @@ export async function editRoutes(
   }
 
   const conflictMatch = path.match(CONFLICT)
-  if (conflictMatch) return conflictRoutes(request, env, session, record, conflictMatch)
+  if (conflictMatch) return conflictRoutes(request, env, session, record, conflictMatch, repoOf)
+
+  // Conflicts the member is in: theirs held (role=mine), those they may settle (first), and for
+  // admins every open one (all). The counts are for the lists' badges.
+  if (path === "/api/edit/conflicts" && request.method === "GET") {
+    const admin = await isAdmin(env, session)
+    const role = url.searchParams.get("role") ?? "mine"
+    if (!["mine", "first", "all"].includes(role) || (role === "all" && !admin))
+      throw new HttpError(422, "role must be mine, first or (for admins) all")
+    const me = session.login
+    const where = {
+      mine: "x.login = ?1 COLLATE NOCASE",
+      first: admin
+        ? "(x.first_login = ?1 COLLATE NOCASE OR x.login != ?1 COLLATE NOCASE)"
+        : "x.first_login = ?1 COLLATE NOCASE",
+      all: "?1 IS NOT NULL",
+    }
+    const { results } = await env.DB.prepare(
+      `${CONFLICT_SELECT} WHERE x.state = 'open' AND ${where[role as keyof typeof where]}
+       ORDER BY x.opened_at LIMIT 100`,
+    )
+      .bind(me)
+      .all<ConflictRow & { author: string | null; summary: string | null }>()
+    const counts = await env.DB.prepare(
+      `SELECT SUM(${where.mine}) AS mine, SUM(${where.first}) AS first
+       FROM edit_conflicts x WHERE x.state = 'open'`,
+    )
+      .bind(me)
+      .first<{ mine: number | null; first: number | null }>()
+    return json({
+      conflicts: results.map((row) => conflictView(row, { login: me, admin })),
+      counts: { mine: counts?.mine ?? 0, first: counts?.first ?? 0 },
+    })
+  }
 
   const match = path.match(DRAFT)
   if (!match) throw new HttpError(404, "not found")
@@ -625,13 +660,206 @@ async function visibleConflict(env: Env, session: Session, id: string) {
   return { row, admin, view: conflictView(row, { login: session.login, admin }) }
 }
 
+/**
+ * The texts of a conflict: the version the second change was made from, the first change's (its
+ * sent text while it waits, else main's), the second's as held, and the two merged with the
+ * second's lines where both changed the same ones.
+ */
+async function conflictTexts(env: Env, repo: DraftRepo, row: ConflictRow) {
+  const second = (await draftRow(env, row.draft_id))!
+  const [change] = await changesOf(env, second.id)
+  const firstRow = row.first_draft_id ? await draftRow(env, row.first_draft_id) : null
+  const waiting = firstRow && (firstRow.status === "open" || firstRow.status === "review")
+  const pending = waiting ? await sentText(env, repo, firstRow, row.path) : null
+  const main = pending === null ? await repo.file(row.path) : null
+  const first = pending ?? (main ? decode(main.bytes, row.path) : null)
+  if (first === null)
+    throw new HttpError(409, "the page was moved or deleted on main: there is nothing to settle")
+  const secondText = await stagedText(env, second, row.path)
+  const base = (await baseText(env, repo, second, change)) ?? first
+  const merge = mergeable(row.path) ? threeWay(base, first, secondText) : null
+  return {
+    second,
+    change,
+    // What a settled draft is made on: the first change while it waits, else main's version.
+    on: pending !== null ? { draft: firstRow!.id, text: first } : { sha: main!.sha, text: first },
+    texts: {
+      base_text: base,
+      first_text: first,
+      second_text: secondText,
+      proposed: merge?.text ?? secondText,
+      clean: merge?.clean ?? false,
+    },
+  }
+}
+
 async function conflictRoutes(
   request: Request,
   env: Env,
   session: Session,
   record: Auditor,
   [, id, part]: RegExpMatchArray,
+  repoOf: (name: RepoName) => DraftRepo,
 ): Promise<Response> {
+  // The two changes and a proposed merge, for the settle view (/edit?conflict=<id>): its two
+  // editors and admins only.
+  if (!part && request.method === "GET") {
+    const { row, view } = await visibleConflict(env, session, id)
+    if (row.state !== "open") return json({ conflict: view, due_at: null })
+    const { texts } = await conflictTexts(env, repoOf(row.repo), row)
+    return json({ conflict: view, ...texts, due_at: dueAt(Date.now()) })
+  }
+
+  // Settle it: keep the first change (the second goes back to its author), take the second
+  // where both changed the same lines, or a merged text. Only the first editor or an admin, and
+  // never the second editor on their own conflict, even an admin.
+  if (part === "resolve" && request.method === "POST") {
+    requireMutation(request, env)
+    const { row, view, admin } = await visibleConflict(env, session, id)
+    const me = session.login.toLowerCase()
+    if (row.login.toLowerCase() === me && row.first_login?.toLowerCase() !== me)
+      throw new HttpError(403, "you can't settle a conflict with your own change")
+    if (!view.can_settle)
+      throw new HttpError(
+        row.state === "open" ? 403 : 409,
+        row.state === "open"
+          ? "only the member who sent the first change or an admin can settle this"
+          : "this conflict is settled already",
+      )
+    const body = (await readJson(request)) as Record<string, unknown>
+    const choice = body.choice
+    if (choice !== "first" && choice !== "second" && choice !== "merged")
+      throw new HttpError(422, "choice must be first, second or merged")
+    const repo = repoOf(row.repo)
+    const { display_name } = await navIdentity(env, session)
+    const settler = plainName(display_name, session.login)
+    const now = Date.now()
+    // One settles it: a second answer (another admin, the first editor) finds it taken.
+    const claim = async () => {
+      const claimed = await env.DB.prepare(
+        `UPDATE edit_conflicts SET resolved_by = ? WHERE id = ? AND state = 'open'
+           AND resolved_by IS NULL`,
+      )
+        .bind(session.login, row.id)
+        .run()
+      if (!claimed.meta.changes) throw new HttpError(409, "this conflict is settled already")
+    }
+    const release = () =>
+      env.DB.prepare("UPDATE edit_conflicts SET resolved_by = NULL WHERE id = ? AND state = 'open'")
+        .bind(row.id)
+        .run()
+    const finish = (state: "resolved" | "rejected") =>
+      env.DB.prepare(
+        `UPDATE edit_conflicts SET state = ?, resolution = ?, resolved_at = ?
+         WHERE id = ? AND state = 'open' AND resolved_by = ?`,
+      ).bind(state, choice, now, row.id, session.login)
+
+    if (choice === "first") {
+      await claim()
+      await env.DB.batch([
+        finish("rejected"),
+        env.DB.prepare(
+          `UPDATE upload_drafts SET status = 'editing', detail_json = ?, updated_at = ?
+           WHERE id = ? AND status = 'conflict'`,
+        ).bind(
+          JSON.stringify({
+            message: `${settler} kept the first change: yours is a draft again, with your text`,
+          }),
+          now,
+          row.draft_id,
+        ),
+        unsentChanges(env, row.draft_id),
+      ])
+      record("edit.conflict.resolve", row.path, {
+        conflict: row.id,
+        choice,
+        first: row.first_login,
+        second: row.login,
+      })
+      return json({ conflict: { ...view, state: "rejected", can_settle: false } })
+    }
+
+    const { second, change, on, texts } = await conflictTexts(env, repo, row)
+    const text = choice === "second" ? texts.proposed : editText(body.text)
+    // Checked as any edit of the page is, with the second editor's rights unless an admin
+    // settles it: a settled text adds nothing its author couldn't.
+    const rights =
+      admin || (await isAdmin(env, { login: second.login, role: "member", lab: undefined }))
+    const problems =
+      row.repo === "vault-private"
+        ? contentReport(row.path, text).problems
+        : [
+            ...pageProblems(text, texts.first_text, rights),
+            ...(await vaultProblems(
+              row.path,
+              text,
+              texts.first_text,
+              vaultView(repo, await repo.tree((await repo.head()).tree)),
+            )),
+          ]
+    if (problems.length) throw new HttpError(422, `this text can't go in: ${problems.join("; ")}`)
+    if (text === texts.first_text)
+      throw new HttpError(422, "that is the first change's text: keep the first change instead")
+    await claim()
+    try {
+      const summary = cleanSummary(`${second.summary ?? ""} (settled by ${settler})`.slice(-120))
+      const author = second.author || second.login
+      await env.ARTIFACTS.put(stagedKey(second.id, row.path), text, {
+        httpMetadata: { contentType: change.content_type ?? "text/plain; charset=utf-8" },
+      })
+      const stacked = "draft" in on
+      if (stacked) await env.ARTIFACTS.put(baseKey(second.id, row.path), on.text)
+      else await env.ARTIFACTS.delete(baseKey(second.id, row.path))
+      const base = stacked ? await gitBlobSha(on.text) : on.sha
+      const after = stacked ? on.draft : null
+      await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE upload_changes SET base_sha = ?, size = ?, staged_at = ?
+           WHERE draft_id = ? AND path = ?`,
+        ).bind(base, new TextEncoder().encode(text).length, now, second.id, row.path),
+        env.DB.prepare(
+          `UPDATE upload_drafts SET after_draft = ?, edited_at = ?, version = version + 1
+           WHERE id = ?`,
+        ).bind(after, now, second.id),
+      ])
+      const settled: DraftRow = { ...second, summary, after_draft: after ?? null, edited_at: now }
+      const [staged] = await changesOf(env, second.id)
+      if (row.repo === "vault") {
+        const title = editTitle(row.path, author, summary)
+        await env.ARTIFACTS.put(publishedKey(second.id, row.path), text, {
+          httpMetadata: { contentType: change.content_type ?? "text/markdown; charset=utf-8" },
+        })
+        await env.DB.batch([
+          env.DB.prepare(
+            `UPDATE upload_drafts SET status = 'open', title = ?, detail_json = NULL, sent_at = ?,
+               due_at = ?, updated_at = ?
+             WHERE id = ?`,
+          ).bind(title, now, dueAt(now), now, second.id),
+          unsentChanges(env, second.id),
+          recordChanges(
+            env,
+            draftChanges(settled, [staged], { at: now, author, summary: title, pull: null }),
+          ),
+        ])
+      } else await send(env, repo, settled, [staged], author, now)
+      await env.DB.batch([finish("resolved")])
+    } catch (error) {
+      await release()
+      throw error
+    }
+    record("edit.conflict.resolve", row.path, {
+      conflict: row.id,
+      choice,
+      first: row.first_login,
+      second: row.login,
+    })
+    const draft = (await draftRow(env, row.draft_id))!
+    return json({
+      conflict: { ...view, state: "resolved", resolution: choice, can_settle: false },
+      draft: draftView(repoFullName(env, draft.repo), draft, await changesOf(env, draft.id)),
+    })
+  }
+
   // The second editor takes their change back: it is their draft again, unsent.
   if (part === "withdraw" && request.method === "POST") {
     requireMutation(request, env)

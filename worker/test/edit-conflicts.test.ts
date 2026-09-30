@@ -528,3 +528,176 @@ describe("editing on top of another member's sent change", () => {
     expect(privateVault.text(path)).toBe(both)
   })
 })
+
+describe("settling a queued conflict", () => {
+  async function queued() {
+    const setup = await overlapping()
+    const { conflict } = (await post(setup.bob, `/api/edit/drafts/${setup.second}/queue`)).body
+    return { ...setup, conflict: conflict.id as string }
+  }
+  const resolve = (client: Client, id: string, body: unknown) =>
+    post(client, `/api/edit/conflicts/${id}/resolve`, body)
+  const unchanged = async (id: string) => {
+    const [row] = await conflicts()
+    expect(row).toMatchObject({ id, state: "open", resolved_by: null })
+  }
+
+  it("is never settled by the second editor, even an admin, nor by anyone else", async () => {
+    const { bob, conflict } = await queued()
+    // A1: the body names no one; who is first is the Worker's own row.
+    expect(
+      (await resolve(bob, conflict, { choice: "second", first_login: "bob", login: "ada" })).status,
+    ).toBe(403)
+    await env.DB.prepare(
+      "INSERT INTO admins (login, added_by, added_at) VALUES ('bob', 'olivia', 0)",
+    ).run()
+    expect((await resolve(bob, conflict, { choice: "second" })).status).toBe(403)
+    // A9: anyone else is told there is no such conflict, and sees none of its text.
+    const eve = await as("eve")
+    expect((await resolve(eve, conflict, { choice: "first" })).status).toBe(404)
+    expect((await eve.json(`/api/edit/conflicts/${conflict}`)).status).toBe(404)
+    await unchanged(conflict)
+    expect(await statusOf((await conflicts())[0].draft_id)).toBe("conflict")
+  })
+
+  it("shows its parties and admins both changes and a proposed merge", async () => {
+    const { ada, bob, conflict } = await queued()
+    for (const client of [ada, bob, await as("olivia", "owner")]) {
+      const seen = await client.json(`/api/edit/conflicts/${conflict}`)
+      expect(seen).toMatchObject({
+        status: 200,
+        body: {
+          base_text: TEXT,
+          first_text: ADA_LINE,
+          second_text: BOB_LINE,
+          proposed: BOB_LINE,
+          clean: false,
+        },
+      })
+    }
+    expect((await ada.json("/api/edit/conflicts?role=first")).body).toMatchObject({
+      conflicts: [{ id: conflict, you_first: true, can_settle: true }],
+      counts: { first: 1, mine: 0 },
+    })
+    expect((await bob.json("/api/edit/conflicts?role=mine")).body.counts).toEqual({
+      mine: 1,
+      first: 0,
+    })
+    expect((await bob.json("/api/edit/conflicts?role=all")).status).toBe(422)
+    const owner = await as("olivia", "owner")
+    expect((await owner.json("/api/edit/conflicts?role=all")).body.conflicts).toHaveLength(1)
+  })
+
+  it("lets the first editor take the second change: it goes in after theirs, under its author", async () => {
+    const { ada, bob, first, second, due, conflict } = await queued()
+    const settled = await resolve(ada, conflict, { choice: "second" })
+    expect(settled).toMatchObject({
+      status: 200,
+      body: {
+        conflict: { state: "resolved", resolution: "second" },
+        draft: { id: second, status: "open", unsent: false },
+      },
+    })
+    const row = await env.DB.prepare("SELECT * FROM upload_drafts WHERE id = ?")
+      .bind(second)
+      .first<any>()
+    expect(row.after_draft).toBe(first)
+    expect(row.due_at).toBeGreaterThanOrEqual(due)
+    expect((await conflicts())[0]).toMatchObject({ state: "resolved", resolved_by: "ada" })
+    const change = await env.DB.prepare("SELECT state, summary FROM changes WHERE draft_id = ?")
+      .bind(second)
+      .first<any>()
+    expect(change).toMatchObject({
+      state: "sent",
+      summary: expect.stringContaining("(settled by ada)"),
+    })
+    expect(await auditRows("action = 'edit.conflict.resolve'")).toEqual([
+      expect.objectContaining({
+        login: "ada",
+        detail_json: JSON.stringify({ conflict, choice: "second", first: "ada", second: "bob" }),
+      }),
+    ])
+    // Ada's goes in on schedule, then Bob's (a full hour after it was settled, here the same
+    // hour), whose lines win where both changed.
+    const run = await commitDue(env as any, vault.fetch, Math.max(due, row.due_at))
+    expect(run.merged).toEqual([first, second])
+    expect(vault.text(PAGE)).toBe(BOB_LINE)
+    expect(vault.commit(vault.commit(vault.head).parents[0]).author.email).toBe(
+      "ada@users.noreply.github.com",
+    )
+    expect(vault.commit(vault.head)).toMatchObject({
+      author: { email: "bob@users.noreply.github.com" },
+      message: expect.stringContaining("settled by ada"),
+    })
+    expect(bob).toBeTruthy()
+  })
+
+  it("lets an admin keep the first change: the second goes back to its author as a draft", async () => {
+    const { bob, second, conflict } = await queued()
+    const owner = await as("olivia", "owner")
+    expect((await resolve(owner, conflict, { choice: "first" })).body).toMatchObject({
+      conflict: { state: "rejected" },
+    })
+    expect((await bob.json(`/api/edit/drafts/${second}`)).body).toMatchObject({
+      status: "editing",
+      text: BOB_LINE,
+      detail: { message: expect.stringContaining("kept the first change") },
+    })
+    // Settled once: a second answer finds it taken (A11).
+    expect((await resolve(owner, conflict, { choice: "second" })).status).toBe(409)
+  })
+
+  it("checks a merged text as any edit of the page, and leaves the conflict open if it fails", async () => {
+    const { ada, conflict } = await queued()
+    const merged = edit("Third paragraph.", "Third, merged.")
+    // A10: HTML that runs can't come in through a settlement by a member.
+    expect(
+      (await resolve(ada, conflict, { choice: "merged", text: merged + "<script>x()</script>\n" }))
+        .status,
+    ).toBe(422)
+    expect(
+      (await resolve(ada, conflict, { choice: "merged", text: "no front matter" })).status,
+    ).toBe(422)
+    await unchanged(conflict)
+    expect((await resolve(ada, conflict, { choice: "merged", text: merged })).status).toBe(200)
+    expect((await conflicts())[0]).toMatchObject({ state: "resolved", resolution: "merged" })
+  })
+
+  it("settles against the first editor's newest sent text", async () => {
+    const { ada, first, second, conflict } = await queued()
+    const newer = ADA_LINE.replace("First paragraph.", "First, newer.")
+    await put(ada, first, { text: newer })
+    expect((await send(ada, first)).status).toBe(200)
+    const seen = (await ada.json(`/api/edit/conflicts/${conflict}`)).body
+    expect(seen.first_text).toBe(newer)
+    expect(seen.proposed).toBe(BOB_LINE.replace("First paragraph.", "First, newer."))
+    await resolve(ada, conflict, { choice: "second" })
+    const base = await env.ARTIFACTS.get(`uploads/${second}/.base/${PAGE}`)
+    expect(await base!.text()).toBe(newer)
+  })
+
+  it("sends a settled private change as a pull request again, after the first", async () => {
+    const path = "notes/meeting.md"
+    const base = privateVault.text(path)!
+    const create = (client: Client, text: string) =>
+      post(client, "/api/edit/drafts", {
+        repo: "vault-private",
+        path,
+        base_sha: privateVault.sha(path),
+        text,
+        summary: "a change",
+      })
+    const ada = await as("ada")
+    const bob = await as("bob")
+    const first = (await create(ada, base.replace("Third paragraph.", "Ada's third."))).body.id
+    expect((await send(ada, first)).status).toBe(200)
+    const second = (await create(bob, base.replace("Third paragraph.", "Bob's third."))).body.id
+    const { conflict } = (await post(bob, `/api/edit/drafts/${second}/queue`)).body
+    const settled = await resolve(ada, conflict.id, { choice: "second" })
+    expect(settled.body.draft).toMatchObject({ status: "open", pull: { number: 2 } })
+    expect(privateVault.text(path, `edits/bob/${second}`)).toBe(
+      base.replace("Third paragraph.", "Bob's third."),
+    )
+    expect(privateVault.pulls.get(2)!.title).toContain("settled by ada")
+  })
+})

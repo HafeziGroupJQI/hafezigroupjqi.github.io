@@ -598,15 +598,22 @@ article.popover-hint > *:first-child {
   align-items: center;
   gap: 14px;
 }
+// The name is never cut: the desktop row falls back to the first name when the full one doesn't
+// fit (navScript.ts), and in the menu panel a long name wraps, with "Sign out" under it if need be.
 .site-header__nav ul li a.nav-identity {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  max-width: 16ch;
+  min-width: 0;
 }
-.nav-identity .nav-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
+@media (max-width: 1199px) {
+  .site-header__nav li[data-auth="out"]:not([hidden]) {
+    flex-wrap: wrap;
+  }
+  .site-header__nav ul li a.nav-identity .nav-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 .nav-avatar {
   flex: none;

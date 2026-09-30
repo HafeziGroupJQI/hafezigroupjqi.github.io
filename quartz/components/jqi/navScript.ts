@@ -1,3 +1,9 @@
+// A member's first name, for the header when the full name doesn't fit the desktop row.
+// Source text, because the header's script is inlined in every page (tested in nav.test.ts).
+export const shortNameSource = `function shortName(name) {
+    return String(name == null ? "" : name).trim().split(/\\s+/)[0] || "";
+  }`
+
 // Mobile menu toggle and search shortcut for the JQI header. Inlined by JqiFrame;
 // a document-level listener so it survives SPA navigation.
 export const navScript = `(function () {
@@ -45,6 +51,38 @@ export const navScript = `(function () {
   // (e.g. the GitHub Pages public deployment), so nothing member-only ever leaks into the markup.
   // Signed in, "Sign out" gets the member's photo and name before it, linking to /settings: the
   // name and photo they chose there (the session's display_name and avatar), else GitHub's.
+  // The name is shown in full, never cut with an ellipsis. Only on the desktop row, and only when
+  // the full name would push the row onto another line or past its edge, the first name stands in.
+  ${shortNameSource}
+  function fitName() {
+    var chip = document.querySelector(".nav-identity");
+    var list = document.querySelector(".site-header__nav > ul");
+    if (!chip || !list) return;
+    var name = chip.querySelector(".nav-name");
+    var full = chip.dataset.full || "";
+    var first = shortName(full);
+    name.textContent = full;
+    if (!desktop.matches || !first || first === full) return;
+    name.textContent = first;
+    var height = list.offsetHeight;
+    name.textContent = full;
+    if (list.offsetHeight > height || list.scrollWidth > list.clientWidth) name.textContent = first;
+  }
+  function setName(chip, full) {
+    chip.dataset.full = full;
+    var label = full + ": your settings (" + (chip.dataset.login || "") + ")";
+    chip.title = label;
+    chip.setAttribute("aria-label", label);
+    fitName();
+  }
+  var fitting = 0;
+  function refit() {
+    cancelAnimationFrame(fitting);
+    fitting = requestAnimationFrame(fitName);
+  }
+  window.addEventListener("resize", refit);
+  desktop.addEventListener("change", refit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit);
   function identity(user) {
     var out = document.querySelector('[data-auth="out"]');
     if (!out) return;
@@ -70,17 +108,16 @@ export const navScript = `(function () {
       out.prepend(chip);
     }
     chip.dataset.login = user.login;
-    chip.title = "Your settings (" + user.login + ")";
     var avatar = user.avatar || "https://avatars.githubusercontent.com/" + encodeURIComponent(user.login) + "?s=48";
     var img = chip.querySelector("img");
     if (img.getAttribute("src") !== avatar) img.src = avatar;
-    chip.querySelector(".nav-name").textContent = user.display_name || user.name || user.login;
+    setName(chip, user.display_name || user.name || user.login);
   }
   // /settings announces a new name or photo as soon as it is saved.
   window.addEventListener("hafezi:identity", function (event) {
     var chip = document.querySelector(".nav-identity");
     if (!chip || !event.detail) return;
-    if (event.detail.display_name) chip.querySelector(".nav-name").textContent = event.detail.display_name;
+    if (event.detail.display_name) setName(chip, event.detail.display_name);
     if (event.detail.avatar) chip.querySelector("img").src = event.detail.avatar;
   });
   function applyAuth(loggedIn, login, isAdmin, user) {

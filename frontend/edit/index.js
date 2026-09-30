@@ -156,9 +156,7 @@ export async function mountEdit(root) {
   const others = othersNotice(source.others)
   if (others) notice(others)
   if (source.review)
-    notice(
-      "Something in this file runs when the site builds (its code cells), so an admin merges edits to it after checking them.",
-    )
+    notice(`An admin merges edits to this file after checking them, since ${source.review}.`)
 
   const summary = h("input", {
     class: "edit-summary",
@@ -434,6 +432,8 @@ export async function mountEdit(root) {
     try {
       const answer = await call(`/api/edit/drafts/${draft.id}/send`, { method: "POST" })
       if (answer.status === 409 && answer.body.incoming) {
+        // Main's version is the newest the page knows of now (Discard goes back to it).
+        source.main = { ...answer.body.incoming, size: answer.body.incoming.text.length }
         say(answer.body.detail, true)
         compare(answer.body.incoming)
       } else if (!answer.ok) say(answer.body.detail ?? `Sending failed (${answer.status}).`, true)

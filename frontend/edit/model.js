@@ -107,7 +107,7 @@ export function sendHint(source, now = Date.now(), locale = undefined) {
   if (source.repo === "vault")
     return `Published now, it goes into the public vault ${publishLabel(dueAt(now), now, locale)}, and the public page shows it about 3 minutes after that. Until then only you see it, and you can change it or discard it.`
   if (source.review)
-    return "Sending opens a pull request; an admin merges it after checking it, since something in it runs when the site builds."
+    return `Sending opens a pull request; an admin merges it after checking it, since ${source.review}.`
   return `Sent now, it goes in ${publishLabel(dueAt(now), now, locale)} if the vault's check passes, and members' pages show it about 15 minutes after that. Until then you can change it or discard it.`
 }
 

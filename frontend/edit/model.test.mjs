@@ -134,7 +134,10 @@ test("a draft's state and when a send goes in read as sentences", () => {
   assert.match(draftStatus({ status: "open", unsent: true }, NOW), /send it again/)
   assert.match(draftStatus({ status: "failed", detail: { message: "no title" } }), /\(no title\)/)
   assert.match(sendHint({ review: null }, NOW, "en-US"), /goes in at .*, in 1 h 40 min if/)
-  assert.match(sendHint({ review: "its code cells run" }, NOW), /an admin merges it/)
+  assert.equal(
+    sendHint({ review: "its code cells run when the site builds" }, NOW),
+    "Sending opens a pull request; an admin merges it after checking it, since its code cells run when the site builds.",
+  )
   // A public page's edit is published: straight into the public vault in its hour.
   assert.match(
     sendHint({ repo: "vault", review: null }, NOW, "en-US"),

@@ -119,6 +119,38 @@ export function budgetUsed(member) {
   return Math.min(1, (member.input + member.output) / member.monthly_tokens)
 }
 
+/** Where Hafezi GPT's usage came from (gpt_usage_daily's source). */
+export const USAGE_SOURCES = { chat: "Site chat", agent: "Coding agent", completion: "Ghost text" }
+
+/** A model and a source, e.g. "Haiku 4.5 · Ghost text". */
+export const usageLabel = (row) =>
+  `${row.label ?? row.model} · ${USAGE_SOURCES[row.source] ?? row.source}`
+
+/**
+ * A month's usage by day (GET /api/admin/usage `days`) as a table: a column per model and
+ * source, the costliest first, and a row per day, the latest first, with its total.
+ */
+export function usageByDay(days) {
+  const columns = new Map()
+  const rows = new Map()
+  for (const d of days) {
+    const key = `${d.model}|${d.source}`
+    const column = columns.get(key) ?? { key, label: usageLabel(d), cost_usd: 0 }
+    column.cost_usd += d.cost_usd
+    columns.set(key, column)
+    const row = rows.get(d.day) ?? { day: d.day, cells: {}, cost_usd: 0 }
+    row.cells[key] = d
+    row.cost_usd += d.cost_usd
+    rows.set(d.day, row)
+  }
+  return {
+    columns: [...columns.values()].sort(
+      (a, b) => b.cost_usd - a.cost_usd || a.label.localeCompare(b.label),
+    ),
+    rows: [...rows.values()].sort((a, b) => b.day.localeCompare(a.day)),
+  }
+}
+
 /** Parse the budget field: "" → null (no limit), "2M"/"500k"/"1500000" → tokens. */
 export function parseBudget(text) {
   const t = String(text)

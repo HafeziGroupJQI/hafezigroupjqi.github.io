@@ -8,6 +8,8 @@ import {
   formatTokens,
   parseBudget,
   tabUrl,
+  usageByDay,
+  usageLabel,
 } from "./model.js"
 
 test("a tab's URL keeps a conversations deep link only on that tab", () => {
@@ -92,4 +94,27 @@ test("arrow keys wrap around the tabs; Home and End go to the ends", () => {
   assert.equal(nextTab(2, "Home", 4), 0)
   assert.equal(nextTab(1, "End", 4), 3)
   assert.equal(nextTab(1, "Enter", 4), null)
+})
+
+test("a month's usage by day: a column per model and source, the latest day first", () => {
+  const haiku = { model: "claude-haiku-4-5-20251001", label: "Haiku 4.5", source: "completion" }
+  const sonnet = { model: "claude-sonnet-5", label: "Sonnet 5", source: "agent" }
+  const { columns, rows } = usageByDay([
+    { ...haiku, day: "2031-02-01", cost_usd: 0.25 },
+    { ...sonnet, day: "2031-02-03", cost_usd: 3 },
+    { ...haiku, day: "2031-02-03", cost_usd: 0.5 },
+  ])
+  assert.deepEqual(
+    columns.map((c) => c.label),
+    ["Sonnet 5 · Coding agent", "Haiku 4.5 · Ghost text"],
+  )
+  assert.deepEqual(
+    rows.map((r) => [r.day, r.cost_usd, Object.keys(r.cells).length]),
+    [
+      ["2031-02-03", 3.5, 2],
+      ["2031-02-01", 0.25, 1],
+    ],
+  )
+  assert.equal(rows[1].cells[columns[1].key].cost_usd, 0.25)
+  assert.equal(usageLabel({ model: "offline", source: "chat" }), "offline · Site chat")
 })

@@ -14,6 +14,8 @@ import {
   nextTab,
   parseBudget,
   tabUrl,
+  USAGE_SOURCES,
+  usageByDay,
 } from "./model.js"
 import { changeLabel, draftName, statusLabel } from "../uploads/model.js"
 
@@ -448,6 +450,8 @@ export function mountAdmin(root, { api, session }) {
   async function usageTab(panel) {
     const month = h("input", { type: "month", value: new Date().toISOString().slice(0, 7) })
     const table = h("table", { class: "bases-table usage-table" })
+    const byModel = h("table", { class: "bases-table usage-table" })
+    const byDay = h("table", { class: "bases-table usage-table" })
     panel.append(
       h("div", { class: "dash-toolbar" }, h("label", { class: "dash-field" }, "Month", month)),
       h("p", {
@@ -455,9 +459,18 @@ export function mountAdmin(root, { api, session }) {
         text: "Tokens and estimated cost per member this month. A budget caps a member's input + output tokens per calendar month (UTC); leave it empty for no limit.",
       }),
       h("div", { class: "table-scroll" }, table),
+      h("h2", { text: "By model and source" }),
+      h("p", {
+        class: "muted",
+        text: "The whole group's spend this month: the site chat (and the lab's Hafezi GPT panel), the lab's coding agent, and its ghost text (inline code completions). Split from when daily counting began: earlier usage is only in the totals above.",
+      }),
+      h("div", { class: "table-scroll" }, byModel),
+      h("h2", { text: "By day" }),
+      h("div", { class: "table-scroll" }, byDay),
     )
     async function load() {
       const data = await api(`/api/admin/usage?month=${month.value}`)
+      split(data)
       const total = data.members.reduce((sum, m) => sum + m.cost_usd, 0)
       table.replaceChildren(
         h(
@@ -487,6 +500,69 @@ export function mountAdmin(root, { api, session }) {
             h("td", { text: formatUsd(total) }),
             h("td", { colspan: 2 }),
           ),
+        ),
+      )
+    }
+    function split({ models = [], days = [] }) {
+      const heads = (labels) =>
+        h(
+          "thead",
+          {},
+          h(
+            "tr",
+            {},
+            labels.map((t) => h("th", { text: t })),
+          ),
+        )
+      const none = (colspan) =>
+        h("tr", {}, h("td", { colspan, class: "muted", text: "Nothing counted this month." }))
+      byModel.replaceChildren(
+        heads(["Model", "Source", "Requests", "Input", "Output", "Cache reads", "Cost"]),
+        h(
+          "tbody",
+          {},
+          models.length
+            ? models.map((r) =>
+                h(
+                  "tr",
+                  {},
+                  h("td", { text: r.label }),
+                  h("td", { text: USAGE_SOURCES[r.source] ?? r.source }),
+                  h("td", { text: formatTokens(r.requests) }),
+                  h("td", { text: formatTokens(r.input) }),
+                  h("td", { text: formatTokens(r.output) }),
+                  h("td", { text: formatTokens(r.cache_read) }),
+                  h("td", { text: formatUsd(r.cost_usd) }),
+                ),
+              )
+            : none(7),
+        ),
+      )
+      const { columns, rows } = usageByDay(days)
+      byDay.replaceChildren(
+        heads(["Day", ...columns.map((c) => c.label), "Total"]),
+        h(
+          "tbody",
+          {},
+          rows.length
+            ? rows.map((row) =>
+                h(
+                  "tr",
+                  {},
+                  h("td", { class: "mono", text: row.day }),
+                  columns.map((c) => {
+                    const cell = row.cells[c.key]
+                    return cell
+                      ? h("td", {
+                          text: formatUsd(cell.cost_usd),
+                          title: `${formatTokens(cell.input + cell.output)} tokens in ${cell.requests} requests`,
+                        })
+                      : h("td", { class: "muted", text: "—" })
+                  }),
+                  h("td", { text: formatUsd(row.cost_usd) }),
+                ),
+              )
+            : none(columns.length + 2),
         ),
       )
     }

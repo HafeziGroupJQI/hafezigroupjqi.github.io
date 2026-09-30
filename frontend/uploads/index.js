@@ -20,6 +20,7 @@ import {
   joinPath,
   replaceProblem,
   statusLabel,
+  statusTarget,
 } from "./model.js"
 
 export async function mountUploads(root, { api }) {
@@ -40,13 +41,20 @@ export async function mountUploads(root, { api }) {
   const list = h("section", { class: "settings-section", "aria-labelledby": "uploads-drafts" })
   const editor = h("section", { class: "settings-section", "aria-labelledby": "uploads-draft" })
   root.append(status, list, editor)
+  // An open draft's messages go beside its actions (showDraft keeps this line there), where the
+  // member is looking, not at the top of the page, off screen once the draft is open.
+  const draftStatus = h("p", { class: "uploads-status", role: "status", "aria-live": "polite" })
 
   let state
   let current = null // the draft being edited
   let folder = ""
   const say = (text, error = false) => {
-    status.textContent = text
-    status.classList.toggle("dash-error", error)
+    const line = statusTarget(current) === "draft" ? draftStatus : status
+    for (const other of [status, draftStatus]) if (other !== line) other.textContent = ""
+    line.textContent = text
+    line.classList.toggle("dash-error", error)
+    line.setAttribute("role", error ? "alert" : "status")
+    if (error && text && line.isConnected) line.scrollIntoView({ block: "nearest" })
   }
   const fail = (error) => say(error.message, true)
 
@@ -402,6 +410,7 @@ export async function mountUploads(root, { api }) {
         h("h3", { text: "Changes" }),
         changes,
         actions,
+        draftStatus,
         live ? await browser() : null,
       ),
     )

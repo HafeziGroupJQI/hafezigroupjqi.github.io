@@ -12,6 +12,7 @@ import {
   joinPath,
   replaceProblem,
   statusLabel,
+  statusTarget,
   uploadsUrl,
 } from "./model.js"
 
@@ -191,4 +192,10 @@ test("a page's tools open /uploads on the newest unsent draft", () => {
   assert.equal(draftForPage([draft({ status: "open" })]), null)
   // A page edit is changed in the editor, never added to.
   assert.equal(draftForPage([draft({ kind: "edit" })]), null)
+})
+
+test("messages go beside the open draft, else at the top of the page", () => {
+  assert.equal(statusTarget(null), "page")
+  assert.equal(statusTarget(draft({ status: "open" })), "draft")
+  assert.equal(statusTarget(draft({ status: "merged" })), "draft")
 })

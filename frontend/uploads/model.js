@@ -74,6 +74,9 @@ export function statusLabel(draft, now = Date.now(), locale = undefined) {
   }
 }
 
+/** Where /uploads says how something went: beside the open draft, else at the top of the page. */
+export const statusTarget = (current) => (current ? "draft" : "page")
+
 /** The folder a path is in ("" for the top of the vault). */
 export const folderOf = (path) => path.slice(0, Math.max(0, path.lastIndexOf("/")))
 

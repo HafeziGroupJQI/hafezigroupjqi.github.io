@@ -8,6 +8,17 @@ import type { UsageTotals } from "./models"
 
 export type Visibility = "private" | "group"
 
+/** What used Hafezi GPT: the site's chat (and the lab's panel), the lab's coding agent, or its ghost text. */
+export type UsageSource = "chat" | "agent" | "completion"
+
+/** A request's usage, as counted by day: the model it ran on, where it came from, and whether it is a new request. */
+export interface UsageTag {
+  model: string
+  source: UsageSource
+  /** 1 for a request's first count, 0 for more of one already counted (a stream's later events). */
+  requests?: number
+}
+
 export interface Project {
   id: string
   name: string
@@ -96,6 +107,7 @@ const toProject = (row: Record<string, unknown>): Project => ({
 })
 
 const month = (at = Date.now()) => new Date(at).toISOString().slice(0, 7)
+const day = (at = Date.now()) => new Date(at).toISOString().slice(0, 10)
 
 export class GptStore {
   constructor(private db: D1Database) {}
@@ -621,7 +633,24 @@ export class GptStore {
     return { used: row?.used ?? 0, budget: row?.budget ?? null, cost_usd: row?.cost_usd ?? 0 }
   }
 
-  async addUsage(login: string, totals: UsageTotals, at = Date.now()): Promise<void> {
+  /**
+   * Count usage in the member's monthly rollup (gpt_usage, which budgets read), then by day,
+   * model and source (gpt_usage_daily, which the admin's usage tab splits). The split is only for
+   * that view: failing it never costs the count a budget reads.
+   */
+  async addUsage(
+    login: string,
+    totals: UsageTotals,
+    { model, source, requests = 1 }: UsageTag,
+    at = Date.now(),
+  ): Promise<void> {
+    const counts = [
+      totals.input,
+      totals.output,
+      totals.cache_read,
+      totals.cache_write,
+      totals.cost_usd,
+    ]
     await this.db
       .prepare(
         `INSERT INTO gpt_usage (login, month, input, output, cache_read, cache_write, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -629,16 +658,20 @@ export class GptStore {
            cache_read = cache_read + excluded.cache_read, cache_write = cache_write + excluded.cache_write,
            cost_usd = cost_usd + excluded.cost_usd`,
       )
-      .bind(
-        login,
-        month(at),
-        totals.input,
-        totals.output,
-        totals.cache_read,
-        totals.cache_write,
-        totals.cost_usd,
-      )
+      .bind(login, month(at), ...counts)
       .run()
+    await this.db
+      .prepare(
+        `INSERT INTO gpt_usage_daily (login, day, model, source, input, output, cache_read, cache_write, cost_usd, requests)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (login, day, model, source) DO UPDATE SET input = input + excluded.input,
+           output = output + excluded.output, cache_read = cache_read + excluded.cache_read,
+           cache_write = cache_write + excluded.cache_write, cost_usd = cost_usd + excluded.cost_usd,
+           requests = requests + excluded.requests`,
+      )
+      .bind(login, day(at), model, source, ...counts, requests)
+      .run()
+      .catch((error) => console.error("counting Hafezi GPT usage by day failed", error))
   }
 
   /** Logins seen signing in: who a chat can be shared with. */

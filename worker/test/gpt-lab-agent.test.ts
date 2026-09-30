@@ -5,6 +5,7 @@ import { COMPLETION_CONTRACT } from "../src/gpt/completion"
 import { labAgent, upstreamBody } from "../src/gpt/lab-agent"
 import { LAB_PROMPT } from "../src/gpt/lab-prompt"
 import { VAULT_TOOLS } from "../src/gpt/lab-tools"
+import { GptStore } from "../src/gpt/store"
 import { ORIGIN } from "./helpers"
 import worker, { anthropicCalls, anthropicScript } from "./worker"
 
@@ -151,6 +152,70 @@ describe("the lab's coding agent endpoint", () => {
     await waitOnExecutionContext(ctx)
     expect(cancelled).toBe(true)
     expect(await usageOf("halle")).toEqual({ input: 40, output: 6 })
+  })
+
+  it("counts usage by day, model and source too: ghost text apart from the agent's", async () => {
+    const dora = await issueLabTicket(
+      env as any,
+      { login: "dora", role: "member", exp: exp() },
+      "dora",
+    )
+    // An agent's turn, streamed: its usage comes in two counts, for one request.
+    anthropicScript.push({
+      content: [{ type: "text", text: "Done." }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 7, output_tokens: 9 },
+    })
+    expect((await agent(dora, { ...ask, messages: hello, stream: true })).status).toBe(200)
+    // Ghost text, then a chat's title (the agent's too), both on Haiku.
+    const haiku = { model: "claude-haiku-4-5", max_tokens: 64_000 }
+    await agent(dora, { ...haiku, messages: [{ role: "user", content: "psi =" }] })
+    const title = "Generate a concise title (no more than 10 words) for the following conversation."
+    await agent(dora, {
+      ...haiku,
+      system: title,
+      messages: [{ role: "user", content: "user: hi" }],
+    })
+    const { results } = await env.DB.prepare(
+      `SELECT day, model, source, input, output, requests FROM gpt_usage_daily
+       WHERE login = ? ORDER BY source, model`,
+    )
+      .bind("dora")
+      .all()
+    const day = new Date().toISOString().slice(0, 10)
+    const row = (model: string, source: string, input: number, output: number) => ({
+      day,
+      model,
+      source,
+      input,
+      output,
+      requests: 1,
+    })
+    expect(results).toEqual([
+      row("claude-haiku-4-5-20251001", "agent", 10, 3),
+      row("claude-sonnet-5", "agent", 7, 9),
+      row("claude-haiku-4-5-20251001", "completion", 10, 3),
+    ])
+    // The monthly rollup, which budgets read, has all of it.
+    expect(await usageOf("dora")).toEqual({ input: 27, output: 15 })
+  })
+
+  it("counts a budget's usage even when the split by day can't be written", async () => {
+    // As before migration 0015: the daily table isn't there.
+    const db = new Proxy(env.DB, {
+      get(target, key) {
+        if (key === "prepare")
+          return (sql: string) =>
+            sql.includes("gpt_usage_daily")
+              ? { bind: () => ({ run: () => Promise.reject(new Error("no such table")) }) }
+              : target.prepare(sql)
+        const value = (target as any)[key]
+        return typeof value === "function" ? value.bind(target) : value
+      },
+    })
+    const totals = { input: 5, output: 1, cache_read: 0, cache_write: 0, cost_usd: 0.1 }
+    await new GptStore(db).addUsage("ivy", totals, { model: "claude-sonnet-5", source: "chat" })
+    expect(await usageOf("ivy")).toEqual({ input: 5, output: 1 })
   })
 
   it("refuses a body over 4 MB, chunked or not, before anything is sent on", async () => {

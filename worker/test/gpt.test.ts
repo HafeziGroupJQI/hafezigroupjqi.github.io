@@ -584,6 +584,22 @@ describe("Claude turns (scripted API)", () => {
     const row = usage.body.members.find((m: any) => m.login === "alice-api")
     expect(row).toMatchObject({ input: 4250, output: 60, cache_read: 4000, cache_write: 4000 })
     expect(row.cost_usd).toBeGreaterThan(0)
+    // By day, model and source too: one turn of the site chat, on its model.
+    const daily = await env.DB.prepare(
+      "SELECT model, source, input, output, cost_usd, requests FROM gpt_usage_daily WHERE login = ?",
+    )
+      .bind("alice-api")
+      .all()
+    expect(daily.results).toEqual([
+      {
+        model: "claude-sonnet-5",
+        source: "chat",
+        input: 4250,
+        output: 60,
+        cost_usd: row.cost_usd,
+        requests: 1,
+      },
+    ])
   })
 
   it("puts the page a chat started on, and @-mentioned PDFs, in front of Claude", async () => {

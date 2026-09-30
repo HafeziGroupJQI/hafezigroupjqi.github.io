@@ -98,7 +98,8 @@ member page (`frontend/gpt/`, `src/gpt/`). It knows the whole member edition of 
 - **History and sharing**: chats are private to their owner until shared with a login or the
   whole lab (`*`); readers get a read-only transcript and can fork it into their own chat.
 - **Models and budgets**: Sonnet 5 by default, Opus 5.5 per chat; usage and cost per member per
-  month in `gpt_usage`, capped by `gpt_budgets` (admins set them at `/admin`).
+  month in `gpt_usage`, capped by `gpt_budgets` (admins set them at `/admin`), and per day, model
+  and source (the site chat, the lab's coding agent, its ghost text) in `gpt_usage_daily`.
 
 History is append-only and replayed exactly (thinking and compaction blocks included), with
 binaries stored as R2 references rather than base64. Long chats use server-side compaction.

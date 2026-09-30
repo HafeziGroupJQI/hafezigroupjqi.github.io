@@ -235,7 +235,10 @@ export async function postMessage(
       }
       const result = env.ANTHROPIC_API_KEY ? await converse(turn) : offline(turn)
       await store.appendMessages(conversation.id, result.rows)
-      await store.addUsage(session.login, result.usage)
+      await store.addUsage(session.login, result.usage, {
+        model: env.ANTHROPIC_API_KEY ? m.id : "offline",
+        source: "chat",
+      })
       const display = displayTurns([
         prompt as unknown as StoredMessage,
         ...(result.rows as unknown as StoredMessage[]),

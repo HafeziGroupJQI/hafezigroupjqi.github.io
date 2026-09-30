@@ -197,12 +197,19 @@ export async function labAgent(
     signal: request.signal,
   })
   const model = AGENT_MODELS[sent.model as string]
-  const record = (usage: Record<string, number>) =>
+  // By day too, as ghost text or the agent's (a chat's title is the agent's); a stream's usage
+  // comes in several counts, one request.
+  const source = isCodeCompletion(sent) ? "completion" : "agent"
+  let requests = 1
+  const record = (usage: Record<string, number>) => {
+    const tag = { model: model.id, source, requests } as const
+    requests = 0
     ctx.waitUntil(
       store
-        .addUsage(session.login, addUsage(emptyUsage(), model, usage as any))
+        .addUsage(session.login, addUsage(emptyUsage(), model, usage as any), tag)
         .catch((error) => console.error("recording agent usage failed", error)),
     )
+  }
   const headers = new Headers({
     "content-type": upstream.headers.get("content-type") ?? "application/json",
   })

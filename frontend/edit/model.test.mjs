@@ -90,6 +90,7 @@ test("the editor reads what it was opened with", () => {
     {
       repo: "vault",
       path: "content/index.md",
+      new: false,
       page: "/",
       sha: "ab",
       note: "generated",
@@ -102,6 +103,7 @@ test("the editor reads what it was opened with", () => {
   assert.deepEqual(editIntent(""), {
     repo: null,
     path: null,
+    new: false,
     page: null,
     sha: null,
     note: null,
@@ -344,5 +346,13 @@ test("a revert from the History is a full commit sha, restored or undone", () =>
   assert.match(
     revertNotice({ mode: "undo", rev, clean: false }),
     /^This change can't be undone on its own/,
+  )
+})
+
+test("a folder's new page opens the private vault's index.md in that folder", () => {
+  const intent = editIntent("?new=notes%2Fgroup-meeting%2Findex.md")
+  assert.deepEqual(
+    [intent.repo, intent.path, intent.new],
+    ["vault-private", "notes/group-meeting/index.md", true],
   )
 })

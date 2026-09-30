@@ -6,9 +6,13 @@ import { publishLabel } from "../settings/model.js"
 /** What /edit was opened with: the file (its vault and path), and the page it came from. */
 export function editIntent(search) {
   const params = new URLSearchParams(search)
+  // A folder's new page (?new=<folder>/index.md, from its automatic folder page): the private
+  // vault's; the Worker checks the path.
+  const made = params.get("new")
   return {
-    repo: params.get("repo"),
-    path: params.get("path"),
+    repo: made ? "vault-private" : params.get("repo"),
+    path: made ?? params.get("path"),
+    new: Boolean(made),
     // The page the Edit button was on, and the blob that page was built from.
     page: params.get("page"),
     sha: params.get("sha"),

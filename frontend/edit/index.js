@@ -122,7 +122,11 @@ export async function mountEdit(root) {
   const loading = h("p", { class: "muted", text: "Loading…" })
   root.append(loading)
   const got = await call(
-    `/api/edit/source?${new URLSearchParams({ repo: intent.repo, path: intent.path })}`,
+    `/api/edit/source?${new URLSearchParams({
+      repo: intent.repo,
+      path: intent.path,
+      ...(intent.new ? { new: "1" } : {}),
+    })}`,
   )
   loading.remove()
   if (!got.ok) {
@@ -141,6 +145,9 @@ export async function mountEdit(root) {
   let base = draft?.base_sha ?? source.main?.sha
   let saved = { text: draft?.text ?? source.main?.text ?? "", summary: draft?.summary ?? "" }
   let start = startingText(source, browserCopy.read(key))
+  // A folder's new page starts from a first text the vault's check takes.
+  if (source.new && !draft && !start.restored)
+    start = { text: source.template ?? "", restored: false }
   let busy = false
   // From the page's History: a version to restore or a change to undo, opened as a new draft
   // (the Worker's /api/edit/revert). Nothing is saved until the member saves or sends it.
@@ -166,7 +173,7 @@ export async function mountEdit(root) {
       reverted = { error: answer.body.detail ?? `That version didn't load (${answer.status}).` }
   }
 
-  title.textContent = `Edit ${fileName(source.path)}`
+  title.textContent = source.new ? `New page: ${source.path}` : `Edit ${fileName(source.path)}`
   const page = sitePath(intent.page)
   root.firstChild.append(
     h("p", { class: "dash-summary", text: `${REPO_LABELS[source.repo]} · ${source.path}` }),
@@ -450,7 +457,7 @@ export async function mountEdit(root) {
             body: JSON.stringify({
               repo: source.repo,
               path: source.path,
-              base_sha: base,
+              ...(source.new ? { new: true } : { base_sha: base }),
               text,
               summary: summary.value,
               ...(revert ? { revert } : {}),

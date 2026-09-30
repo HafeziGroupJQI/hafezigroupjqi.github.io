@@ -210,13 +210,11 @@ export function mountPageExport(tools) {
     },
     print: (say) => printDialog(say),
     "drive-doc": toDrive(async () => {
-      // The member edition's images are members-only: Google gets them inlined.
-      const members = !!document.querySelector(".site-internal")
       const markdown = source ? await pageSource().catch(() => null) : null
       const html = docDocument({
         title,
         url: location.href,
-        body: await articleHtml(article, { members, source: markdown }),
+        body: await articleHtml(article, { source: markdown }),
       })
       const size = new Blob([html]).size
       if (size > DOC_LIMIT)

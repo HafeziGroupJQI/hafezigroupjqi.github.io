@@ -1,6 +1,8 @@
 // A page's article as an HTML document for Google Docs to import ("Save to Google Drive" as a
-// Google Doc, drive.js): the article without the site's controls, equations as their TeX, code as
-// plain text, every link with its full URL, embeds as links (print.js's notes). Every picture goes
+// Google Doc, drive.js): the article without the site's controls, equations as pictures of
+// themselves (drawn by MathJax from their TeX, which each keeps as its alt text; as the TeX where
+// MathJax can't draw one), code as plain text, every link with its full URL, embeds as links
+// (print.js's notes). Every picture goes
 // in the document itself, as the notebook export inlines its figures
 // (notebook-page/exporting.js, inlineFigures): as a PNG or JPEG (drawings and WebP drawn to PNG
 // here: Docs imports neither SVG nor WebP), with its size set to fit a page, so no figure runs off
@@ -74,6 +76,24 @@ export function mermaidTextLabels(source) {
 
 /** The Mermaid build the site's pages load (the Obsidian-flavored Markdown plugin's). */
 export const MERMAID = "https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.4.0/mermaid.esm.min.mjs"
+
+/**
+ * MathJax (Apache-2.0), which draws TeX as SVG paths that need no fonts, so a canvas may read the
+ * picture back (the page's KaTeX draws with web fonts in HTML, which no canvas may). Loaded only
+ * when a page with equations is saved as a Google Doc.
+ */
+export const MATHJAX = "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"
+/** Pixels to an ex of an equation in the document: Docs' 11 pt text, whose ex is about half. */
+export const EX = 7.5
+
+/** An equation's size in the document from MathJax's (in ex, as "2.262ex"). Pure. */
+export const mathSize = (width, height) => ({
+  width: Math.max(1, parseFloat(width) * EX),
+  height: Math.max(1, parseFloat(height) * EX),
+})
+
+/** Whether MathJax read the TeX wrong: an error, or a command it doesn't know (drawn red). Pure. */
+export const mathFailed = (mathml) => /<merror|mathcolor="red"/.test(mathml)
 
 /**
  * The largest picture in the document, in CSS px (Docs reads them at 96 dpi): 600 × 800 fits the
@@ -234,6 +254,49 @@ export function drawingSvg(svg) {
     .replace(/&amp;(amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);/gi, "&$1;")
 }
 
+let mathJax = null
+function loadMathJax() {
+  mathJax ??= new Promise((resolve, reject) => {
+    if (window.MathJax?.tex2svg) return resolve(window.MathJax)
+    // Drawn on demand only (typeset: false leaves the page alone), each SVG whole (no shared cache).
+    window.MathJax = {
+      startup: {
+        typeset: false,
+        ready: () => {
+          window.MathJax.startup.defaultReady()
+          resolve(window.MathJax)
+        },
+      },
+      svg: { fontCache: "none" },
+    }
+    const script = document.createElement("script")
+    script.src = MATHJAX
+    script.async = true
+    script.onerror = () => {
+      script.remove()
+      mathJax = null
+      reject(new Error("MathJax did not load"))
+    }
+    // A save never waits on it for long: the equations go as TeX instead.
+    setTimeout(() => reject(new Error("MathJax did not load in time")), 20_000)
+    document.head.append(script)
+  })
+  return mathJax
+}
+
+// An equation as a picture for the document, sized to text; null where MathJax can't draw it.
+async function mathPicture(MathJax, tex, display) {
+  if (mathFailed(MathJax.tex2mml(tex, { display }))) return null
+  const svg = MathJax.tex2svg(tex, { display }).querySelector("svg")
+  if (!svg) return null
+  const size = mathSize(svg.getAttribute("width"), svg.getAttribute("height"))
+  svg.setAttribute("width", String(size.width))
+  svg.setAttribute("height", String(size.height))
+  svg.setAttribute("color", "#222222")
+  const text = new XMLSerializer().serializeToString(svg)
+  return docPicture(new Blob([text], { type: "image/svg+xml" }), { shown: size, max: DOC_MAX })
+}
+
 // A Mermaid diagram as a picture for the document: drawn again by the page's Mermaid (set up as the
 // page set it, in its theme) with its labels as SVG text, at its own size fitted to the page.
 async function mermaidPicture(source, { max }) {
@@ -347,23 +410,34 @@ export async function articleHtml(article, { source } = {}) {
   }
   for (const node of copy.querySelectorAll(REMOVE)) node.remove()
   for (const svg of copy.querySelectorAll("svg")) svg.remove()
-  // Each equation (a display one's .katex sits in its .katex-display) as its TeX: KaTeX's MathML
-  // annotation where the page has it, else the source's equation in the same place.
+  // Each equation (a display one's .katex sits in its .katex-display) from its TeX: KaTeX's
+  // MathML annotation where the page has it, else the source's equation in the same place. As a
+  // picture where MathJax draws it, else as the TeX.
   const equations = [
     ...new Set(
       [...copy.querySelectorAll(".katex")].map((math) => math.closest(".katex-display") ?? math),
     ),
   ]
   const texs = sourceMath(source ?? "")
-  equations.forEach((math, index) => {
-    const display = math.classList.contains("katex-display")
-    const tex =
-      math.querySelector('annotation[encoding="application/x-tex"]')?.textContent ??
-      (texs.length === equations.length ? texs[index] : null)
-    const text = document.createElement(display ? "p" : "span")
-    text.textContent = tex ? texText(tex, display) : math.textContent
-    math.replaceWith(text)
-  })
+  const drawer = equations.length ? await loadMathJax().catch(() => null) : null
+  await Promise.all(
+    equations.map(async (math, index) => {
+      const display = math.classList.contains("katex-display")
+      const tex =
+        math.querySelector('annotation[encoding="application/x-tex"]')?.textContent ??
+        (texs.length === equations.length ? texs[index] : null)
+      const holder = document.createElement(display ? "p" : "span")
+      const picture =
+        tex && drawer ? await mathPicture(drawer, tex, display).catch(() => null) : null
+      if (picture) {
+        const image = document.createElement("img")
+        image.setAttribute("alt", texText(tex, display))
+        setPicture(image, picture)
+        holder.append(image)
+      } else holder.textContent = tex ? texText(tex, display) : math.textContent
+      math.replaceWith(holder)
+    }),
+  )
   for (const code of copy.querySelectorAll("pre code")) {
     const lines = [...code.querySelectorAll("[data-line]")]
     code.textContent = lines.length

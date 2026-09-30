@@ -9,6 +9,8 @@ import {
   docImageSize,
   docKeepsImage,
   docPixels,
+  mathFailed,
+  mathSize,
   mermaidSources,
   mermaidTextLabels,
   sourceMath,
@@ -385,4 +387,14 @@ test("a save asks Google once; later ones name the account, and the token is nev
   assert.deepEqual(new Set(storage.writes.map(([key]) => key)), new Set([HINT_KEY]))
   assert.ok(storage.writes.every(([, value]) => !value.includes("ya29")))
   assert.deepEqual(session.writes, [])
+})
+
+test("an equation's picture is sized to the Doc's text, and one MathJax misreads stays TeX", () => {
+  // MathJax sizes in ex; the Doc's 11 pt text has an ex of about 7.5 px.
+  assert.deepEqual(mathSize("10.3ex", "2.262ex"), { width: 77.25, height: 16.965 })
+  assert.deepEqual(mathSize("0ex", "0ex"), { width: 1, height: 1 })
+  assert.equal(mathFailed("<math><mi>x</mi></math>"), false)
+  assert.equal(mathFailed("<math><merror><mtext>Missing }</mtext></merror></math>"), true)
+  // An unknown command (noundefined) is drawn in red rather than failing.
+  assert.equal(mathFailed('<math><mtext mathcolor="red">\\ket</mtext></math>'), true)
 })

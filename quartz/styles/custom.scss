@@ -4186,10 +4186,11 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
 // Wolfram notebook pages (tools/notebooks/, frontend/wolfram-notebook/) ------------------------
 // Pre-rendered EIWL3 chapters: input cells with Shiki spans, cached outputs, per-cell tools.
 .wl-notebook {
-  --wl-surface: #f7f7f5;
-  --wl-accent: #c4410c; // the book's orange exercise numbers, darkened for contrast
-  --wl-ok: #1a7f37;
-  --wl-error: #9a1a2c;
+  --wl-surface: var(--c-surface-1, #f7f7f5);
+  // the book's orange exercise numbers, darkened for contrast
+  --wl-accent: var(--syn-constant, #c4410c);
+  --wl-ok: var(--c-ok, #1a7f37);
+  --wl-error: var(--c-err, #9a1a2c);
   line-height: 1.6;
 
   h2 {
@@ -4221,7 +4222,7 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
     border: 1px solid var(--jqi-rule);
     border-bottom-width: 2px;
     border-radius: 4px;
-    background: #fff;
+    background: var(--light, #fff);
   }
 }
 
@@ -4252,7 +4253,7 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   border: 1px solid var(--jqi-rule);
   border-radius: 6px;
   overflow: hidden;
-  background: #fff;
+  background: var(--light, #fff);
 
   pre.wl-code {
     margin: 0;
@@ -4329,7 +4330,7 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
       display: grid;
       place-items: center;
       font-size: 2.5rem;
-      color: #fff;
+      color: #fff; // fixed: white over a video's poster
       text-shadow: 0 1px 6px rgb(0 0 0 / 60%);
     }
   }
@@ -4349,8 +4350,8 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
 .wl-page-actions button,
 .page-tools > button {
   padding: 4px 10px;
-  background: #fff;
-  color: #222;
+  background: var(--light, #fff);
+  color: var(--dark, #222);
   border: 1px solid var(--jqi-rule);
   border-radius: 3px;
   cursor: pointer;
@@ -4366,9 +4367,9 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
 .wl-toolbar button.wl-run,
 .wl-page-actions button,
 .page-tools > button {
-  background: #454545;
-  border-color: #454545;
-  color: #fff;
+  background: var(--c-band, #454545);
+  border-color: var(--c-band, #454545);
+  color: var(--c-on-band, #fff);
 }
 .wl-status {
   color: var(--jqi-muted);
@@ -4394,9 +4395,9 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   & > summary {
     list-style: none;
     padding: 4px 10px;
-    background: #454545;
-    color: #fff;
-    border: 1px solid #454545;
+    background: var(--c-band, #454545);
+    color: var(--c-on-band, #fff);
+    border: 1px solid var(--c-band, #454545);
     border-radius: 3px;
     cursor: pointer;
     &::-webkit-details-marker {
@@ -4417,9 +4418,9 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
   z-index: 20;
   min-width: 250px;
   padding: 6px 0;
-  background: #fff;
-  color: #222;
-  border: 1px solid #ddd;
+  background: var(--light, #fff);
+  color: var(--dark, #222);
+  border: 1px solid var(--c-rule, #ddd);
   box-shadow: 0 4px 12px #0002;
   ul {
     list-style: none;
@@ -4470,7 +4471,7 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
     padding: 0;
     &:is(:hover, :focus-visible) {
       background: none;
-      color: #222;
+      color: var(--dark, #222);
     }
   }
 }
@@ -4485,7 +4486,7 @@ dialog.page-history {
   width: min(1000px, calc(100% - 24px));
   max-height: 90vh;
   padding: 0 0 12px;
-  border: 1px solid #b8b8b8;
+  border: 1px solid var(--gray, #b8b8b8);
   border-radius: 4px;
   color: var(--darkgray, #454545);
   background: var(--light, #fff);
@@ -4534,8 +4535,8 @@ dialog.page-history {
   margin-top: 6px;
   margin-bottom: 6px;
   padding: 6px 10px;
-  border-left: 3px solid #eda100;
-  background: color-mix(in srgb, #eda100 12%, transparent);
+  border-left: 3px solid var(--c-warn, #eda100);
+  background: var(--c-warn-soft, color-mix(in srgb, #eda100 12%, transparent));
   font-size: 0.9rem;
 }
 .page-history__list {
@@ -4730,10 +4731,6 @@ dialog.page-history {
 }
 
 [saved-theme="dark"] .wl-notebook {
-  --wl-surface: #1f2328;
-  --wl-accent: #f08a4b;
-  --wl-ok: #56d364;
-  --wl-error: #ff8182;
   figure.wl-cell {
     background: transparent;
     pre.wl-code span {

@@ -459,7 +459,7 @@ body {
   margin-left: 8px;
 }
 .recent-change .status-conflict {
-  color: #fff; // fixed: white on a chart color
+  color: var(--c-on-accent, #fff);
   background: var(--viz-8);
   border-color: var(--viz-8);
 }
@@ -1746,7 +1746,7 @@ article.popover-hint > *:first-child {
   color: var(--jqi-muted);
 }
 .member-tools .status-online {
-  color: #fff; // fixed: white on a chart color
+  color: var(--c-on-accent, #fff);
   background: var(--viz-online);
   border-color: var(--viz-online);
 }
@@ -1754,12 +1754,12 @@ article.popover-hint > *:first-child {
   color: var(--viz-offline);
 }
 .member-tools .status-running {
-  color: #fff; // fixed: white on a chart color
+  color: var(--c-on-accent, #fff);
   background: var(--viz-1);
   border-color: var(--viz-1);
 }
 .member-tools .status-failed {
-  color: #fff; // fixed: white on a chart color
+  color: var(--c-on-accent, #fff);
   background: var(--viz-8);
   border-color: var(--viz-8);
 }
@@ -2209,7 +2209,7 @@ a.device-card:hover {
   white-space: nowrap;
 }
 .dashboard .status-online {
-  color: #fff; // fixed: white on a chart color
+  color: var(--c-on-accent, #fff);
   background: var(--viz-online);
   border-color: var(--viz-online);
 }
@@ -2233,7 +2233,7 @@ a.device-card:hover {
   font-style: italic;
 }
 .dashboard .status-running {
-  color: #fff; // fixed: white on a chart color
+  color: var(--c-on-accent, #fff);
   background: var(--viz-1);
   border-color: var(--viz-1);
 }

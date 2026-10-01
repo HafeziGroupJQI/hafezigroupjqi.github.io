@@ -68,6 +68,23 @@
     mix-blend-mode: multiply;
   }
 
+  // Filled status badges take the theme's own status colors, which its text color reads on.
+  :root[data-palette] {
+    :is(.member-tools, .dashboard) .status-online {
+      background: var(--c-ok);
+      border-color: var(--c-ok);
+    }
+    :is(.member-tools, .dashboard) .status-running {
+      background: var(--c-info);
+      border-color: var(--c-info);
+    }
+    :is(.member-tools, .dashboard) .status-failed,
+    .recent-change .status-conflict {
+      background: var(--c-err);
+      border-color: var(--c-err);
+    }
+  }
+
   // Third-party widgets, through their own variables: FullCalendar 6 (the calendar) and
   // diff2html 3 (a page's History). Each defines its variables on :root; these win there.
   :root[data-palette] {

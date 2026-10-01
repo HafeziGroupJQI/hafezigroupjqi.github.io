@@ -68,6 +68,19 @@
     mix-blend-mode: multiply;
   }
 
+  // Text fields the site leaves to the browser get the theme's card color (no specificity: any
+  // rule of the site's own wins).
+  :where(:root[data-palette])
+    :where(
+      input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+      select,
+      textarea
+    ) {
+    background-color: var(--c-surface-1);
+    color: var(--darkgray);
+    border-color: var(--gray);
+  }
+
   // Filled status badges take the theme's own status colors, which its text color reads on.
   :root[data-palette] {
     :is(.member-tools, .dashboard) .status-online {

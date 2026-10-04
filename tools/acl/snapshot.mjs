@@ -1,5 +1,7 @@
 // The access rules the members build applies: the Worker's snapshot of its rules and groups, which
-// it commits to vault-private as .hafezi/acl.json (tools/acl/policy.mjs has their semantics). A page
+// the deploy exports from D1 (tools/acl/export-snapshot.mjs) to the file ACL_SNAPSHOT names
+// (tools/acl/policy.mjs has their semantics). Never from vault-private, which every member can push
+// to, in CI; a local build without ACL_SNAPSHOT falls back to a checkout's .hafezi/acl.json. A page
 // some rule matches is restricted: the build marks it `unlisted: true` (so Quartz's own listings,
 // backlinks, tags and search index leave it out) and `acl: <rule id>` (so the build's listings tag
 // it with data-acl, and its search index entry goes to that rule's shard), and the Worker serves it
@@ -10,14 +12,42 @@ import { aclKey, normalizeSnapshot } from "./policy.mjs"
 
 export const SNAPSHOT_FILE = ".hafezi/acl.json"
 
-/** The snapshot in the private vault's checkout; none (no rules) when it has no file. */
-export function readSnapshot(privateRoot) {
+/** Whether the build runs in CI, where only ACL_SNAPSHOT is trusted. */
+export const inCI = (env) => env.CI === "true" || env.GITHUB_ACTIONS === "true"
+
+/**
+ * The snapshot file this build reads: `{file, warning}`. ACL_SNAPSHOT names it (it must exist). In
+ * CI nothing else will do. A local build without it reads the private vault checkout's
+ * .hafezi/acl.json, saying so (`file` null when that has none: no rules).
+ */
+export function snapshotSource(env, privateRoot) {
+  if (env.ACL_SNAPSHOT) {
+    if (!fs.existsSync(env.ACL_SNAPSHOT))
+      throw new Error(`ACL_SNAPSHOT: no access rules snapshot at ${env.ACL_SNAPSHOT}`)
+    return { file: env.ACL_SNAPSHOT, warning: null }
+  }
+  if (inCI(env))
+    throw new Error(
+      "ACL_SNAPSHOT must name the access rules snapshot exported from D1 " +
+        "(tools/acl/export-snapshot.mjs): in CI the build never reads them from vault-private",
+    )
   const file = path.join(privateRoot, SNAPSHOT_FILE)
-  if (!fs.existsSync(file)) return normalizeSnapshot(undefined)
+  const found = fs.existsSync(file)
+  return {
+    file: found ? file : null,
+    warning:
+      `access rules: ACL_SNAPSHOT is not set; this local build reads ${found ? file : "no rules"}` +
+      (found ? "" : ` (no ${SNAPSHOT_FILE} in ${privateRoot})`),
+  }
+}
+
+/** The snapshot in `file`; none (no rules) without a file. */
+export function readSnapshot(file) {
+  if (!file) return normalizeSnapshot(undefined)
   try {
     return normalizeSnapshot(JSON.parse(fs.readFileSync(file, "utf8")))
   } catch (error) {
-    throw new Error(`${SNAPSHOT_FILE}: not a valid access rules snapshot (${error.message})`)
+    throw new Error(`${file}: not a valid access rules snapshot (${error.message})`)
   }
 }
 
@@ -29,7 +59,7 @@ export function checkCoverage(snapshot, overlay) {
   const open = overlay.filter((file) => aclKey(snapshot, file.path) === null)
   if (open.length)
     throw new Error(
-      `restricted vault files not covered by an access rule (${SNAPSHOT_FILE}):\n` +
+      `restricted vault files not covered by an access rule:\n` +
         open.map((file) => `  ${file.repo}: ${file.path}`).join("\n"),
     )
 }

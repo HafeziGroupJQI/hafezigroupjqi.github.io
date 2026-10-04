@@ -2,7 +2,7 @@
 // same semantics in worker/src/acl/policy.ts; both pass worker/test/acl-vectors.json.
 //
 // A snapshot is `{version, groups: {<name>: {logins, people}}, rules: [{id, pattern, allow, deny}]}`
-// (the Worker commits it to vault-private as .hafezi/acl.json). Paths are vault paths: relative to
+// (the deploy exports it from the Worker's D1, tools/acl/export-snapshot.mjs). Paths are vault paths: relative to
 // vault-private's root, with their extension, no leading slash ("notes/x.qmd"). A pattern is an
 // exact file ("notes/x.md"), a folder ("dir/", everything below it) or a glob ("*" one segment, "**"
 // any depth). The most specific matching rule decides: an exact file, then the longest folder, then

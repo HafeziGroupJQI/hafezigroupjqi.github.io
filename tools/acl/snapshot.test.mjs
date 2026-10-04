@@ -12,6 +12,7 @@ import {
   markPages,
   pageVaultPath,
   readSnapshot,
+  snapshotSource,
   writeBuildVersion,
 } from "./snapshot.mjs"
 
@@ -24,17 +25,36 @@ const SNAPSHOT = {
 const front = (file) =>
   yaml.parse(fs.readFileSync(file, "utf8").match(/^---\n([\s\S]*?)\n---\n/)[1])
 
-test("the snapshot is vault-private's .hafezi/acl.json, or no rules without one", () => {
+test("the snapshot comes from ACL_SNAPSHOT, and only from it in CI", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "hafezi-acl-"))
   try {
-    assert.deepEqual(readSnapshot(root), { version: 0, groups: {}, rules: [] })
-    fs.mkdirSync(path.join(root, ".hafezi"))
-    fs.writeFileSync(path.join(root, ".hafezi", "acl.json"), JSON.stringify(SNAPSHOT))
-    const snapshot = readSnapshot(root)
+    const exported = path.join(root, "exported.json")
+    fs.writeFileSync(exported, JSON.stringify(SNAPSHOT))
+    const vaultFile = path.join(root, ".hafezi", "acl.json")
+    fs.mkdirSync(path.dirname(vaultFile))
+    fs.writeFileSync(vaultFile, JSON.stringify({ ...SNAPSHOT, rules: [] }))
+    for (const env of [{ ACL_SNAPSHOT: exported }, { ACL_SNAPSHOT: exported, CI: "true" }])
+      assert.deepEqual(snapshotSource(env, root), { file: exported, warning: null })
+    // In CI, vault-private's own file (a member could push one) is never read.
+    for (const env of [{ CI: "true" }, { GITHUB_ACTIONS: "true" }])
+      assert.throws(() => snapshotSource(env, root), /ACL_SNAPSHOT must name the access rules/)
+    assert.throws(
+      () => snapshotSource({ ACL_SNAPSHOT: path.join(root, "missing.json") }, root),
+      /no access rules snapshot at/,
+    )
+    // A local build falls back to the checkout's, and says so.
+    const local = snapshotSource({}, root)
+    assert.equal(local.file, vaultFile)
+    assert.match(local.warning, /ACL_SNAPSHOT is not set/)
+    fs.rmSync(vaultFile)
+    assert.equal(snapshotSource({}, root).file, null)
+
+    assert.deepEqual(readSnapshot(null), { version: 0, groups: {}, rules: [] })
+    const snapshot = readSnapshot(exported)
     assert.equal(snapshot.version, 3)
     assert.equal(snapshot.rules[0].id, "r1")
-    fs.writeFileSync(path.join(root, ".hafezi", "acl.json"), "{")
-    assert.throws(() => readSnapshot(root), /not a valid access rules snapshot/)
+    fs.writeFileSync(exported, "{")
+    assert.throws(() => readSnapshot(exported), /not a valid access rules snapshot/)
     const file = writeBuildVersion(path.join(root, "out"), snapshot)
     assert.equal(fs.readFileSync(file, "utf8"), '{"version":3}')
   } finally {

@@ -25,7 +25,13 @@ import { pageHistories } from "./history.mjs"
 import { vaultFolders } from "./folder-files.mjs"
 import { overlayFiles, restrictedDirs } from "./acl/vaults.mjs"
 import { normalizeSnapshot } from "./acl/policy.mjs"
-import { checkCoverage, markPages, readSnapshot, writeBuildVersion } from "./acl/snapshot.mjs"
+import {
+  checkCoverage,
+  markPages,
+  readSnapshot,
+  snapshotSource,
+  writeBuildVersion,
+} from "./acl/snapshot.mjs"
 import { aclRefs, writeContentIndex, writeRefs } from "./acl/outputs.mjs"
 import { leakScan, report as leakReport } from "./acl-leak-scan.mjs"
 
@@ -40,9 +46,11 @@ const privateRoot = options.mode === "internal" ? fs.realpathSync(options.conten
 const restricted =
   options.mode === "internal" ? restrictedDirs(process.env.VAULT_RESTRICTED_DIRS) : []
 const overlay = overlayFiles(restricted, privateRoot, { excluded })
-// The access rules (tools/acl/): the Worker's snapshot in vault-private. Every restricted vault file
-// must be covered by one.
-const acl = options.mode === "internal" ? readSnapshot(privateRoot) : normalizeSnapshot(undefined)
+// The access rules (tools/acl/): the Worker's, exported from D1 to ACL_SNAPSHOT (only that, in CI).
+// Every restricted vault file must be covered by one.
+const source = options.mode === "internal" ? snapshotSource(process.env, privateRoot) : null
+if (source?.warning) console.warn(source.warning)
+const acl = readSnapshot(source?.file ?? null)
 checkCoverage(acl, overlay)
 if (options.mode === "internal")
   console.log(`access rules: version ${acl.version}, ${acl.rules.length} rules`)

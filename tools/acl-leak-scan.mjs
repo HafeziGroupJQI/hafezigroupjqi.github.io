@@ -8,7 +8,7 @@
 // members. static/acl-refs.json is the Worker's own (it names every private file) and isn't searched.
 // Any needle found fails the build (tools/build-site.mjs), with the file and the needle.
 //
-//   node tools/acl-leak-scan.mjs <build> --snapshot <vault-private>/.hafezi/acl.json
+//   node tools/acl-leak-scan.mjs <build> --snapshot <the access rules snapshot (ACL_SNAPSHOT)>
 //     [--manifest worker/generated/docs-manifest.json]
 import fs from "node:fs"
 import path from "node:path"

@@ -284,7 +284,7 @@ export function createHandler(
       "vault-private": privateVaultFetch,
     })
     if (edit) return edit
-    const changes = await changeRoutes(request, url, env)
+    const changes = await changeRoutes(request, url, env, session)
     if (changes) return changes
     const prefs = await prefsRoutes(request, url, env, session, record)
     if (prefs) return prefs

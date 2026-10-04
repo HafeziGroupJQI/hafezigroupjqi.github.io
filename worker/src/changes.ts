@@ -1,5 +1,7 @@
+import { aclViewer } from "./acl/index"
 import type { Env } from "./env"
 import { HttpError, json } from "./http"
+import type { Session } from "./session"
 import { VAULTS, vaultNamed, vaultOf, vaultRepo } from "./vaults"
 
 // The site's activity (D1 changes, migration 0014), like MediaWiki's recentchanges: each change to
@@ -337,12 +339,22 @@ async function scoreRoutes(url: URL, env: Env, now = Date.now()): Promise<Respon
   return new Response(body, { headers })
 }
 
+/** Rows a page of the feed reads at most, looking past changes the member may not see. */
+const SCAN_MAX = 500
+
 /**
  * GET /api/changes: the newest changes first, `limit` at a time (PAGE, at most PAGE_MAX), and the
  * cursor of the next page (`before`). Filters: login (a member's contributions), repo, path (one
- * file), kind and state (comma lists). One D1 query.
+ * file), kind and state (comma lists). One D1 query, or a few when restricted pages' changes
+ * (src/acl/) the member may not read are left out: those never show, not even as a count, and a
+ * commit's other files show without them. Scores count every change (only totals, by member).
  */
-export async function changeRoutes(request: Request, url: URL, env: Env): Promise<Response | null> {
+export async function changeRoutes(
+  request: Request,
+  url: URL,
+  env: Env,
+  session: Session,
+): Promise<Response | null> {
   if (url.pathname !== "/api/changes" && url.pathname !== "/api/changes/scores") return null
   if (request.method !== "GET" && request.method !== "HEAD")
     throw new HttpError(405, "method not allowed")
@@ -360,8 +372,16 @@ export async function changeRoutes(request: Request, url: URL, env: Env): Promis
     where.push(`repo IN (${repos.map(() => "?").join(", ")})`)
     binds.push(...repos)
   }
+  const viewer = await aclViewer(env, session)
+  // A private file's change is shown to those who may read the file (and a rename's old name).
+  const visible = (row: ChangeRow) =>
+    viewer.open ||
+    row.repo === "vault" ||
+    (viewer.canRead(row.path) && (!row.from_path || viewer.canRead(row.from_path)))
   const path = query.get("path")
   if (path) {
+    // A restricted page's changes are none at all: the same answer as a page that has none.
+    if (!viewer.open && !viewer.canRead(path)) return json({ changes: [], next: null })
     where.push("path = ?")
     binds.push(path)
   }
@@ -375,25 +395,46 @@ export async function changeRoutes(request: Request, url: URL, env: Env): Promis
     where.push(`state IN (${states.map(() => "?").join(", ")})`)
     binds.push(...states)
   }
+  let cursor: [number, number] | null = null
   const before = query.get("before")
   if (before) {
-    const cursor = /^(\d{1,15})\.(\d{1,15})$/.exec(before)
-    if (!cursor) throw new HttpError(422, "before must be a cursor from an earlier page")
-    where.push("(at < ? OR (at = ? AND id < ?))")
-    binds.push(Number(cursor[1]), Number(cursor[1]), Number(cursor[2]))
+    const parsed = /^(\d{1,15})\.(\d{1,15})$/.exec(before)
+    if (!parsed) throw new HttpError(422, "before must be a cursor from an earlier page")
+    cursor = [Number(parsed[1]), Number(parsed[2])]
   }
   const asked = Number(query.get("limit") ?? PAGE)
   const limit = Number.isInteger(asked) ? Math.min(Math.max(asked, 1), PAGE_MAX) : PAGE
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM changes ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-     ORDER BY at DESC, id DESC LIMIT ?`,
-  )
-    .bind(...binds, limit + 1)
-    .all<ChangeRow>()
-  const rows = results.slice(0, limit)
-  const last = rows.at(-1)
-  return json({
-    changes: rows.map((row) => changeView(env, row)),
-    next: results.length > limit && last ? `${last.at}.${last.id}` : null,
-  })
+  // Read on past what the member may not see until the page is full, the feed ends, or SCAN_MAX
+  // rows were read; then the next page starts after the last row read.
+  const rows: ChangeRow[] = []
+  let scanned = 0
+  let ended = false
+  let lastRead: ChangeRow | null = null
+  while (rows.length <= limit && !ended && scanned < SCAN_MAX) {
+    const batch = scanned ? Math.min(SCAN_MAX - scanned, 4 * (limit + 1)) : limit + 1
+    const clauses = cursor ? [...where, "(at < ? OR (at = ? AND id < ?))"] : where
+    const { results } = await env.DB.prepare(
+      `SELECT * FROM changes ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+       ORDER BY at DESC, id DESC LIMIT ?`,
+    )
+      .bind(...binds, ...(cursor ? [cursor[0], cursor[0], cursor[1]] : []), batch)
+      .all<ChangeRow>()
+    scanned += results.length
+    ended = results.length < batch
+    for (const row of results) {
+      lastRead = row
+      if (visible(row)) rows.push(row)
+      if (rows.length > limit) break
+    }
+    if (lastRead) cursor = [lastRead.at, lastRead.id]
+  }
+  const page = rows.slice(0, limit)
+  const last = page.at(-1)
+  const next =
+    rows.length > limit && last
+      ? `${last.at}.${last.id}`
+      : !ended && lastRead
+        ? `${lastRead.at}.${lastRead.id}`
+        : null
+  return json({ changes: page.map((row) => changeView(env, row)), next })
 }

@@ -908,6 +908,17 @@ describe("the compute relay", { timeout: 30_000 }, () => {
       { kind: "published" },
     ])
       expect((await fork(bad)).status).toBe(422)
+    // A restricted page's notebook (src/acl/; alice isn't in the optical RL group) is as if the
+    // host didn't have it: refused before the host is asked.
+    const forks = () =>
+      host.frames.filter(
+        (f) => f.type === FrameType.CONTROL && readJsonPayload<any>(f).op === "fork",
+      ).length
+    const before = forks()
+    const restricted = await fork({ kind: "published", path: "projects/optical-rl/run.ipynb" })
+    expect(restricted.status).toBe(404)
+    expect(await restricted.json()).toEqual({ detail: "not found" })
+    expect(forks()).toBe(before)
   })
 })
 

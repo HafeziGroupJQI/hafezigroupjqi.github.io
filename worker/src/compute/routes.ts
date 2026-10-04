@@ -1,3 +1,4 @@
+import { requireRead } from "../acl/index"
 import { requireMutation } from "../auth"
 import { hashSecret } from "../devices/keys"
 import type { Env } from "../env"
@@ -474,6 +475,8 @@ export async function computeRoutes(
       throw new HttpError(422, "source must be {kind: published, path}")
     if (path.startsWith("/") || path.split("/").includes(".."))
       throw new HttpError(422, "bad source path")
+    // A restricted page's file (src/acl/) is as if the host didn't have it.
+    await requireRead(env, session, [path], record, "not found")
     record("compute.fork", path, { kind })
     return control(env, session, "fork", { source: `published:${path}` }, { timeout_ms: 60_000 })
   }

@@ -5,11 +5,13 @@ import path from "node:path"
 import test from "node:test"
 import { normalizeSnapshot } from "./policy.mjs"
 import {
+  aclRefs,
   linkForms,
   restrictedPaths,
   serializeIndex,
   splitIndex,
   writeContentIndex,
+  writeRefs,
 } from "./outputs.mjs"
 
 const acl = normalizeSnapshot({
@@ -141,6 +143,87 @@ test("the build rewrites the index, its offsets and each rule's shard", () => {
           acl,
         }),
       /can't name a file/,
+    )
+  } finally {
+    fs.rmSync(output, { recursive: true, force: true })
+  }
+})
+
+test("the refs name every private page's, alias's, asset's, pdf's and restricted file's vault path", () => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), "acl-refs-"))
+  const touch = (file) => {
+    fs.mkdirSync(path.dirname(path.join(output, file)), { recursive: true })
+    fs.writeFileSync(path.join(output, file), "x")
+  }
+  try {
+    for (const file of [
+      "resources/notes/open.html",
+      "resources/old-open.html",
+      "resources/projects/optical-rl/notes/meeting.html",
+      "resources/projects/optical-rl/notes/meeting-og-image.webp",
+      "resources/projects/optical-rl/index.html",
+      "resources/projects/optical-rl/assets/plot-2.png",
+      "resources/projects/optical-rl/notes/run_files/figure-gfm/cell-1.png",
+      "resources/assets/open.png",
+      "pdf/resources/projects/optical-rl/notes/meeting.pdf",
+      "pdf/people/ada.pdf",
+    ])
+      touch(file)
+    const refs = aclRefs(output, {
+      acl,
+      pages: {
+        pages: {
+          "resources/notes/open": "notes/open.md",
+          "resources/projects/optical-rl/notes/meeting": "projects/optical-rl/notes/meeting.qmd",
+          "resources/projects/optical-rl/notes/run": "projects/optical-rl/notes/run.ipynb",
+        },
+        aliases: { "resources/old-open": "notes/open.md", "resources/gone": "notes/open.md" },
+      },
+      folders: {
+        "resources/projects/optical-rl": { path: "projects/optical-rl", acl: "r1" },
+        "resources/notes": { path: "notes" },
+      },
+      notebooks: {
+        wolfram: {
+          pages: [
+            {
+              source: "resources/projects/optical-rl/nb/a.nb",
+              assets: ["aa/aa1.png", "ss/sym.json"],
+            },
+            { source: "resources/notes/b.nb", assets: ["aa/aa1.png", "bb/bb1.png", "ss/sym.json"] },
+            { source: "public/c.nb", assets: ["ss/sym.json"] },
+          ],
+        },
+      },
+      vaultFiles: [{ path: "projects/optical-rl/assets/plot 2.png" }, { path: "assets/open.png" }],
+    })
+    assert.deepEqual(refs, {
+      version: 2,
+      pages: {
+        "resources/notes/open": "notes/open.md",
+        "resources/projects/optical-rl/notes/meeting": "projects/optical-rl/notes/meeting.qmd",
+        "resources/projects/optical-rl/notes/run": "projects/optical-rl/notes/run.ipynb",
+        "resources/projects/optical-rl/index": "projects/optical-rl/",
+      },
+      aliases: { "resources/old-open": "notes/open.md" },
+      notebookAssets: {
+        "aa/aa1.png": ["notes/b.nb", "projects/optical-rl/nb/a.nb"],
+        "bb/bb1.png": ["notes/b.nb"],
+      },
+      pdfs: {
+        "pdf/resources/projects/optical-rl/notes/meeting.pdf":
+          "projects/optical-rl/notes/meeting.qmd",
+      },
+      files: {
+        "resources/projects/optical-rl/assets/plot-2.png": "projects/optical-rl/assets/plot 2.png",
+        "resources/projects/optical-rl/notes/run_files/figure-gfm/cell-1.png":
+          "projects/optical-rl/notes/run.ipynb",
+      },
+    })
+    writeRefs(output, refs)
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(output, "static", "acl-refs.json"), "utf8")),
+      refs,
     )
   } finally {
     fs.rmSync(output, { recursive: true, force: true })

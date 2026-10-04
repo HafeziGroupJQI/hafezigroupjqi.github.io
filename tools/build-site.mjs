@@ -12,6 +12,7 @@ import { renderPrivateSource } from "./render-private-source.mjs"
 import {
   docsManifest,
   documentExtensions,
+  listVaultFiles,
   pruneDocuments,
   untrackedDocuments,
   writeDocsManifest,
@@ -25,7 +26,7 @@ import { vaultFolders } from "./folder-files.mjs"
 import { overlayFiles, restrictedDirs } from "./acl/vaults.mjs"
 import { normalizeSnapshot } from "./acl/policy.mjs"
 import { checkCoverage, markPages, readSnapshot, writeBuildVersion } from "./acl/snapshot.mjs"
-import { writeContentIndex } from "./acl/outputs.mjs"
+import { aclRefs, writeContentIndex, writeRefs } from "./acl/outputs.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
 // The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
@@ -204,6 +205,24 @@ try {
       origin: `${local ? "http" : "https"}://${host}`,
       edition: options.mode === "internal" ? "members" : "public",
     })
+  }
+  if (options.mode === "internal") {
+    // Every private page's, alias's, notebook asset's, PDF's and restricted file's vault path, for
+    // the Worker's access checks (tools/acl/outputs.mjs).
+    const reportFile = process.env.NOTEBOOK_REPORT ?? path.join(".cache", "notebook-report.json")
+    const refs = aclRefs(options.output, {
+      acl,
+      pages: JSON.parse(fs.readFileSync(env.SITE_ACL_PAGES, "utf8")),
+      folders: JSON.parse(fs.readFileSync(foldersFile, "utf8")),
+      notebooks: fs.existsSync(reportFile) ? JSON.parse(fs.readFileSync(reportFile, "utf8")) : null,
+      vaultFiles: listVaultFiles(privateRoot, { excluded, restricted }),
+    })
+    const written = writeRefs(options.output, refs)
+    console.log(
+      `access refs: ${Object.keys(refs.pages).length} pages, ${Object.keys(refs.aliases).length} aliases, ` +
+        `${Object.keys(refs.notebookAssets).length} notebook assets, ${Object.keys(refs.pdfs).length} pdfs, ` +
+        `${Object.keys(refs.files).length} restricted files in ${path.relative(options.output, written)}`,
+    )
   }
   const outputAudit = await auditOutput(
     options.output,

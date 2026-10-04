@@ -22,18 +22,29 @@ import { DEFAULT_API, bundleMembers } from "./members-bundles.mjs"
 import { writeGptSkills } from "./gpt-manifest.mjs"
 import { pageHistories } from "./history.mjs"
 import { vaultFolders } from "./folder-files.mjs"
+import { overlayFiles, restrictedDirs } from "./acl/vaults.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
 // The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
 // member edition to signed-in browsers. Baked into the members bundles (tools/members-bundles.mjs).
 const membersApi = process.env.MEMBERS_API_ORIGIN || DEFAULT_API
 let prepared
+const privateRoot = options.mode === "internal" ? fs.realpathSync(options.content) : null
+// The restricted vaults (tools/acl/vaults.mjs), overlaid onto the private vault at their folders:
+// a file outside its vault's folder, or one the private vault has too, fails the build here.
+const restricted =
+  options.mode === "internal" ? restrictedDirs(process.env.VAULT_RESTRICTED_DIRS) : []
+const overlay = overlayFiles(restricted, privateRoot, { excluded })
+if (restricted.length)
+  console.log(
+    `restricted vaults: ${restricted.map((vault) => `${vault.repo} at ${vault.prefix}`).join(", ")} (${overlay.length} files)`,
+  )
 // Private documents are never bundled: the member build records their git blobs and the
 // Worker streams them from GitHub. Quartz ignores their extensions so the site stays small.
 const manifest =
-  options.mode === "internal" ? docsManifest(fs.realpathSync(options.content), { excluded }) : {}
+  options.mode === "internal" ? docsManifest(privateRoot, { excluded, restricted }) : {}
 if (options.mode === "internal") {
-  const rendered = await renderPrivateSource(options.content)
+  const rendered = await renderPrivateSource(options.content, { overlay })
   try {
     prepared = prepareUnified(options.publicContent, rendered.content, yaml)
   } finally {
@@ -54,7 +65,19 @@ fs.writeFileSync(
       [
         { repo: "vault", dir: prepared.input },
         ...(options.mode === "internal"
-          ? [{ repo: "vault-private", dir: fs.realpathSync(options.content) }]
+          ? [
+              {
+                repo: "vault-private",
+                dir: privateRoot,
+                except: restricted.map((vault) => vault.prefix),
+              },
+              // A restricted vault's pages are vault-private's (edit_repo), with their own git's history.
+              ...restricted.map((vault) => ({
+                repo: "vault-private",
+                dir: vault.dir,
+                only: vault.prefix,
+              })),
+            ]
           : []),
       ],
       prepared.records,
@@ -66,10 +89,7 @@ fs.writeFileSync(
 // pages (quartz/plugins/local/folder-index/): a folder without an index lists them as downloads.
 const foldersFile = path.join(stage, "folders.json")
 if (options.mode === "internal")
-  fs.writeFileSync(
-    foldersFile,
-    JSON.stringify(vaultFolders(fs.realpathSync(options.content), { excluded })),
-  )
+  fs.writeFileSync(foldersFile, JSON.stringify(vaultFolders(privateRoot, { excluded, restricted })))
 const config = yaml.parse(fs.readFileSync(options.config, "utf8"))
 if (options.mode === "internal") {
   const index = config.plugins.find((plugin) => plugin.source === "@quartz-community/content-index")
@@ -135,7 +155,7 @@ try {
     console.log(
       `${Object.keys(manifest).length} private documents recorded in ${written}${pruned ? ` (${pruned} pruned from the site)` : ""}`,
     )
-    const skills = writeGptSkills(fs.realpathSync(options.content))
+    const skills = writeGptSkills(privateRoot)
     console.log(`${skills.count} Hafezi GPT skills written to ${skills.file}`)
   }
   if (options.mode !== "internal") {

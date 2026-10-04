@@ -4,7 +4,7 @@
 // writes it to the file SITE_FOLDERS names. Images are a page's own assets and notebooks and Quarto
 // documents have a page each, so neither is listed as a file; a folder of images alone has no entry.
 import path from "node:path"
-import { documentKey, imagePattern, isDocument, listTrackedFiles } from "./docs-manifest.mjs"
+import { documentKey, imagePattern, isDocument, listVaultFiles } from "./docs-manifest.mjs"
 
 const rendered = /\.(?:qmd|ipynb|nb)$/i
 
@@ -46,6 +46,9 @@ export function folderMap(files, { prefix = "resources" } = {}) {
   return Object.fromEntries(Object.entries(folders).sort(([a], [b]) => a.localeCompare(b)))
 }
 
-/** The folder map of the private vault at `privateRoot` (its committed files). */
-export const vaultFolders = (privateRoot, { excluded = new Set(), prefix = "resources" } = {}) =>
-  folderMap(listTrackedFiles(privateRoot, excluded), { prefix })
+/** The folder map of the private vault at `privateRoot` (its committed files), with the restricted
+ *  vaults overlaid on it (`restricted`, tools/acl/vaults.mjs). */
+export const vaultFolders = (
+  privateRoot,
+  { excluded = new Set(), prefix = "resources", restricted = [] } = {},
+) => folderMap(listVaultFiles(privateRoot, { excluded, restricted }), { prefix })

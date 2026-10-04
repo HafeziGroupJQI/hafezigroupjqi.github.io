@@ -2,10 +2,13 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
+import { applyOverlay } from "./acl/vaults.mjs"
 import { renderDrawings } from "./render-excalidraw.mjs"
 
-// Render before relocating: Quarto's frozen results are keyed by original source paths.
-export async function renderPrivateSource(source) {
+// Render before relocating: Quarto's frozen results are keyed by original source paths. The
+// restricted vaults' files (`overlay`, tools/acl/vaults.mjs) are copied onto the private vault's
+// tree first, each at its vault path.
+export async function renderPrivateSource(source, { overlay = [] } = {}) {
   const input = fs.realpathSync(source)
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), "hafezi-private-render-"))
   const content = path.join(stage, "content")
@@ -24,6 +27,7 @@ export async function renderPrivateSource(source) {
       filter: (file) => !excluded.has(path.basename(file)),
     })
     fs.rmSync(path.join(content, ".gitignore"), { force: true })
+    applyOverlay(overlay, content)
     fs.copyFileSync(path.join(input, "_quarto.yml"), path.join(stage, "_quarto.yml"))
     if (fs.existsSync(path.join(input, "_freeze"))) {
       fs.mkdirSync(path.join(stage, "_freeze"), { recursive: true })

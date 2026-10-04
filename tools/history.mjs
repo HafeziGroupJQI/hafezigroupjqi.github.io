@@ -188,15 +188,17 @@ export function fileHistories(commits, known) {
  * The vaults' page histories for the History button: `{"<repo>:<path>": {revisions, more}}`, each
  * page's newest MAX_REVISIONS revisions and whether it has older ones. `vaults` is
  * `[{repo: "vault", dir}, …]`, any folder of each vault's work tree; `pages` picks the files kept.
+ * A vault may keep only the paths under `only` (a restricted vault overlaid on vault-private, whose
+ * files' histories are its own git's, under vault-private's name) and drop those under `except`.
  */
 export function pageHistories(vaults, records, { pages = () => true, limit = MAX_REVISIONS } = {}) {
   const known = people(records)
   const out = {}
-  for (const { repo, dir } of vaults) {
+  for (const { repo, dir, only = "", except = [] } of vaults) {
     const log = readLog(dir)
     if (!log) continue
     for (const [path, revisions] of fileHistories(log.commits, known))
-      if (pages(path))
+      if (pages(path) && path.startsWith(only) && !except.some((prefix) => path.startsWith(prefix)))
         out[`${repo}:${path}`] = {
           revisions: revisions.slice(0, limit),
           more: revisions.length > limit,

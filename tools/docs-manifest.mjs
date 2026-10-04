@@ -82,18 +82,39 @@ export function listTrackedFiles(privateRoot, excluded = new Set()) {
   return files
 }
 
+/**
+ * Every committed file of the private vault and of the restricted vaults overlaid on it
+ * (tools/acl/vaults.mjs: `[{repo, prefix, dir}]`), each from its own repository's git, with its
+ * repo. A restricted vault's repo path is its vault path, so only its files under its prefix count.
+ */
+export function listVaultFiles(privateRoot, { excluded = new Set(), restricted = [] } = {}) {
+  return [
+    ...listTrackedFiles(privateRoot, excluded).map((file) => ({ ...file, repo: "vault-private" })),
+    ...restricted.flatMap(({ repo, prefix, dir }) =>
+      listTrackedFiles(dir, excluded)
+        .filter((file) => file.path.startsWith(prefix))
+        .map((file) => ({ ...file, repo })),
+    ),
+  ]
+}
+
 /** Every committed document in the private vault (and each Quarto page's source). */
-export const listTrackedDocuments = (privateRoot, excluded = new Set()) =>
-  listTrackedFiles(privateRoot, excluded).filter(
+export const listTrackedDocuments = (privateRoot, excluded = new Set(), restricted = []) =>
+  listVaultFiles(privateRoot, { excluded, restricted }).filter(
     (file) => isDocument(file.path) || isPageSource(file.path),
   )
 
 export const documentKey = (file, prefix = "resources") => slugifyFilePath(`${prefix}/${file}`)
 
-export function docsManifest(privateRoot, { excluded = new Set(), prefix = "resources" } = {}) {
+// An entry is `{sha, size, contentType}`, plus the document's `repo` when it is a restricted vault's
+// (its blob is in that repository) and its vault `path` when the site path isn't "<prefix>/<path>".
+export function docsManifest(
+  privateRoot,
+  { excluded = new Set(), prefix = "resources", restricted = [] } = {},
+) {
   const manifest = {}
   const sources = new Map()
-  for (const document of listTrackedDocuments(privateRoot, excluded)) {
+  for (const document of listTrackedDocuments(privateRoot, excluded, restricted)) {
     const key = documentKey(document.path, prefix)
     if (sources.has(key))
       throw new Error(
@@ -104,6 +125,8 @@ export function docsManifest(privateRoot, { excluded = new Set(), prefix = "reso
       sha: document.sha,
       size: document.size,
       contentType: contentTypeFor(document.path),
+      ...(document.repo !== "vault-private" ? { repo: document.repo } : {}),
+      ...(key !== `${prefix}/${document.path}` ? { path: document.path } : {}),
     }
   }
   return Object.fromEntries(Object.entries(manifest).sort(([a], [b]) => a.localeCompare(b)))

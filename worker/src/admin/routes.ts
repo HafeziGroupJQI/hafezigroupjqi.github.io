@@ -1,3 +1,4 @@
+import { aclAdminRoutes } from "../acl/admin"
 import { requireMutation } from "../auth"
 import { type Auditor, requireAdmin } from "../audit"
 import { adminControl } from "../compute/routes"
@@ -142,6 +143,10 @@ export async function adminRoutes(
   if (!url.pathname.startsWith("/api/admin/")) return null
   await requireAdmin(env, session)
   const path = url.pathname.slice("/api/admin".length)
+
+  // ---- access rules for restricted pages (src/acl/admin.ts) ----
+  const acl = await aclAdminRoutes(request, path, url, env, session, record, privateVaultFetch)
+  if (acl) return acl
 
   if (path === "/audit" && request.method === "GET") {
     // A page is 1 to 500 rows: SQLite reads a negative LIMIT as no limit at all.

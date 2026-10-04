@@ -1,3 +1,4 @@
+import { buildStatus } from "./acl/admin"
 import { contentIndexFor } from "./acl/content-index"
 import { aclRefs, aclViewer, canSee, deny, scrubLinks } from "./acl/index"
 import { adminRoutes } from "./admin/routes"
@@ -269,6 +270,9 @@ export function createHandler(
       privateVaultFetch,
     )
     if (admin) return admin
+    // Whether the deployed site was built with the access rules as they are now (the Access tab).
+    if (url.pathname === "/api/acl/build-status" && request.method === "GET")
+      return buildStatus(env)
     const gpt = await gptRoutes(request, url, env, ctx, session, record, gptDeps)
     if (gpt) return gpt
     const calendar = await calendarRoutes(request, url, env, session)

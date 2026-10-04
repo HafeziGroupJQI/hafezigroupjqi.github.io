@@ -168,6 +168,11 @@ async function kitchenSink(t) {
     .replace("<!-- print-fixture: code 119 -->", code)
     .replace("<!-- print-fixture: table 12x6 -->", table(12, 6))
     .replace("<!-- print-fixture: table 20x5 -->", table(20, 5))
+    // A restricted page's transclusion (tools/acl/lists.mjs), which no PDF prints.
+    .replace(
+      '<div class="markdown-preview-view markdown-rendered">',
+      '$&<div data-acl="r1"><p>A restricted transclusion</p></div>',
+    )
   fs.mkdirSync(path.join(out, "setups"))
   fs.writeFileSync(path.join(out, "setups", "kitchen-sink.html"), html)
   return out
@@ -183,6 +188,7 @@ const hasBrowser = () =>
 function inspectPrint() {
   const visible = (node) => node.getClientRects().length > 0
   const article = document.querySelector(".page-body")
+  const restricted = document.querySelectorAll("[data-acl]").length
   const code = [...article.querySelectorAll("pre > code")].map((node) => ({
     lines: node.querySelectorAll(":scope > [data-line]").length,
     digits: node.getAttribute("data-line-numbers-max-digits"),
@@ -229,6 +235,7 @@ function inspectPrint() {
       width: node.getBoundingClientRect().width,
     })),
     column: article.getBoundingClientRect().width,
+    restricted,
     manipulate: getComputedStyle(article.querySelector(".wl-manipulate"), "::after").content,
     theme: getComputedStyle(document.querySelector("thead th")).backgroundColor,
     adjust: getComputedStyle(document.documentElement).printColorAdjust,
@@ -251,8 +258,10 @@ test("the kitchen sink prints with every case handled, then comes from the cache
     await browser.close()
   }
   const seen = printed.inspected
-  // Nothing of the site's chrome or controls prints; the title block does.
+  // Nothing of the site's chrome or controls prints; the title block does. Nor anything of a
+  // restricted page's.
   assert.deepEqual(seen.chrome, [])
+  assert.equal(seen.restricted, 0)
   assert.equal(seen.meta, true)
   // External links: numbered once per address (a trailing slash is the same one), none for the
   // site's own, anchors, tags, a link that reads as its address or an email link that does.

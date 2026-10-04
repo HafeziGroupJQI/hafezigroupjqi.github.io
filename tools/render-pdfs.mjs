@@ -280,6 +280,11 @@ export async function printPage(page, { url }, { inspect } = {}) {
     const prepared = await page.evaluate(() => window.hafeziPrint.prepare())
     if (missing.length) throw new Error(`did not load ${[...new Set(missing)].join(", ")}`)
     if (prepared.undrawn) throw new Error(`${prepared.undrawn} Mermaid diagram(s) not drawn`)
+    // What a page holds of restricted pages of other rules (data-acl, tools/acl/lists.mjs) is the
+    // Worker's to show per member; a PDF is every reader's of the page, so it prints without it.
+    await page.evaluate(() =>
+      document.querySelectorAll("[data-acl]").forEach((element) => element.remove()),
+    )
     await page.emulateMedia({ media: "print" })
     const fitted = await page.evaluate((width) => window.hafeziPrint.fit({ width }), LETTER_WIDTH)
     const inspected = inspect ? await page.evaluate(inspect) : undefined

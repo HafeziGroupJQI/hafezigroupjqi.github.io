@@ -6,6 +6,8 @@
 @use "./jqi-theme";
 // The page editor (/edit), and the Edit button in a page's tools row.
 @use "./page-editor";
+// The Markdown editors' formatting toolbar (the page editor, the announcement composer).
+@use "./editor-kit";
 
 // 2. Additions from the original onboarding site: tables, callouts, materials tints.
 .table-wrap {

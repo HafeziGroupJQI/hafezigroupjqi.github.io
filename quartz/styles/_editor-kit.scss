@@ -1,0 +1,60 @@
+// ---- The editor kit's formatting toolbar (frontend/editor-kit/) ----
+// It sits at the top of an editor's bordered box: the page editor's source, the announcement
+// composer. Under .dashboard too, so the dashboards' button rules (later in custom.scss) don't win.
+.kit-toolbar,
+.dashboard .kit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--c-rule, #ddd);
+  background: var(--c-surface-1, #fafafa);
+  .kit-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    min-height: 32px;
+    padding: 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--darkgray, #454545);
+    font:
+      500 0.85rem Roboto,
+      system-ui,
+      sans-serif;
+    cursor: pointer;
+    &:hover:not(:disabled) {
+      background: var(--c-surface-2, #f0f0f0);
+      border-color: var(--c-rule, #ddd);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--c-focus, #2a78d6);
+      outline-offset: 1px;
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    @media (pointer: coarse) {
+      min-width: 40px;
+      min-height: 40px;
+    }
+  }
+  .kit-tool--bold {
+    font-weight: 700;
+  }
+  .kit-tool--italic {
+    font-style: italic;
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  .kit-tool--code,
+  .kit-tool--codeblock {
+    font-family: var(--codeFont, ui-monospace, monospace);
+    font-size: 0.8rem;
+  }
+  .kit-tool--attach {
+    margin-left: auto;
+  }
+}

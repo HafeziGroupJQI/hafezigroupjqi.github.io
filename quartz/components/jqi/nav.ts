@@ -47,6 +47,8 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
         { label: "Recently modified", slug: "recent", member: true },
         // Members by contributions and their pages' votes and readers, and the top pages.
         { label: "Leaderboard", slug: "leaderboard", member: true },
+        // Members only: news from the admins (frontend/announcements/).
+        { label: "Announcements", slug: "announcements", member: true },
         {
           label: "Resources",
           menu: "resources",

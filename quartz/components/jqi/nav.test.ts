@@ -24,6 +24,7 @@ test("members keep public navigation and gain native resource and tool menus", (
     [
       ["Recently modified", "recent"],
       ["Leaderboard", "leaderboard"],
+      ["Announcements", "announcements"],
     ],
   )
   const tools = items.find((item) => item.label === "Tools")!

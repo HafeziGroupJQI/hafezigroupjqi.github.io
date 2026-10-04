@@ -5,6 +5,8 @@ import { prepareSite } from "./prepare-site.mjs"
 import { recentChanges } from "./recent-changes.mjs"
 import { recentPage } from "./site-model.mjs"
 import { writeTagPages } from "./tag-pages.mjs"
+import { normalizeSnapshot } from "./acl/policy.mjs"
+import { markPage } from "./acl/snapshot.mjs"
 
 export const excluded = new Set([
   "node_modules",
@@ -68,7 +70,13 @@ function qmdSourceBar(fm, privateRoot) {
   return `<p class="wl-source" data-source="${escapeHtml(source)}">Rendered from <a class="internal" href="/${escapeHtml(documentKey(source))}">${escapeHtml(path.posix.basename(source))}</a></p>`
 }
 
-export function prepareUnified(publicSource, privateSource, yaml) {
+// `acl`: the access rules snapshot (tools/acl/snapshot.mjs); a page a rule matches is restricted.
+export function prepareUnified(
+  publicSource,
+  privateSource,
+  yaml,
+  { acl = normalizeSnapshot(undefined) } = {},
+) {
   const prepared = prepareSite(publicSource, yaml)
   try {
     const root = fs.realpathSync(privateSource)
@@ -113,8 +121,16 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       }
       if (!/\.(md|base)$/.test(filename)) continue
       const sourceFile = path.join(root, path.relative(destination, filename))
+      const vaultPath = path.relative(root, sourceFile).split(path.sep).join("/")
       let text = fs.readFileSync(filename, "utf8")
       const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
+      if (filename.endsWith(".base") && markPage(acl, {}, vaultPath))
+        throw new Error(`${vaultPath}: a Bases page can't be restricted by an access rule yet`)
+      // A restricted page without front matter gets some, to carry its marks.
+      if (!match && filename.endsWith(".md")) {
+        const marks = {}
+        if (markPage(acl, marks, vaultPath)) text = `---\n${yaml.stringify(marks)}---\n` + text
+      }
       if (match) {
         const fm = yaml.parse(match[1]) ?? {}
         fm.site_public = true
@@ -146,6 +162,8 @@ export function prepareUnified(publicSource, privateSource, yaml) {
           if (fs.existsSync(own)) fm.edit_sha = blobSha(fs.readFileSync(own))
           if (filename.endsWith(".excalidraw.md")) fm.edit_mode = "file"
           if (fm.list_pages === true) fm.edit_note = "generated"
+          // A page an access rule matches: unlisted, and marked with that rule's id.
+          markPage(acl, fm, fm.vault_source)
         }
         const bar = qmdSourceBar(fm, root)
         text =

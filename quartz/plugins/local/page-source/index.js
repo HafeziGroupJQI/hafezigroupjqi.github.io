@@ -22,7 +22,7 @@ export const manifest = {
 // tools/notebooks/), which no author writes and which means nothing outside this site: where the
 // page is shown, and its own file in the vault. A long value may be folded onto indented lines.
 const BUILD_KEYS =
-  /^(?:site_public|site_internal|site_home|vault_source|edit_repo|edit_path|edit_sha|edit_mode|edit_note):.*\r?\n(?:[ \t]+.*\r?\n)*/gm
+  /^(?:site_public|site_internal|site_home|vault_source|edit_repo|edit_path|edit_sha|edit_mode|edit_note|acl):.*\r?\n(?:[ \t]+.*\r?\n)*/gm
 
 /** The source as it goes out: the staged page, without the build's own front matter keys. */
 export function pageSource(text) {

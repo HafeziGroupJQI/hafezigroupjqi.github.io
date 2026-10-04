@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { HttpError } from "../src/http"
 import { mergeDue } from "../src/uploads/merge"
 import { mountsIn, oneVault, vaultOf, vaultOfFolder, vaultRepo } from "../src/vaults"
-import { as } from "./helpers"
+import { OPTICAL_ACL, as, setAcl } from "./helpers"
 import { opticalVault, privateVault, privateVaults, upstreamBodies, upstreamCalls } from "./worker"
 
 // Restricted vaults (worker/vaults.json): vault-optical-rl, its own repository, mounted at
@@ -90,6 +90,38 @@ describe("vaults", () => {
     expect(privateVault.text("projects/optical-rl/notes/new.md")).toBeUndefined()
     const listing = (await ada.json("/api/uploads")).body.drafts[0]
     expect(listing.merge.url).toMatch(/^https:\/\/github.com\/HafeziGroupJQI\/vault-optical-rl\//)
+  })
+
+  it("leaves a sent upload to an admin when its author has left the group by its hour", async () => {
+    await setAcl({
+      ...OPTICAL_ACL,
+      groups: { "optical-rl": { logins: ["anishgoyal1108", "lidaxu-physics"] } },
+    })
+    const lida = await as("lidaxu-physics")
+    const id = (await lida.json("/api/uploads/drafts", { method: "POST", body: "{}" })).body.id
+    const path = "projects/optical-rl/notes/late.md"
+    expect(
+      (
+        await lida.json(`/api/uploads/drafts/${id}/file?path=${path}`, {
+          method: "PUT",
+          body: NOTE,
+        })
+      ).status,
+    ).toBe(200)
+    const sent = await lida.json(`/api/uploads/drafts/${id}/send`, { method: "POST" })
+    expect(sent.status).toBe(200)
+    // Removed from the group before the hourly run.
+    await setAcl({ ...OPTICAL_ACL, groups: { "optical-rl": { logins: ["anishgoyal1108"] } } })
+    opticalVault.report(opticalVault.refs.get(`uploads/lidaxu-physics/${id}`)!, "success")
+    const result = await mergeDue(env as any, privateVaults, sent.body.due_at)
+    expect(result.merged).toEqual([])
+    expect(result.review).toEqual([id])
+    expect(opticalVault.text(path)).toBeUndefined()
+    const row = (await env.DB.prepare("SELECT status FROM upload_drafts WHERE id = ?")
+      .bind(id)
+      .first()) as { status: string }
+    expect(row.status).toBe("review")
+    await setAcl()
   })
 
   it("lists a mount in its folder, and its own folders from its repository", async () => {

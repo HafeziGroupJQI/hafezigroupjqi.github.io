@@ -1,6 +1,8 @@
+import { canWrite } from "../acl"
 import { auditJob } from "../audit"
 import type { Env } from "../env"
 import type { RepoFetch } from "../repo"
+import type { Session } from "../session"
 import { settleChanges } from "../changes"
 import {
   type Detail,
@@ -56,6 +58,15 @@ async function mark(env: Env, row: DraftRow, status: Status, detail: Detail): Pr
     await env.DB.batch([update, settleChanges(env, row.id, status)])
   else await update.run()
 }
+
+/** A draft's author as the access rules see a member (never an admin: the cron signs in no one). */
+const author = (row: DraftRow): Session => ({
+  typ: "session",
+  login: row.login,
+  name: row.login,
+  role: "member",
+  exp: 0,
+})
 
 async function settleDraft(
   env: Env,
@@ -189,7 +200,26 @@ async function settleDraft(
     return
   }
   if (pull.draft) await repo.markReady(pull)
-  const review = needsReview(await changesOf(env, row.id))
+  const files = await changesOf(env, row.id)
+  // Its author may have lost access to a restricted path since sending it (src/acl/): the hour
+  // doesn't put it in under their name; an admin decides. (The cron has no session: an owner
+  // outside the path's group lands here too, and merges it on GitHub.)
+  if (
+    !(await canWrite(
+      env,
+      author(row),
+      files.flatMap((file) => [file.path, file.from_path]),
+    ))
+  ) {
+    await mark(env, row, "review", {
+      message: "you can no longer read a file it changes, so an admin decides on it",
+      url: pull.html_url,
+    })
+    await auditJob(env, row.login, `${kind(row)}.review`, row.id, { pull: number, access: false })
+    result.review.push(row.id)
+    return
+  }
+  const review = needsReview(files)
   if (review) {
     await mark(env, row, "review", {
       message: `checked; an admin merges it on GitHub, since something in it runs (${review.join("; ")})`,

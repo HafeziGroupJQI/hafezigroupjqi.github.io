@@ -1,6 +1,9 @@
+import { requireRead } from "./acl/index"
+import type { Auditor } from "./audit"
 import type { Upstream } from "./docs"
 import type { Env } from "./env"
 import { HttpError, SANDBOX_CSP, withPrivateHeaders } from "./http"
+import type { Session } from "./session"
 import { vaultPath } from "./uploads/rules"
 import { PRIVATE_VAULT, vaultNamed, vaultOf, vaultRepo } from "./vaults"
 
@@ -32,6 +35,8 @@ export async function historyRoutes(
   env: Env,
   ctx: ExecutionContext,
   upstream: Upstream,
+  session: Session,
+  record: Auditor,
 ): Promise<Response | null> {
   if (url.pathname !== "/api/history/file") return null
   if (request.method !== "GET" && request.method !== "HEAD")
@@ -43,6 +48,8 @@ export async function historyRoutes(
   const rev = url.searchParams.get("rev") ?? ""
   if (!COMMIT.test(rev)) throw new HttpError(422, "rev must be a commit's full sha")
   const path = historyPath(url.searchParams.get("path"))
+  // A restricted page's past is as restricted as the page, and isn't looked up, even in the cache.
+  await requireRead(env, session, [path], record, "that page isn't in that revision")
   const vault = vaultOf(path)
   // Private and never stored by the browser, as every member answer is (src/app.ts): the edge
   // cache is what spares GitHub.

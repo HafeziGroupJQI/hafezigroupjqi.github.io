@@ -294,7 +294,7 @@ export function createHandler(
     if (leaderboard) return leaderboard
     const announcements = await announcementRoutes(request, url, env, ctx, session, record)
     if (announcements) return announcements
-    const history = await historyRoutes(request, url, env, ctx, upstream)
+    const history = await historyRoutes(request, url, env, ctx, upstream, session, record)
     if (history) return history
     return problem(404, "not found")
   }

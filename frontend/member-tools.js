@@ -372,6 +372,12 @@ if (session.user) {
       .then(({ mountLeaderboard }) => mountLeaderboard(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
+  // Announcements: every live one, and for admins the composer and the drafts and scheduled ones.
+  mount("data-announcements", (root) =>
+    import("./announcements/index.js")
+      .then(({ mountAnnouncements }) => mountAnnouncements(root, { api, session }))
+      .catch((error) => showError(root, error)),
+  )
   // Uploads to the private vault: drafts that become pull requests merged hourly (src/uploads/).
   mount("data-uploads", (root) =>
     import("./uploads/index.js")

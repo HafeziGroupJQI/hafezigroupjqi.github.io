@@ -89,6 +89,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "recent",
       "leaderboard",
       "edit",
+      "announcements",
       // The Scratchpad's JupyterLab: the service worker answers /jupyter/* from the compute relay.
       "jupyter",
     ]) {
@@ -439,6 +440,14 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "settings",
       "Settings",
       '<div class="member-tools dashboard" data-settings><h1 class="dash-title">Settings</h1><p class="muted">Loading…</p></div>',
+      [],
+      { layout: "dashboard" },
+    )
+    // Announcements (frontend/announcements/): every live one; admins write and schedule them here.
+    page(
+      "announcements",
+      "Announcements",
+      '<div class="member-tools dashboard announcements-page" data-announcements><h1 class="dash-title">Announcements</h1><p class="muted">Loading…</p></div>',
       [],
       { layout: "dashboard" },
     )

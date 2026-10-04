@@ -21,6 +21,7 @@ import { isLabGptPath, labGptRequest } from "./gpt/lab"
 import { isLabAgentPath, labAgent } from "./gpt/lab-agent"
 import { gptRoutes } from "./gpt/routes"
 import { prefsRoutes } from "./prefs"
+import { leaderboardRoutes } from "./ratings/leaderboard"
 import { ratingRoutes } from "./ratings/routes"
 import { recordView, viewedPage } from "./ratings/views"
 import { navIdentity, profileRoutes } from "./profile/routes"
@@ -284,6 +285,8 @@ export function createHandler(
     if (prefs) return prefs
     const ratings = await ratingRoutes(request, url, env, session, record, MEMBER_PAGES)
     if (ratings) return ratings
+    const leaderboard = await leaderboardRoutes(request, url, env, session)
+    if (leaderboard) return leaderboard
     const history = await historyRoutes(request, url, env, ctx, upstream)
     if (history) return history
     return problem(404, "not found")

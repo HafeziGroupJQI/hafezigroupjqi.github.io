@@ -232,7 +232,7 @@ function oneOf<T extends string>(raw: string | null, known: T[], what: string): 
 export type ScorePeriod = "week" | "month" | "all"
 export const SCORE_PERIODS: ScorePeriod[] = ["week", "month", "all"]
 const DAY = 86_400_000
-const PERIOD_DAYS: Record<ScorePeriod, number | null> = { week: 7, month: 30, all: null }
+export const PERIOD_DAYS: Record<ScorePeriod, number | null> = { week: 7, month: 30, all: null }
 /** A commit with more files than this is a bulk import. */
 export const BULK_FILES = 50
 /** How long a leaderboard is kept before D1 is asked again. */
@@ -257,20 +257,26 @@ export interface ScoreRow {
   last_at: number
 }
 
-/** Members by score, best first, ties sharing a rank (1, 1, 3); a tie goes by name. */
-export function rankScores(rows: ScoreRow[]) {
-  const scored = rows
-    .map((row) => ({ ...row, score: contributionScore(row.files, row.changes) }))
-    .sort((a, b) => b.score - a.score || a.author.localeCompare(b.author))
-  return scored.map((row) => ({
-    rank: scored.findIndex((other) => other.score === row.score) + 1,
+/** Rows by `value`, best first, ties sharing a rank (1, 1, 3); a tie goes by name. */
+export function rankBy<T extends { author: string }>(rows: T[], value: (row: T) => number) {
+  const sorted = [...rows].sort((a, b) => value(b) - value(a) || a.author.localeCompare(b.author))
+  return sorted.map((row) => ({
+    rank: sorted.findIndex((other) => value(other) === value(row)) + 1,
     ...row,
   }))
 }
 
+/** Members by score, best first, ties sharing a rank (1, 1, 3); a tie goes by name. */
+export function rankScores(rows: ScoreRow[]) {
+  return rankBy(
+    rows.map((row) => ({ ...row, score: contributionScore(row.files, row.changes) })),
+    (row) => row.score,
+  )
+}
+
 // One query: every merged change of a member since `?1`, a bulk commit's files folded into the
 // folders they are in (rtrim drops the file's name from its path).
-const SCORES_SQL = `
+export const SCORES_SQL = `
   WITH merged AS (
     SELECT login, author, at, repo, path, slug, kind, added, removed, commit_sha,
            rtrim(path, replace(path, '/', '')) AS folder,

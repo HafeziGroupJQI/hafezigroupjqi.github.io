@@ -5,6 +5,7 @@ import { HttpError, json, readJson } from "../http"
 import type { Session } from "../session"
 import { underLimit } from "../uploads/routes"
 import { readablePage } from "./access"
+import { resetLeaderboards } from "./leaderboard"
 import { isoDay, pagePath } from "./views"
 
 // A page's rating, like a reddit post's: each member's up or down vote (D1 page_votes, migration
@@ -135,5 +136,7 @@ export async function ratingRoutes(
         ).bind(path, session.login, value, now)
   const [, rating] = await env.DB.batch([write, ratingStatement(env, path, session.login, now)])
   record("rating.vote", path, { value })
+  // This isolate's leaderboards show the vote at once; the others within their five minutes.
+  resetLeaderboards()
   return json(ratingOf(path, (rating.results[0] ?? null) as Omit<Rating, "path" | "score"> | null))
 }

@@ -25,6 +25,7 @@ import { vaultFolders } from "./folder-files.mjs"
 import { overlayFiles, restrictedDirs } from "./acl/vaults.mjs"
 import { normalizeSnapshot } from "./acl/policy.mjs"
 import { checkCoverage, markPages, readSnapshot, writeBuildVersion } from "./acl/snapshot.mjs"
+import { writeContentIndex } from "./acl/outputs.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
 // The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
@@ -108,6 +109,8 @@ if (options.mode === "internal") {
   config.configuration.ignorePatterns.push(
     ...documentExtensions(manifest).map((extension) => `resources/**/*${extension}`),
   )
+  // The restricted pages' search index entries and every private page's file (tools/acl/outputs.mjs).
+  config.plugins.push({ source: "./quartz/plugins/local/acl-index", enabled: true })
 }
 const generatedConfig = path.join(stage, "quartz.config.yaml")
 fs.writeFileSync(generatedConfig, yaml.stringify(config))
@@ -117,7 +120,9 @@ const env = {
   SITE_MODE: options.mode,
   QUARTZ_CONFIG_PATH: generatedConfig,
   SITE_HISTORY: historyFile,
-  ...(options.mode === "internal" ? { SITE_FOLDERS: foldersFile } : {}),
+  ...(options.mode === "internal"
+    ? { SITE_FOLDERS: foldersFile, SITE_ACL_PAGES: path.join(stage, "acl-pages.json") }
+    : {}),
   ...(options.quartzBaseUrl ? { QUARTZ_BASE_URL: options.quartzBaseUrl } : {}),
 }
 try {
@@ -161,6 +166,18 @@ try {
   if (fs.existsSync(notebookAssets))
     fs.cpSync(notebookAssets, path.join(options.output, "notebook-assets"), { recursive: true })
   if (options.mode === "internal") {
+    // The search index without restricted pages, and each rule's shard of them (tools/acl/).
+    const aclPages = JSON.parse(fs.readFileSync(env.SITE_ACL_PAGES, "utf8"))
+    const folders = JSON.parse(fs.readFileSync(foldersFile, "utf8"))
+    const split = writeContentIndex(options.output, {
+      pages: aclPages,
+      folders,
+      documents: manifest,
+      acl,
+    })
+    console.log(
+      `content index: ${split.base} pages for every member; restricted: ${JSON.stringify(split.restricted)}`,
+    )
     await bundleMembers(options.output, "internal", membersApi)
     fs.writeFileSync(path.join(options.output, "robots.txt"), "User-agent: *\nDisallow: /\n")
     const pruned = pruneDocuments(options.output, manifest)

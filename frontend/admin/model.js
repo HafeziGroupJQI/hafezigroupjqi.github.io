@@ -258,3 +258,126 @@ export function nextTab(index, key, count) {
 /** What waits for an admin on the Uploads tab: drafts to merge by hand and conflicts to settle. */
 export const uploadsWaiting = (drafts, conflicts = []) =>
   drafts.filter((draft) => draft.status === "review").length + conflicts.length
+
+// ---- access rules for restricted pages (the Access tab; worker/src/acl/) ----
+
+const LOGIN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/
+const PERSON = /^people\/(?:alumni\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * A principal as an admin types it: "group:x", "login:x", "person:people/x", or plainly a group's
+ * name, a People page (people/x, /people/x, its URL) or a GitHub login (@x). null: not one.
+ */
+export function parsePrincipal(raw, groups = []) {
+  let text = String(raw ?? "").trim()
+  if (!text) return null
+  const kind = /^(group|login|person):/.exec(text)?.[1]
+  if (kind) text = text.slice(kind.length + 1).trim()
+  text = text
+    .replace(/^https?:\/\/[^/]+/, "")
+    .replace(/^\/+/, "")
+    .replace(/\.md$/, "")
+    .replace(/^content\//, "")
+  if ((!kind || kind === "person") && PERSON.test(text)) return `person:${text}`
+  if (kind === "person") return null
+  if ((!kind || kind === "group") && groups.includes(text)) return `group:${text}`
+  if (kind === "group") return null
+  const login = text.replace(/^@/, "").toLowerCase()
+  return LOGIN.test(login) ? `login:${login}` : null
+}
+
+/** A member of a group as the API takes one: {login} or {person}; null when it is neither. */
+export function parseMember(raw) {
+  const principal = parsePrincipal(raw)
+  if (principal?.startsWith("login:")) return { login: principal.slice(6) }
+  if (principal?.startsWith("person:")) return { person: principal.slice(7) }
+  return null
+}
+
+/** How a principal reads: its kind and its name. */
+export function principalLabel(ref) {
+  const [kind, ...rest] = String(ref).split(":")
+  const name = rest.join(":")
+  return {
+    kind: { group: "group", login: "member", person: "People page" }[kind] ?? kind,
+    text: kind === "login" ? `@${name}` : name,
+  }
+}
+
+/** People pages (people/<slug>) in the site's content index, for picking a group's members. */
+export function peoplePages(index) {
+  return Object.entries(index ?? {})
+    .filter(([slug]) => PERSON.test(slug) && !slug.endsWith("/index"))
+    .map(([slug, entry]) => ({ value: slug, label: entry?.title || slug }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+/**
+ * Vault paths a rule's pattern may name, starting with `typed`: the private vault's pages in the
+ * content index (resources/<vault path>), every folder above them (dir/), and the files and
+ * folders of a folder's listing (GET /api/uploads/folder). At most `limit`, folders first.
+ */
+export function pathSuggestions(index, listing, typed = "", limit = 20) {
+  const paths = new Set()
+  for (const [slug, entry] of Object.entries(index ?? {})) {
+    if (!slug.startsWith("resources/")) continue
+    const file = String(entry?.filePath ?? `${slug}.md`).replace(/^resources\//, "")
+    const parts = file.split("/")
+    for (let i = 1; i < parts.length; i++) paths.add(`${parts.slice(0, i).join("/")}/`)
+    if (!file.endsWith("/index.md")) paths.add(file)
+  }
+  for (const entry of listing?.entries ?? [])
+    paths.add(entry.type === "folder" ? `${entry.path}/` : entry.path)
+  const query = typed.trim().replace(/^\/+/, "").toLowerCase()
+  return [...paths]
+    .filter((path) => path.toLowerCase().startsWith(query) && path !== typed)
+    .sort((a, b) => Number(!a.endsWith("/")) - Number(!b.endsWith("/")) || a.localeCompare(b))
+    .slice(0, limit)
+}
+
+/** The folder whose listing completes a typed path: everything up to its last "/". */
+export const typedFolder = (typed) => {
+  const text = String(typed ?? "").replace(/^\/+/, "")
+  return text.includes("/") ? text.slice(0, text.lastIndexOf("/")) : ""
+}
+
+/** A rule's kind, as the Access tab says it. */
+export function patternKind(pattern) {
+  if (pattern.includes("*")) return "glob"
+  return pattern.endsWith("/") ? "folder" : "page"
+}
+
+/** The rule a form describes, as the API takes it; a list of what's wrong when it can't. */
+export function ruleBody({ pattern = "", allow = [], deny = [], note = "" }) {
+  const problems = []
+  const clean = String(pattern).trim().replace(/^\/+/, "")
+  if (!clean) problems.push("name a page, a folder (ending in /) or a glob")
+  if (!allow.length && !deny.length)
+    problems.push("a rule needs someone on its allow list (a whitelist) or its deny list")
+  return problems.length
+    ? { problems }
+    : { body: { pattern: clean, allow: [...allow], deny: [...deny], note: note.trim() } }
+}
+
+/** What the rebuild banner says, from GET /api/acl/build-status; null when the site is current. */
+export function rebuildNotice(status) {
+  if (!status) return null
+  const { d1Version, committedVersion, buildVersion } = status
+  if (committedVersion !== null && committedVersion !== undefined && committedVersion < d1Version)
+    return {
+      kind: "error",
+      text: `The rules' last change (version ${d1Version}) didn't reach vault-private, so the site won't rebuild with it. Pages and the API follow it already.`,
+      retry: true,
+    }
+  if (buildVersion === null || buildVersion === undefined)
+    return {
+      kind: "pending",
+      text: `The site hasn't been built with access rules yet: version ${d1Version} applies to pages and the API now; search, folder pages and backlinks follow once it rebuilds.`,
+    }
+  if (buildVersion < d1Version)
+    return {
+      kind: "pending",
+      text: `Site rebuild pending: it was built with version ${buildVersion} of the rules, and version ${d1Version} applies to pages and the API now. Search, folder pages and backlinks follow when the rebuild is deployed (usually within 15 minutes).`,
+    }
+  return null
+}

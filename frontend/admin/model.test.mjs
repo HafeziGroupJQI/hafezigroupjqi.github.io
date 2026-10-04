@@ -14,6 +14,15 @@ import {
   usageByDay,
   usageLabel,
   uploadsWaiting,
+  parseMember,
+  parsePrincipal,
+  pathSuggestions,
+  patternKind,
+  peoplePages,
+  principalLabel,
+  rebuildNotice,
+  ruleBody,
+  typedFolder,
 } from "./model.js"
 
 test("a tab's URL keeps a conversations deep link only on that tab", () => {
@@ -221,4 +230,91 @@ test("the Uploads tab counts drafts to merge by hand and conflicts to settle", (
   assert.equal(uploadsWaiting(drafts), 1)
   assert.equal(uploadsWaiting(drafts, [{ id: "a" }, { id: "b" }]), 3)
   assert.equal(uploadsWaiting([], []), 0)
+})
+
+test("an admin types principals as they like", () => {
+  const groups = ["optical-rl"]
+  assert.equal(parsePrincipal("optical-rl", groups), "group:optical-rl")
+  assert.equal(parsePrincipal("group:optical-rl", groups), "group:optical-rl")
+  assert.equal(parsePrincipal("group:nobody", groups), null)
+  assert.equal(parsePrincipal("@AnishGoyal1108", groups), "login:anishgoyal1108")
+  assert.equal(parsePrincipal("login:mjalalim3", groups), "login:mjalalim3")
+  assert.equal(parsePrincipal("people/lida-xu", groups), "person:people/lida-xu")
+  assert.equal(parsePrincipal("/people/lida-xu", groups), "person:people/lida-xu")
+  assert.equal(
+    parsePrincipal("https://hafezigroupjqi.github.io/people/lida-xu", groups),
+    "person:people/lida-xu",
+  )
+  assert.equal(
+    parsePrincipal("content/people/alumni/old-member.md"),
+    "person:people/alumni/old-member",
+  )
+  assert.equal(parsePrincipal("person:lida-xu"), null)
+  assert.equal(parsePrincipal("not a login"), null)
+  assert.equal(parsePrincipal(""), null)
+  assert.deepEqual(parseMember("@Ada"), { login: "ada" })
+  assert.deepEqual(parseMember("people/ada-lovelace"), { person: "people/ada-lovelace" })
+  assert.equal(parseMember("??"), null)
+  assert.deepEqual(principalLabel("login:ada"), { kind: "member", text: "@ada" })
+  assert.deepEqual(principalLabel("person:people/ada"), { kind: "People page", text: "people/ada" })
+  assert.deepEqual(principalLabel("group:theory"), { kind: "group", text: "theory" })
+})
+
+test("the Access tab suggests People pages and vault paths", () => {
+  const index = {
+    "people/lida-xu": { title: "Lida Xu" },
+    "people/index": { title: "People" },
+    "people/alumni/old": { title: "Old Member" },
+    "resources/projects/optical-rl/notes/plan": {
+      filePath: "resources/projects/optical-rl/notes/plan.md",
+    },
+    "resources/notes/index": { filePath: "resources/notes/index.md" },
+    "research/topo": { filePath: "research/topo.md" },
+  }
+  assert.deepEqual(
+    peoplePages(index).map((p) => p.value),
+    ["people/lida-xu", "people/alumni/old"],
+  )
+  assert.deepEqual(pathSuggestions(index, null, "proj"), [
+    "projects/",
+    "projects/optical-rl/",
+    "projects/optical-rl/notes/",
+    "projects/optical-rl/notes/plan.md",
+  ])
+  assert.deepEqual(pathSuggestions(index, null, "notes"), ["notes/"])
+  const listing = {
+    entries: [
+      { name: "run.ipynb", path: "projects/optical-rl/files/run.ipynb", type: "file" },
+      { name: "data", path: "projects/optical-rl/files/data", type: "folder" },
+    ],
+  }
+  assert.deepEqual(pathSuggestions(index, listing, "projects/optical-rl/files/"), [
+    "projects/optical-rl/files/data/",
+    "projects/optical-rl/files/run.ipynb",
+  ])
+  assert.equal(typedFolder("projects/optical-rl/fi"), "projects/optical-rl")
+  assert.equal(typedFolder("proj"), "")
+})
+
+test("a rule's form becomes the API's body, or says what it misses", () => {
+  assert.deepEqual(ruleBody({ pattern: " /projects/x/ ", allow: ["group:x"], note: " n " }), {
+    body: { pattern: "projects/x/", allow: ["group:x"], deny: [], note: "n" },
+  })
+  assert.equal(ruleBody({ pattern: "", allow: [] }).problems.length, 2)
+  assert.equal(patternKind("notes/x.md"), "page")
+  assert.equal(patternKind("projects/x/"), "folder")
+  assert.equal(patternKind("notes/**/draft-*.md"), "glob")
+})
+
+test("the rebuild banner says whether the site has the rules as they are", () => {
+  assert.equal(rebuildNotice({ d1Version: 3, committedVersion: 3, buildVersion: 3 }), null)
+  assert.match(
+    rebuildNotice({ d1Version: 4, committedVersion: 4, buildVersion: 3 }).text,
+    /rebuild pending.*version 3.*version 4/,
+  )
+  assert.equal(rebuildNotice({ d1Version: 4, committedVersion: 3, buildVersion: 3 }).retry, true)
+  assert.equal(
+    rebuildNotice({ d1Version: 1, committedVersion: null, buildVersion: null }).kind,
+    "pending",
+  )
 })

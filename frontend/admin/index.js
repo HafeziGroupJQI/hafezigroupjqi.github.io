@@ -1,7 +1,8 @@
 // /admin: the group-admin console. Audit log (who signed in when, what they did), the admin
 // allow-list (org owners are always admins), members' claims of People pages, members' upload
 // drafts, Hafezi GPT usage + monthly budgets, members' Hafezi GPT conversations, and members' code
-// (their live sessions, IPython and terminal history and file history; every view is audited).
+// (their live sessions, IPython and terminal history and file history; every view is audited),
+// and who may read restricted pages (Access: groups, rules, an access checker, probe sessions).
 // The Worker enforces admin access on every /api/admin/* call; this page just shows a notice to
 // non-admins.
 import { h, present } from "../dashboard/dom.js"
@@ -23,8 +24,24 @@ import {
   uploadsWaiting,
   USAGE_SOURCES,
   usageByDay,
+  parseMember,
+  parsePrincipal,
+  pathSuggestions,
+  patternKind,
+  peoplePages,
+  principalLabel,
+  rebuildNotice,
+  ruleBody,
+  typedFolder,
 } from "./model.js"
 import { changeLabel, draftName, settleLabel, statusLabel } from "../uploads/model.js"
+
+/** The site's content index (the member edition's, all of it for an admin), once per page. */
+let indexOnce = null
+const siteIndex = () =>
+  (indexOnce ??= fetch("/static/contentIndex.json", { cache: "no-store" })
+    .then((response) => (response.ok ? response.json() : {}))
+    .catch(() => ({})))
 
 const TABS = [
   ["audit", "Audit log"],
@@ -34,6 +51,7 @@ const TABS = [
   ["usage", "Usage & budgets"],
   ["conversations", "Conversations"],
   ["code", "Code"],
+  ["access", "Access"],
 ]
 
 export function mountAdmin(root, { api, session }) {
@@ -164,6 +182,7 @@ export function mountAdmin(root, { api, session }) {
       usage: usageTab,
       conversations: conversationsTab,
       code: codeTab,
+      access: accessTab,
     })
       [id](panel)
       .catch(fail)
@@ -353,6 +372,443 @@ export function mountAdmin(root, { api, session }) {
         fail(error)
       }
     }
+  }
+
+  // ---- access rules for restricted pages (worker/src/acl/) ----
+  async function accessTab(panel) {
+    const [data, status, index] = await Promise.all([
+      api("/api/admin/acl"),
+      api("/api/acl/build-status").catch(() => null),
+      siteIndex(),
+    ])
+    const groupNames = data.groups.map((group) => group.name)
+    const people = peoplePages(index)
+    const titles = new Map(people.map((person) => [person.value, person.label]))
+    const reload = async () => {
+      panel.replaceChildren()
+      await accessTab(panel)
+    }
+    /** Run a change, then show the tab as it is now; an error shows in the banner. */
+    const act = (change) => async (event) => {
+      event?.preventDefault?.()
+      try {
+        await change(event)
+        await reload()
+      } catch (error) {
+        fail(error)
+      }
+    }
+    const send = (path, method, body) =>
+      api(`/api/admin/acl${path}`, { method, ...(body ? { body: JSON.stringify(body) } : {}) })
+    const chipText = (ref) => {
+      const { kind, text } = principalLabel(ref)
+      return kind === "People page" && titles.has(text) ? `${titles.get(text)} (${text})` : text
+    }
+    const chips = (refs, remove) =>
+      h(
+        "ul",
+        { class: "acl-chips" },
+        refs.map((ref) =>
+          h(
+            "li",
+            { class: "acl-chip", title: principalLabel(ref).kind },
+            chipText(ref),
+            remove
+              ? h("button", {
+                  type: "button",
+                  "aria-label": `Remove ${chipText(ref)}`,
+                  text: "×",
+                  onclick: () => remove(ref),
+                })
+              : null,
+          ),
+        ),
+      )
+    // Suggestions for principals and members: groups, People pages.
+    const principalList = h(
+      "datalist",
+      { id: "acl-principals" },
+      groupNames.map((name) => h("option", { value: `group:${name}` })),
+      people.map((person) => h("option", { value: `person:${person.value}`, label: person.label })),
+    )
+    const peopleList = h(
+      "datalist",
+      { id: "acl-people" },
+      people.map((person) => h("option", { value: person.value, label: person.label })),
+    )
+
+    // The rebuild banner: pages follow a change at once, the site's build a little later.
+    const notice = rebuildNotice(status)
+    const banner = notice
+      ? h(
+          "div",
+          { class: notice.kind === "error" ? "dash-error" : "acl-banner", role: "status" },
+          h("span", { text: notice.text }),
+          notice.retry
+            ? h("button", {
+                type: "button",
+                text: "Send to vault-private again",
+                onclick: act(() => send("/publish", "POST")),
+              })
+            : null,
+        )
+      : null
+
+    // ---- groups ----
+    const groupCard = (group) => {
+      const input = h("input", {
+        name: "member",
+        list: "acl-people",
+        placeholder: "GitHub login or People page",
+        autocomplete: "off",
+        "aria-label": `Add to ${group.name}`,
+      })
+      const add = h(
+        "form",
+        { class: "dash-toolbar" },
+        input,
+        h("button", { type: "submit", text: "Add" }),
+      )
+      add.onsubmit = act(async () => {
+        const member = parseMember(input.value)
+        if (!member)
+          throw new Error("Enter a GitHub login (@login) or a People page (people/<slug>).")
+        await send(`/groups/${encodeURIComponent(group.name)}/members`, "POST", member)
+      })
+      const members = [
+        ...group.logins.map((login) => `login:${login}`),
+        ...group.people.map((person) => `person:${person}`),
+      ]
+      return h(
+        "li",
+        { class: "cmd-card" },
+        h(
+          "header",
+          {},
+          h("strong", { class: "mono", text: group.name }),
+          h("span", { class: "muted", text: group.description }),
+          h("span", { class: "spacer" }),
+          h("button", {
+            type: "button",
+            class: "danger",
+            text: "Delete group",
+            onclick: act(async () => {
+              if (!confirm(`Delete the group ${group.name}?`)) return
+              await send(`/groups/${encodeURIComponent(group.name)}`, "DELETE")
+            }),
+          }),
+        ),
+        members.length
+          ? chips(
+              members,
+              act(async (ref) => {
+                const [kind, value] = [ref.split(":")[0], ref.slice(ref.indexOf(":") + 1)]
+                await send(
+                  `/groups/${encodeURIComponent(group.name)}/members?${new URLSearchParams({ [kind === "login" ? "login" : "person"]: value })}`,
+                  "DELETE",
+                )
+              }),
+            )
+          : h("p", { class: "muted", text: "No members yet." }),
+        add,
+      )
+    }
+    const newGroup = h(
+      "form",
+      { class: "dash-toolbar" },
+      h(
+        "label",
+        { class: "dash-field" },
+        "New group",
+        h("input", { name: "name", placeholder: "name (lowercase, dashes)", required: true }),
+      ),
+      h(
+        "label",
+        { class: "dash-field" },
+        "Description",
+        h("input", { name: "description", placeholder: "what it is for" }),
+      ),
+      h("button", { type: "submit", class: "primary", text: "Create" }),
+    )
+    newGroup.onsubmit = act(() =>
+      send("/groups", "POST", {
+        name: newGroup.elements.namedItem("name").value,
+        description: newGroup.elements.namedItem("description").value,
+      }),
+    )
+
+    // ---- rules ----
+    const listings = new Map()
+    const folderListing = (folder) => {
+      if (!listings.has(folder))
+        listings.set(
+          folder,
+          api(`/api/uploads/folder?path=${encodeURIComponent(folder)}`).catch(() => null),
+        )
+      return listings.get(folder)
+    }
+    const pathList = h("datalist", { id: "acl-paths" })
+    const suggest = async (typed) => {
+      const listing = await folderListing(typedFolder(typed))
+      pathList.replaceChildren(
+        ...pathSuggestions(index, listing, typed).map((path) => h("option", { value: path })),
+      )
+    }
+    /** An editable list of principals, as chips. */
+    const principalsField = (label, initial) => {
+      const values = [...initial]
+      const list = h("div")
+      const input = h("input", {
+        list: "acl-principals",
+        placeholder: "group, @login or people/<slug>",
+        autocomplete: "off",
+        "aria-label": `${label}: add`,
+      })
+      const render = () =>
+        list.replaceChildren(
+          values.length
+            ? chips(values, (ref) => {
+                values.splice(values.indexOf(ref), 1)
+                render()
+              })
+            : h("span", { class: "muted", text: "nobody" }),
+        )
+      const add = () => {
+        const ref = parsePrincipal(input.value, groupNames)
+        if (!ref)
+          return fail(new Error(`${input.value} isn't a group, a GitHub login or a People page.`))
+        if (!values.includes(ref)) values.push(ref)
+        input.value = ""
+        render()
+      }
+      input.onkeydown = (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault()
+          add()
+        }
+      }
+      render()
+      return {
+        values,
+        element: h(
+          "fieldset",
+          { class: "acl-field" },
+          h("legend", { text: label }),
+          list,
+          h(
+            "div",
+            { class: "dash-toolbar" },
+            input,
+            h("button", { type: "button", text: "Add", onclick: add }),
+          ),
+        ),
+      }
+    }
+    const ruleForm = (rule = null) => {
+      const pattern = h("input", {
+        name: "pattern",
+        list: "acl-paths",
+        value: rule?.pattern ?? "",
+        placeholder: "projects/x/, notes/page.md or notes/**/draft-*.md",
+        autocomplete: "off",
+        required: true,
+      })
+      pattern.oninput = () => suggest(pattern.value)
+      const allow = principalsField("Allow (empty: everyone not denied)", rule?.allow ?? [])
+      const deny = principalsField("Deny", rule?.deny ?? [])
+      const note = h("input", {
+        name: "note",
+        value: rule?.note ?? "",
+        placeholder: "what it is for",
+      })
+      const form = h(
+        "form",
+        { class: "acl-rule-form" },
+        h("label", { class: "dash-field" }, "Page, folder or glob in the private vault", pattern),
+        allow.element,
+        deny.element,
+        h("label", { class: "dash-field" }, "Note", note),
+        h(
+          "div",
+          { class: "dash-toolbar" },
+          h("button", { type: "submit", class: "primary", text: rule ? "Save rule" : "Add rule" }),
+          rule ? h("button", { type: "button", text: "Cancel", onclick: () => reload() }) : null,
+        ),
+      )
+      form.onsubmit = act(async () => {
+        const made = ruleBody({
+          pattern: pattern.value,
+          allow: allow.values,
+          deny: deny.values,
+          note: note.value,
+        })
+        if (made.problems) throw new Error(made.problems.join("; "))
+        await send(rule ? `/rules/${rule.id}` : "/rules", rule ? "PUT" : "POST", made.body)
+      })
+      suggest(pattern.value)
+      return form
+    }
+    const ruleCard = (rule) => {
+      const card = h(
+        "li",
+        { class: "cmd-card" },
+        h(
+          "header",
+          {},
+          h("strong", { class: "mono", text: rule.pattern }),
+          h("span", { class: "muted", text: `${patternKind(rule.pattern)} · ${rule.id}` }),
+          h("span", { class: "spacer" }),
+          h("button", {
+            type: "button",
+            text: "Edit",
+            onclick: () => card.replaceChildren(ruleForm(rule)),
+          }),
+          h("button", {
+            type: "button",
+            class: "danger",
+            text: "Delete",
+            onclick: act(async () => {
+              if (!confirm(`Delete rule ${rule.id} (${rule.pattern})? Its pages open to everyone.`))
+                return
+              await send(`/rules/${rule.id}`, "DELETE")
+            }),
+          }),
+        ),
+        h(
+          "div",
+          { class: "acl-rule-row" },
+          h("span", { class: "muted", text: "Allow" }),
+          rule.allow.length ? chips(rule.allow) : h("span", { text: "everyone not denied" }),
+        ),
+        rule.deny.length
+          ? h(
+              "div",
+              { class: "acl-rule-row" },
+              h("span", { class: "muted", text: "Deny" }),
+              chips(rule.deny),
+            )
+          : null,
+        rule.note ? h("p", { class: "muted", text: rule.note }) : null,
+      )
+      return card
+    }
+
+    // ---- the checker and probe sessions ----
+    const checker = h(
+      "form",
+      { class: "dash-toolbar" },
+      h(
+        "label",
+        { class: "dash-field" },
+        "Member",
+        h("input", {
+          name: "login",
+          placeholder: "GitHub login",
+          required: true,
+          autocomplete: "off",
+        }),
+      ),
+      h(
+        "label",
+        { class: "dash-field" },
+        "Path",
+        h("input", {
+          name: "path",
+          list: "acl-paths",
+          placeholder: "vault path, or a site path like /resources/…",
+          required: true,
+          autocomplete: "off",
+        }),
+      ),
+      h("button", { type: "submit", class: "primary", text: "Check" }),
+    )
+    const verdict = h("p", { class: "acl-verdict", "aria-live": "polite" })
+    checker.onsubmit = async (event) => {
+      event.preventDefault()
+      try {
+        const answer = await send(
+          `/check?${new URLSearchParams({
+            login: checker.elements.namedItem("login").value,
+            path: checker.elements.namedItem("path").value,
+          })}`,
+          "GET",
+        )
+        verdict.replaceChildren(
+          h("strong", { text: answer.readable ? "Can read. " : "Can't read. " }),
+          answer.reason,
+          answer.person
+            ? h("span", { class: "muted", text: ` (People page ${answer.person})` })
+            : null,
+        )
+      } catch (error) {
+        fail(error)
+      }
+    }
+    const probeOut = h("div", { "aria-live": "polite" })
+    const probe = h("button", {
+      type: "button",
+      text: "Make a probe session",
+      onclick: async () => {
+        try {
+          const made = await send("/probe", "POST")
+          const token = h("input", { readonly: true, value: made.token, class: "mono" })
+          probeOut.replaceChildren(
+            h(
+              "p",
+              {},
+              h("strong", { class: "mono", text: made.login }),
+              ` until ${formatWhen(made.exp * 1000)}. The token is shown this once: use it as a bearer (Authorization: Bearer …) to see the site as a member outside every group, or add ${made.login} to a group first.`,
+            ),
+            h(
+              "div",
+              { class: "dash-toolbar" },
+              token,
+              h("button", {
+                type: "button",
+                text: "Copy",
+                onclick: () => navigator.clipboard?.writeText(made.token),
+              }),
+            ),
+          )
+        } catch (error) {
+          fail(error)
+        }
+      },
+    })
+
+    panel.append(
+      banner,
+      principalList,
+      peopleList,
+      pathList,
+      h("p", {
+        class: "muted",
+        text: "Restricted pages: a rule names a page, a folder (ending in /) or a glob of the private vault, and who may read it. The most specific rule decides (a page's over a folder's, a deeper folder's over a shallower one's, a folder's over a glob's), and its deny list beats its allow list. Pages no rule covers are every member's; admins read everything. A change applies to pages, documents and the API at once; search, folder pages and backlinks follow when the site rebuilds.",
+      }),
+      h("h2", { text: "Groups" }),
+      h("ul", { class: "admin-list" }, data.groups.map(groupCard)),
+      newGroup,
+      h("h2", { text: "Rules" }),
+      h(
+        "ul",
+        { class: "admin-list" },
+        data.rules.length
+          ? data.rules.map(ruleCard)
+          : h("li", { class: "dash-empty", text: "No rules: every member reads every page." }),
+      ),
+      h("h3", { text: "New rule" }),
+      ruleForm(),
+      h("h2", { text: "Check access" }),
+      checker,
+      verdict,
+      h("h2", { text: "Probe session" }),
+      h("p", {
+        class: "muted",
+        text: "A 30-minute session for a synthetic member (probe-…), never an admin and unable to change anything, to check what someone outside a group sees.",
+      }),
+      probe,
+      probeOut,
+    )
   }
 
   // ---- members' claims of People pages ----

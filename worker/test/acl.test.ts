@@ -202,7 +202,7 @@ describe("site paths", () => {
     // An asset another page uses too is that page's as well.
     expect(canSee(outsider, refs, "/notebook-assets/ab/cd.png")).toBe(true)
     expect(canSee(outsider, refs, "/resources/notes/meeting")).toBe(true)
-    // The test build has no acl-refs.json: paths under resources/ still map to themselves.
+    // Paths under resources/ map to themselves, whatever the build's map says.
     expect(
       await canReadSitePath(env, session("outsider"), "/resources/projects/optical-rl/x"),
     ).toBe(false)

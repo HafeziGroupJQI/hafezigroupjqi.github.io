@@ -1,3 +1,4 @@
+import { aclRefs, aclViewer, canSee, deny } from "./acl/index"
 import { adminRoutes } from "./admin/routes"
 import { announcementRoutes } from "./announcements"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
@@ -13,7 +14,7 @@ import {
 } from "./compute/routes"
 import { agentRoutes } from "./devices/agent"
 import { deviceRoutes } from "./devices/routes"
-import { type Upstream, serveDocument } from "./docs"
+import { type Upstream, documentPath, serveDocument } from "./docs"
 import { editRoutes } from "./edit/routes"
 import { historyRoutes } from "./history"
 import type { DocsManifest, Env } from "./env"
@@ -314,6 +315,24 @@ export function createHandler(
     if (sitePath === "/vault" || sitePath === "/vault/") return canonical("/resources/")
     const assetUrl = new URL(sitePath + url.search, url.origin)
     const range = request.headers.get("range")
+    // Restricted pages (src/acl/): a path showing anything a member may not read is the site's
+    // own 404, as if it weren't there, before anything is fetched, a redirect included. The build's
+    // maps behind these checks aren't anyone's to read but admins'.
+    const viewer = await aclViewer(env, session)
+    const decoded = decodeSegment(sitePath)
+    const notFound = async () =>
+      withPrivateHeaders(
+        await env.ASSETS.fetch(
+          new Request(new URL("/__restricted__/", url.origin), { method: request.method }),
+        ),
+      )
+    if (!viewer.open) {
+      if (ACL_FILES.test(decoded)) return notFound()
+      if (!canSee(viewer, await aclRefs(env), decoded)) {
+        deny(record, session.login, decoded)
+        return notFound()
+      }
+    }
     const asset = await env.ASSETS.fetch(
       new Request(assetUrl, {
         method: request.method,
@@ -341,8 +360,12 @@ export function createHandler(
       if (page) recordView(env, ctx, session.login, page)
       return withPrivateHeaders(asset, { store: isHashedAsset(sitePath) })
     }
-    const docPath = decodeSegment(sitePath).replace(/^\//, "")
-    const entry = documents[docPath]
+    const docPath = decoded.replace(/^\//, "")
+    const entry = Object.hasOwn(documents, docPath) ? documents[docPath] : undefined
+    if (entry && !viewer.canRead(documentPath(docPath, entry))) {
+      deny(record, session.login, decoded)
+      return notFound()
+    }
     if (entry) {
       // One row per opened document, not per byte-range a PDF viewer asks for.
       if (request.method === "GET" && (!range || /^bytes=0-/.test(range)))
@@ -352,6 +375,10 @@ export function createHandler(
     return withPrivateHeaders(asset)
   }
 }
+
+/** The build's maps of restricted pages (static/acl-refs.json, the content index's offsets and
+ *  per-rule shards, src/acl/): they name restricted pages, so members never get them whole. */
+const ACL_FILES = /^\/static\/(?:acl-refs\.json|contentIndex\.offsets\.json|acl-index\/)/
 
 const canonical = (path: string) =>
   withPrivateHeaders(new Response(null, { status: 204, headers: { "x-canonical-path": path } }))

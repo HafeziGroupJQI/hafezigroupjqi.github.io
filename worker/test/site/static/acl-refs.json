@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "pages": {
+    "resources/projects/optical-rl/notes/plan": "projects/optical-rl/notes/plan.qmd",
+    "resources/projects/optical-rl/index": "projects/optical-rl/index.md",
+    "resources/notes": "notes.md"
+  },
+  "aliases": { "resources/ppo-plan": "projects/optical-rl/notes/plan.qmd" },
+  "notebookAssets": {
+    "ab/optical.png": ["projects/optical-rl/notes/plan.qmd"],
+    "ab/shared.png": ["projects/optical-rl/notes/plan.qmd", "notes.md"]
+  },
+  "pdfs": {
+    "pdf/optical-plan.pdf": "projects/optical-rl/notes/plan.qmd",
+    "pdf/meeting.pdf": "notes.md"
+  }
+}

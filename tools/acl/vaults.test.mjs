@@ -7,7 +7,14 @@ import test from "node:test"
 import { docsManifest } from "../docs-manifest.mjs"
 import { vaultFolders } from "../folder-files.mjs"
 import { pageHistories } from "../history.mjs"
-import { applyOverlay, overlayFiles, readVaults, restrictedDirs, vaultOf } from "./vaults.mjs"
+import {
+  applyOverlay,
+  checkSupported,
+  overlayFiles,
+  readVaults,
+  restrictedDirs,
+  vaultOf,
+} from "./vaults.mjs"
 
 const VAULTS = [
   { repo: "vault-private", prefix: "" },
@@ -169,4 +176,15 @@ test("a restricted vault overlays its folder, and nothing outside it or already 
     fs.rmSync(privateRoot, { recursive: true, force: true })
     fs.rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test("a restricted vault's wolfram notebook stops the build; its other files don't", () => {
+  checkSupported([
+    { repo: "vault-optical-rl", path: "projects/optical-rl/notes/run.ipynb" },
+    { repo: "vault-optical-rl", path: "projects/optical-rl/notes/meeting.qmd" },
+  ])
+  assert.throws(
+    () => checkSupported([{ repo: "vault-optical-rl", path: "projects/optical-rl/sim/ring.nb" }]),
+    /restricted Wolfram notebooks are not supported yet:\n {2}vault-optical-rl: projects\/optical-rl\/sim\/ring\.nb/,
+  )
 })

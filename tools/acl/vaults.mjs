@@ -95,6 +95,20 @@ export function overlayFiles(restricted, privateRoot, { excluded = new Set() } =
   return out
 }
 
+/**
+ * A restricted vault's Wolfram notebooks can't be built yet: their renders come from the deploy's
+ * notebooks job on the compute host, whose artifact must hold no restricted content. (Jupyter
+ * notebooks and Quarto documents render in the build itself.)
+ */
+export function checkSupported(files) {
+  const notebooks = files.filter((file) => /\.nb$/i.test(file.path))
+  if (notebooks.length)
+    throw new Error(
+      "restricted Wolfram notebooks are not supported yet:\n" +
+        notebooks.map((file) => `  ${file.repo}: ${file.path}`).join("\n"),
+    )
+}
+
 /** Copy the overlay's files into `target` (a copy of vault-private's tree). */
 export function applyOverlay(files, target) {
   for (const { path: vaultPath, file } of files) {

@@ -7,8 +7,11 @@
 #
 # Restricted vaults (website worker/vaults.json): repositories only some members may read, each
 # overlaid onto vault-private at its folder (vault-optical-rl at projects/optical-rl/). The build
-# takes their checkouts from VAULT_RESTRICTED_DIRS, applies vault-private's access rules
-# (.hafezi/acl.json) and fails if a restricted page's words reach what other members get. A website
+# takes their checkouts from VAULT_RESTRICTED_DIRS, applies the access rules exported from the
+# Worker's D1 (ACL_SNAPSHOT; never vault-private's, which every member can push to) and fails if a
+# restricted page's words reach what other members get. Nothing of a restricted vault goes to the
+# compute host or into the notebook-renders artifact: the notebooks job only records its commit,
+# and its pages render in the deploy job (a restricted Wolfram notebook stops the build). A website
 # commit from before restricted vaults ignores them, and builds without their pages.
 #
 # Notebooks: every .ipynb and Wolfram .nb in the vaults becomes a page, rendered from the outputs
@@ -66,33 +69,26 @@ jobs:
           repository: HafeziGroupJQI/vault-private
           path: vault-private
           token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
-      - name: checkout the optical rl vault (restricted)
-        uses: actions/checkout@v5
-        with:
-          repository: HafeziGroupJQI/vault-optical-rl
-          path: vault-optical-rl
-          token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
       - name: record the commits this deploy builds
         id: commits
+        env:
+          TOKEN: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
         run: |
           echo "website=$(git -C website rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "vault=$(git -C vault rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "vault_private=$(git -C vault-private rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "vault_optical_rl=$(git -C vault-optical-rl rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: overlay the restricted vaults onto the private vault
-        # Their notebooks render with vault-private's (one renderer run); the build matches renders
-        # by each notebook's bytes. A file vault-private has too stops the deploy here.
-        working-directory: vault-optical-rl
-        run: |
-          clash=$(git ls-files projects/optical-rl | while read -r f; do [ -e "../vault-private/$f" ] && echo "$f"; done)
-          if [ -n "$clash" ]; then echo "already in vault-private:"; echo "$clash"; exit 1; fi
-          git ls-files -z projects/optical-rl | tar --null -cf - -T - | tar -xf - -C ../vault-private
+          # A restricted vault's commit only, never its files: none of it reaches this host.
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          sha=$(git -c http.extraHeader="$auth" ls-remote \
+            https://github.com/HafeziGroupJQI/vault-optical-rl refs/heads/main | cut -f1)
+          [ -n "$sha" ] || { echo "can't read vault-optical-rl's main"; exit 1; }
+          echo "vault_optical_rl=$sha" >> "$GITHUB_OUTPUT"
       # The host's own node and wolframscript (no setup actions: the runner is not Ubuntu). No
       # dependency's install script runs on the compute host: stage 1 needs none (sharp's binary
       # is a package of its own).
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: website
-      - name: render the Wolfram notebooks of every vault
+      - name: render the Wolfram notebooks of both vaults
         working-directory: website
         env:
           # Kept between deploys; keyed by each notebook's sha256, so it only saves time.
@@ -195,12 +191,31 @@ jobs:
           path: ~/.cache/hafezi-pdfs
           key: pdf-pages-${{ github.run_id }}
           restore-keys: pdf-pages-
+      - name: apply D1 migrations
+        # Before the build: its access rules come from D1's acl tables (migration 0018).
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: website/worker
+          command: d1 migrations apply hafezi-members --remote
+      - name: export the access rules from D1
+        # The rules the build applies (tools/acl/export-snapshot.mjs). A website commit from before
+        # them has no exporter, and its build reads no rules.
+        if: hashFiles('website/tools/acl/export-snapshot.mjs') != ''
+        working-directory: website
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/acl/export-snapshot.mjs "$RUNNER_TEMP/acl-snapshot.json"
       - name: build the member edition and the documents manifest
         run: npm run build:members
         working-directory: website
         env:
           VAULT_PUBLIC_DIR: ../vault/content
           VAULT_PRIVATE_DIR: ../vault-private
+          # The access rules exported above; in CI the build reads them from nowhere else.
+          ACL_SNAPSHOT: ${{ runner.temp }}/acl-snapshot.json
           # Overlaid onto vault-private at their folders (worker/vaults.json); access rules apply.
           VAULT_RESTRICTED_DIRS: vault-optical-rl=../vault-optical-rl
           # Stage 2 (pages) runs in the build from the renders above; .ipynb render with Quarto.
@@ -215,13 +230,6 @@ jobs:
         working-directory: website/worker
       - run: npm test
         working-directory: website/worker
-      - name: apply D1 migrations
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: website/worker
-          command: d1 migrations apply hafezi-members --remote
       - name: import every vault's commits into the members' recent changes
         # D1 changes (tools/changes-import.mjs): only commits it doesn't have, so a rerun changes
         # nothing. It never holds up a deploy; the next one catches up. Website commits from before

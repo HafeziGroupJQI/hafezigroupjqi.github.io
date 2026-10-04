@@ -76,6 +76,16 @@
   .edit-source .cm-editor {
     height: 100%;
   }
+  // A page's text under the editor kit's toolbar (frontend/editor-kit/): the editor takes the rest.
+  .edit-source--kit {
+    display: flex;
+    flex-direction: column;
+    > .cm-editor {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+    }
+  }
   .edit-actions {
     display: flex;
     flex-wrap: wrap;

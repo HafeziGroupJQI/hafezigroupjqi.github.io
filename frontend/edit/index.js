@@ -8,6 +8,7 @@
 
 import { slugifyFilePath } from "@quartz-community/utils/path"
 import { h, present } from "../dashboard/dom.js"
+import { formatToolbar } from "../editor-kit/index.js"
 import { createNotebookEditor } from "./cells.js"
 import { openConflictDialog } from "./conflict.js"
 import { createSourceEditor } from "./editor.js"
@@ -337,6 +338,8 @@ export async function mountEdit(root) {
   const editor = create(pane, start.text, {
     kind: source.kind,
     separator: lineSeparator(saved.text),
+    // A page's text completes links to the site's pages as its vault writes them.
+    links: source.repo,
     readOnly: !source.can_edit || Boolean(draft?.conflict),
     onSave: () => void save(),
     onChange: (text) => {
@@ -352,6 +355,19 @@ export async function mountEdit(root) {
       )
     },
   })
+  // A page's text (not a notebook's cells) gets the formatting toolbar above it, off while the
+  // editor is read-only.
+  if (source.kind !== "ipynb" && editor.view) {
+    const toolbar = formatToolbar(editor.view, { label: "Format the page's text" })
+    pane.classList.add("edit-source--kit")
+    pane.prepend(toolbar.element)
+    toolbar.setDisabled(!source.can_edit || Boolean(draft?.conflict))
+    const setReadOnly = editor.setReadOnly
+    editor.setReadOnly = (readOnly) => {
+      setReadOnly(readOnly)
+      toolbar.setDisabled(readOnly)
+    }
+  }
   // The preview follows the text, 300 ms after typing stops; the front matter's problems too.
   const slug = pageSlug(source, page)
   const slugs =

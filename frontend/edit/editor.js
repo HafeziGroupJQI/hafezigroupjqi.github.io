@@ -22,6 +22,7 @@ import {
   lineNumbers,
 } from "@codemirror/view"
 import { h } from "../dashboard/dom.js"
+import { editorKit } from "../editor-kit/index.js"
 import { editorChrome, highlighting } from "../theme/highlight.js"
 
 const theme = EditorView.theme({
@@ -113,9 +114,16 @@ export function createCellEditor(parent, text, { type, readOnly, onChange, onSav
 
 /**
  * Mount an editor for a file of `kind` (md, qmd, ipynb) in `parent`. `onChange(text)` follows
- * every edit, `onSave()` is Ctrl/⌘+S. Returns the view and what the page needs of it.
+ * every edit, `onSave()` is Ctrl/⌘+S. `links`, for a page's text, is the vault it is in ("vault",
+ * "vault-private"): links to the site's pages are completed after [[ and ]( as that vault writes
+ * them, and Ctrl/⌘+B, I and K format (frontend/editor-kit/). Returns the view and what the page
+ * needs of it.
  */
-export function createSourceEditor(parent, text, { kind, separator, readOnly, onChange, onSave }) {
+export function createSourceEditor(
+  parent,
+  text,
+  { kind, separator, readOnly, onChange, onSave, links },
+) {
   const merge = new Compartment()
   const editable = new Compartment()
   const view = new EditorView({
@@ -135,6 +143,7 @@ export function createSourceEditor(parent, text, { kind, separator, readOnly, on
         language(kind),
         highlighting,
         editorChrome,
+        links && kind !== "ipynb" ? editorKit({ mode: links }) : [],
         keymap.of([
           saveKey(onSave),
           indentWithTab,

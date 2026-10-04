@@ -72,15 +72,19 @@ export function recordView(
 
 /**
  * The page a response of site() is, if it is one a member reads: a whole HTML page (not an asset,
- * a byte range or a 404), and not one of the site's tool pages (`toolPages`, as "/recent").
+ * a byte range or a 404), opened as a page (`accept` names text/html: the members service worker
+ * sends that for navigations only, so a link preview's fetch of the same page is no read), and not
+ * one of the site's tool pages (`toolPages`, as "/recent").
  */
 export function viewedPage(
   sitePath: string,
   method: string,
   response: Response,
   toolPages: readonly string[],
+  accept: string | null,
 ): string | null {
   if (method !== "GET" || response.status !== 200) return null
+  if (!accept?.includes("text/html")) return null
   if (!response.headers.get("content-type")?.startsWith("text/html")) return null
   const path = pagePath(sitePath)
   if (!path || toolPages.includes(`/${path}`)) return null

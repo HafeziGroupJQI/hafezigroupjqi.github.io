@@ -83,6 +83,9 @@ async function handle(request, url) {
     const value = request.headers.get(name)
     if (value) headers.set(name, value)
   }
+  // A page opened as a page (not a link preview's fetch of it) counts as a read on /leaderboard
+  // (worker src/ratings/views.ts). A short Accept is CORS-safelisted, so this adds no preflight.
+  if (request.mode === "navigate") headers.set("accept", "text/html")
   const init = { method: request.method, headers, redirect: "manual" }
   if (request.method !== "GET" && request.method !== "HEAD") init.body = await request.arrayBuffer()
 

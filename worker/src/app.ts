@@ -331,7 +331,13 @@ export function createHandler(
     }
     if (asset.status !== 404) {
       // A page read: its readers on /leaderboard (src/ratings/views.ts), after the answer.
-      const page = viewedPage(sitePath, request.method, asset, MEMBER_PAGES)
+      const page = viewedPage(
+        sitePath,
+        request.method,
+        asset,
+        MEMBER_PAGES,
+        request.headers.get("accept"),
+      )
       if (page) recordView(env, ctx, session.login, page)
       return withPrivateHeaders(asset, { store: isHashedAsset(sitePath) })
     }

@@ -22,6 +22,9 @@ const views = async () =>
     }>()
   ).results
 
+// How the members service worker asks for a page the member opens (frontend/members/sw.js).
+const opened = { headers: { accept: "text/html" } }
+
 describe("ratings: the tables", () => {
   it("keeps one vote of +1 or -1 per member and page, whatever the login's case", async () => {
     const vote = (login: string, value: number) =>
@@ -66,8 +69,8 @@ describe("ratings: a page's readers", () => {
   it("records a member's day on each page they open, once, after answering", async () => {
     const ada = await as("ada")
     for (const path of ["/resources/notes", "/resources/notes", "/", "/resources/"])
-      expect((await ada.fetch("/api/site" + path)).status, path).toBe(200)
-    expect((await (await as("Grace")).fetch("/api/site/resources/notes")).status).toBe(200)
+      expect((await ada.fetch("/api/site" + path, opened)).status, path).toBe(200)
+    expect((await (await as("Grace")).fetch("/api/site/resources/notes", opened)).status).toBe(200)
     const today = isoDay(Date.now())
     await vi.waitFor(async () => expect(await views()).toHaveLength(4))
     expect(await views()).toEqual([
@@ -78,8 +81,10 @@ describe("ratings: a page's readers", () => {
     ])
   })
 
-  it("leaves out assets, missing pages, tool pages, HEAD requests and probe sessions", async () => {
+  it("leaves out assets, missing pages, tool pages, previews, HEAD requests and probe sessions", async () => {
     const ada = await as("ada")
+    // A link preview fetches the page without the navigation's Accept: not a read.
+    await ada.fetch("/api/site/resources/notes")
     for (const path of [
       "/resources/assets/figure.svg",
       "/static/contentIndex.json",
@@ -87,11 +92,11 @@ describe("ratings: a page's readers", () => {
       "/nowhere",
       "/calendar",
     ])
-      await ada.fetch("/api/site" + path)
-    await ada.fetch("/api/site/instruments", { method: "HEAD" })
-    await (await as("probe-1a2b")).fetch("/api/site/resources/notes")
+      await ada.fetch("/api/site" + path, opened)
+    await ada.fetch("/api/site/instruments", { method: "HEAD", ...opened })
+    await (await as("probe-1a2b")).fetch("/api/site/resources/notes", opened)
     // A page opened last lands after all of those: none of them wrote a row.
-    await ada.fetch("/api/site/instruments")
+    await ada.fetch("/api/site/instruments", opened)
     await vi.waitFor(async () => expect(await views()).toHaveLength(1))
     expect((await views()).map((row) => row.path)).toEqual(["instruments"])
   })

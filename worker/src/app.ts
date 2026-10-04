@@ -1,3 +1,4 @@
+import { contentIndexFor } from "./acl/content-index"
 import { aclRefs, aclViewer, canSee, deny } from "./acl/index"
 import { adminRoutes } from "./admin/routes"
 import { announcementRoutes } from "./announcements"
@@ -348,6 +349,9 @@ export function createHandler(
         return canonical(target.pathname + target.search)
       }
     }
+    // The content index as this member may read it: restricted pages' entries only for their people.
+    if (decoded === "/static/contentIndex.json" && asset.ok)
+      return withPrivateHeaders(await contentIndexFor(env, viewer, asset))
     if (asset.status !== 404) {
       // A page read: its readers on /leaderboard (src/ratings/views.ts), after the answer.
       const page = viewedPage(

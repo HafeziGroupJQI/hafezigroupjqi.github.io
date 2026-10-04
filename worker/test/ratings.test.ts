@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { VOTES_PER_DAY } from "../src/ratings/routes"
 import { isoDay, pagePath, resetViews } from "../src/ratings/views"
-import { ORIGIN, SITE, as, auditRows } from "./helpers"
+import { ORIGIN, SITE, as, auditRows, setAcl } from "./helpers"
 
 beforeEach(async () => {
   await env.DB.batch([
@@ -238,5 +238,29 @@ describe("ratings: GET and PUT /api/ratings", () => {
       ),
     )
     expect((await vote("grace", 1)).status).toBe(429)
+  })
+})
+
+describe("ratings: restricted pages", () => {
+  const PLAN = "resources/projects/optical-rl/notes/plan"
+
+  it("are a 404 to members outside the page's access rule, and rated by its people", async () => {
+    await setAcl()
+    const put = async (login: string) =>
+      (await as(login)).json("/api/ratings", {
+        method: "PUT",
+        body: JSON.stringify({ path: PLAN, value: 1 }),
+      })
+    const outsider = await put("outsider")
+    expect(outsider.status).toBe(404)
+    expect(JSON.stringify(outsider.body)).not.toContain("optical")
+    expect((await (await as("outsider")).json(`/api/ratings?path=${PLAN}`)).status).toBe(404)
+    const member = await put("lidaxu-physics")
+    expect(member.status).toBe(200)
+    expect(member.body).toMatchObject({ path: PLAN, score: 1, mine: 1 })
+    const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM page_votes WHERE path = ?")
+      .bind(PLAN)
+      .first<{ n: number }>()
+    expect(row?.n).toBe(1)
   })
 })

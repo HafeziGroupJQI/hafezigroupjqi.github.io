@@ -9,7 +9,7 @@ import {
   resetLeaderboards,
 } from "../src/ratings/leaderboard"
 import { isoDay } from "../src/ratings/views"
-import { ORIGIN, SITE, as } from "./helpers"
+import { ORIGIN, SITE, as, setAcl } from "./helpers"
 
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
@@ -278,5 +278,27 @@ describe("leaderboard: top pages", () => {
       "resources/new",
       "resources/read",
     ])
+  })
+})
+
+describe("leaderboard: top pages under access rules", () => {
+  it("leaves out pages a member can't read, and keeps them for the page's people", async () => {
+    await setAcl()
+    const now = Date.now()
+    const plan = "resources/projects/optical-rl/notes/plan"
+    await env.DB.batch([
+      vote(plan, "lidaxu-physics", 1, now - HOUR),
+      vote(plan, "mjalalim3", 1, now - HOUR),
+      vote("resources/notes", "bo", 1, now - HOUR),
+    ])
+    resetLeaderboards()
+    const pagesFor = async (login: string) => {
+      const { status, body } = await (await as(login)).json("/api/leaderboard/pages?period=week")
+      expect(status).toBe(200)
+      return body.pages.map((page: { path: string }) => page.path)
+    }
+    const outsider = await pagesFor("outsider")
+    expect(outsider).toEqual(["resources/notes"])
+    expect(await pagesFor("lidaxu-physics")).toEqual([plan, "resources/notes"])
   })
 })

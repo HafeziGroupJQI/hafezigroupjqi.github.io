@@ -55,6 +55,7 @@ describe("the access policy", () => {
     expect(validPrincipal("group:optical-rl")).toBe(true)
     expect(validPrincipal("login:anishgoyal1108")).toBe(true)
     expect(validPrincipal("person:people/lida-xu")).toBe(true)
+    expect(validPrincipal("person:people/alumni/old-member")).toBe(true)
     expect(validPrincipal("login:Anish")).toBe(false)
     expect(validPrincipal("person:lida-xu")).toBe(false)
     expect(validPrincipal("team:x")).toBe(false)

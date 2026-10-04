@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test"
 import { expect, vi } from "vitest"
+import { resetAcl } from "../src/acl/index"
 import { SESSION_MAX_AGE, sign } from "../src/session"
 
 export const ORIGIN = "https://members.test"
@@ -88,4 +89,79 @@ export async function occurrences(
   const response = await client.fetch(`/api/calendar/events?${new URLSearchParams({ start, end })}`)
   expect(response.status).toBe(200)
   return (await response.json()) as any[]
+}
+
+export interface AclSeed {
+  groups?: Record<string, { logins?: string[]; people?: string[] }>
+  rules?: { id: string; pattern: string; allow?: string[]; deny?: string[]; note?: string }[]
+}
+
+/** The optical RL group and rule, as migration 0018 seeds them. */
+export const OPTICAL_ACL: AclSeed = {
+  groups: {
+    "optical-rl": {
+      logins: ["anishgoyal1108", "lidaxu-physics", "mjalalim3"],
+      people: [
+        "people/mohammad-hafezi",
+        "people/lida-xu",
+        "people/anish-goyal",
+        "people/mahmoud-jalali-mehrabad",
+        "people/pavel-dolgirev",
+        "people/shi-yuan-ma",
+      ],
+    },
+  },
+  rules: [{ id: "r1", pattern: "projects/optical-rl/", allow: ["group:optical-rl"] }],
+}
+
+/** Replace the access rules and groups in D1 (a new version), and forget the isolate's copy. */
+export async function setAcl(seed: AclSeed = OPTICAL_ACL) {
+  const db = env.DB
+  await db.batch([
+    db.prepare("DELETE FROM acl_group_members"),
+    db.prepare("DELETE FROM acl_groups"),
+    db.prepare("DELETE FROM acl_rules"),
+    db.prepare("UPDATE acl_meta SET version = version + 1, next_rule = 100 WHERE id = 1"),
+  ])
+  for (const [name, group] of Object.entries(seed.groups ?? {})) {
+    const { meta } = await db
+      .prepare("INSERT INTO acl_groups (name, created_at) VALUES (?, 0)")
+      .bind(name)
+      .run()
+    for (const login of group.logins ?? [])
+      await db
+        .prepare("INSERT INTO acl_group_members (group_id, login) VALUES (?, ?)")
+        .bind(meta.last_row_id, login)
+        .run()
+    for (const person of group.people ?? [])
+      await db
+        .prepare("INSERT INTO acl_group_members (group_id, person) VALUES (?, ?)")
+        .bind(meta.last_row_id, person)
+        .run()
+  }
+  for (const rule of seed.rules ?? [])
+    await db
+      .prepare(
+        "INSERT INTO acl_rules (id, pattern, allow_json, deny_json, note, updated_at) VALUES (?, ?, ?, ?, ?, 0)",
+      )
+      .bind(
+        rule.id,
+        rule.pattern,
+        JSON.stringify(rule.allow ?? []),
+        JSON.stringify(rule.deny ?? []),
+        rule.note ?? "",
+      )
+      .run()
+  resetAcl()
+}
+
+/** Link a login to an approved People page (content/people/<slug>.md). */
+export async function approvedProfile(login: string, slug: string) {
+  await env.DB.prepare(
+    `INSERT INTO profiles (login, path, status, updated_at) VALUES (?, ?, 'approved', 0)
+     ON CONFLICT (login) DO UPDATE SET path = excluded.path, status = 'approved'`,
+  )
+    .bind(login, `content/people/${slug}.md`)
+    .run()
+  resetAcl()
 }

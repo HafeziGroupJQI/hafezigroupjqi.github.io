@@ -180,7 +180,7 @@ export const decide = (snapshot: AclSnapshot, reader: Reader, path: string) =>
 export const EMPTY_SNAPSHOT: AclSnapshot = { version: 0, groups: {}, rules: [] }
 
 const PRINCIPAL =
-  /^(?:group:[a-z0-9][a-z0-9-]{0,63}|login:[a-z0-9][a-z0-9-]{0,38}|person:people\/[a-z0-9]+(?:-[a-z0-9]+)*)$/
+  /^(?:group:[a-z0-9][a-z0-9-]{0,63}|login:[a-z0-9][a-z0-9-]{0,38}|person:people\/(?:alumni\/)?[a-z0-9]+(?:-[a-z0-9]+)*)$/
 
 /** Whether a principal is well formed (logins lowercase). */
 export const validPrincipal = (ref: string) => PRINCIPAL.test(ref)

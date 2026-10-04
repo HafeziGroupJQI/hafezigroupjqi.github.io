@@ -219,7 +219,7 @@ function oneOf<T extends string>(raw: string | null, known: T[], what: string): 
   return values.length ? (values as T[]) : null
 }
 
-// ---- contributions: each member's score, for the leaderboard on /recent ----
+// ---- contributions: each member's score, part of the Leaderboard's (src/ratings/leaderboard.ts) ----
 // The score is the formula of MediaWiki's Contribution Scores extension
 // (https://www.mediawiki.org/wiki/Extension:Contribution_Scores): pages + 2 × √(changes − pages),
 // so every distinct file counts in full and repeat changes to the same file count less and less.
@@ -307,9 +307,10 @@ const scoresCache = new Map<ScorePeriod, { at: number; body: string }>()
 export const resetScores = () => scoresCache.clear()
 
 /**
- * GET /api/changes/scores?period=week|month|all: the leaderboard, one D1 query, kept for
- * SCORES_TTL in this isolate, so a busy page costs D1 little. Like every API answer, the browser
- * never stores it (withPrivateHeaders).
+ * GET /api/changes/scores?period=week|month|all: contributions alone (/leaderboard asks for
+ * GET /api/leaderboard, which adds the ratings), one D1 query, kept for SCORES_TTL in this
+ * isolate, so a busy page costs D1 little. Like every API answer, the browser never stores it
+ * (withPrivateHeaders).
  */
 async function scoreRoutes(url: URL, env: Env, now = Date.now()): Promise<Response> {
   const raw = url.searchParams.get("period") ?? "all"

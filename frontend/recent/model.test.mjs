@@ -5,17 +5,11 @@ import {
   describe,
   feedUrl,
   filtersOf,
+  leaderboardRedirect,
   lineCounts,
   pageHref,
-  scoreCells,
-  SCORE_COLUMNS,
-  SCORE_SENTENCE,
-  scoreNotes,
-  scoresUrl,
   searchOf,
   stateLabel,
-  viewOf,
-  viewSearch,
 } from "./model.js"
 
 test("reads the page's filters from its address and writes them back", () => {
@@ -96,47 +90,13 @@ test("groups changes by day", () => {
   )
 })
 
-test("the address picks the tab and the leaderboard's period", () => {
-  assert.deepEqual(viewOf(""), { view: "changes", period: "all" })
-  assert.deepEqual(viewOf("?user=ada"), { view: "changes", period: "all" })
-  assert.deepEqual(viewOf("?view=contributions&period=week"), {
-    view: "contributions",
-    period: "week",
-  })
-  // Values the page doesn't offer are dropped.
-  assert.deepEqual(viewOf("?view=scores&period=year"), { view: "changes", period: "all" })
-  assert.equal(
-    viewSearch({ view: "contributions", period: "week" }),
-    "?view=contributions&period=week",
-  )
-  assert.equal(viewSearch({ view: "contributions", period: "all" }), "?view=contributions")
-  // The changes tab keeps the feed's filters.
-  assert.equal(viewSearch({ view: "changes", period: "week" }, filtersOf("?user=ada")), "?user=ada")
-  assert.equal(scoresUrl("month"), "/api/changes/scores?period=month")
-})
-
-test("a leaderboard row shows the score beside the numbers it comes from", () => {
-  const member = {
-    rank: 1,
-    login: "ada",
-    author: "Ada Lovelace",
-    score: 5.5,
-    files: 2,
-    changes: 5,
-    pages_created: 1,
-    pages_edited: 3,
-    files_added: 1,
-    added: 120,
-    removed: 7,
-    active_days: 4,
-    last_at: Date.UTC(2026, 8, 29, 16),
-  }
-  const cells = scoreCells(member, "en-US")
-  assert.equal(cells.length, SCORE_COLUMNS.length)
-  assert.deepEqual(cells.slice(0, 7), ["1", "Ada Lovelace", "5.5", "2", "5", "1", "+120 −7"])
-  assert.match(cells[7], /Sep 29, 2026/)
-  assert.equal(scoreCells({ ...member, author: "" })[1], "ada")
-  // The page says the formula in one sentence, and what counts.
-  assert.match(SCORE_SENTENCE, /^Score = [^.]+\.$/)
-  assert.match(scoreNotes(50), /more than 50 files/)
+test("the old Contributions tab's addresses go to the Leaderboard", () => {
+  assert.equal(leaderboardRedirect("?view=contributions&period=week"), "/leaderboard?period=week")
+  assert.equal(leaderboardRedirect("?view=contributions&period=month"), "/leaderboard?period=month")
+  assert.equal(leaderboardRedirect("?view=contributions"), "/leaderboard")
+  assert.equal(leaderboardRedirect("?view=contributions&period=year"), "/leaderboard")
+  // The feed's own addresses stay.
+  assert.equal(leaderboardRedirect(""), null)
+  assert.equal(leaderboardRedirect("?user=ada"), null)
+  assert.equal(leaderboardRedirect("?view=changes"), null)
 })

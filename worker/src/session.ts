@@ -122,6 +122,28 @@ export async function signedOutSince(env: Env, login: string, exp: number): Prom
   return row !== null && sessionStart(exp) < row.not_before
 }
 
+/**
+ * A probe login: a synthetic member an admin signs in as for 30 minutes (POST
+ * /api/admin/acl/probe) to see the site as a member who isn't in a group would. It is never an
+ * admin, and changes nothing (src/app.ts).
+ */
+export const PROBE_LOGIN = /^probe-[0-9a-f]{8}$/
+export const isProbe = (login: string) => PROBE_LOGIN.test(login)
+
+/** How long a probe session lasts. */
+export const PROBE_MAX_AGE = 30 * 60
+
+/** A probe session's bearer, for a new synthetic login. */
+export async function issueProbe(env: Env): Promise<{ token: string; exp: number; login: string }> {
+  const id = [...crypto.getRandomValues(new Uint8Array(4))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+  const login = `probe-${id}`
+  const exp = Math.floor(Date.now() / 1000) + PROBE_MAX_AGE
+  const session: Session = { typ: "session", login, name: `probe ${id}`, role: "member", exp }
+  return { token: await sign(session, env.SESSION_SECRET), exp, login }
+}
+
 export async function issueSession(
   user: { login: string; name: string; role: "member" | "owner" },
   env: Env,

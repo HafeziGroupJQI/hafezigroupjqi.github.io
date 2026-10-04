@@ -60,7 +60,7 @@ export async function auditRows(where: string, ...binds: unknown[]) {
   return rows
 }
 
-function client(token: string) {
+export function client(token: string) {
   const headers = {
     authorization: `Bearer ${token}`,
     origin: SITE,

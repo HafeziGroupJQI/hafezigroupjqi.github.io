@@ -1,6 +1,6 @@
 import type { Env } from "./env"
 import { HttpError } from "./http"
-import type { Session } from "./session"
+import { type Session, isProbe } from "./session"
 
 // Group admins and the member audit log. GitHub org owners are always admins; owners and admins
 // can promote more members through /api/admin/admins. The admin check reads D1 on every call, so
@@ -13,6 +13,8 @@ export async function isAdmin(
   // Code in the member's lab can read its ticket, so a lab session has the member's own rights
   // only, even an owner's.
   if (session.lab) return false
+  // A probe session (src/acl/admin.ts) stands in for a member who is not an admin, always.
+  if (isProbe(session.login)) return false
   if (session.role === "owner") return true
   // GitHub logins are case-insensitive, so an admin added as "Dave" is the session's "dave".
   const row = await env.DB.prepare("SELECT 1 FROM admins WHERE login = ? COLLATE NOCASE")

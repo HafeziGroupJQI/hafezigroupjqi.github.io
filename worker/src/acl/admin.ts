@@ -3,7 +3,7 @@ import { requireMutation } from "../auth"
 import type { Env } from "../env"
 import { HttpError, decodeSegment, json, readJson } from "../http"
 import { GitRepo, type RepoFetch } from "../repo"
-import type { Session } from "../session"
+import { type Session, issueProbe } from "../session"
 import { vaultRepo, PRIVATE_VAULT } from "../vaults"
 import {
   type AclRefs,
@@ -287,6 +287,16 @@ export async function aclAdminRoutes(
       paths: answers,
       version: policy.version,
     })
+  }
+
+  // A probe session: a bearer for a new synthetic member (probe-<8 hex>) for 30 minutes, never an
+  // admin and refused every change (src/app.ts), for seeing the site as someone outside a group
+  // would, and, added to a group, as someone in it. Its token is shown this once.
+  if (path === "/acl/probe" && method === "POST") {
+    write()
+    const probe = await issueProbe(env)
+    record("admin.acl.probe", probe.login, { exp: probe.exp })
+    return json(probe, 201)
   }
 
   // Commit the rules again (when the last commit failed).

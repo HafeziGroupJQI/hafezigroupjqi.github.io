@@ -42,7 +42,7 @@ import {
   withCors,
   withPrivateHeaders,
 } from "./http"
-import { type Session, endSessions, readSession } from "./session"
+import { type Session, endSessions, isProbe, readSession } from "./session"
 import { uploadRoutes } from "./uploads/routes"
 
 // The Worker is an API. Browsers only ever show https://hafezigroupjqi.github.io: its service
@@ -199,6 +199,17 @@ export function createHandler(
       return withPrivateHeaders(problem(401, "login required"))
     }
     const record = auditor(env, ctx, request, session)
+    // A probe session (src/acl/admin.ts) reads and changes nothing: only the site tools' searches,
+    // which are POSTs, go through.
+    if (
+      isProbe(session.login) &&
+      request.method !== "GET" &&
+      request.method !== "HEAD" &&
+      !/^\/api\/gpt\/tools\/[a-z_]+$/.test(path)
+    ) {
+      record("acl.probe.refused", path, { method: request.method })
+      return withPrivateHeaders(problem(403, "a probe session can't change anything"))
+    }
     if (path === "/api/session")
       return withPrivateHeaders(
         json({

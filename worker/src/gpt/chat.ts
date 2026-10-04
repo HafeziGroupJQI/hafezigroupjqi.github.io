@@ -128,7 +128,7 @@ export async function postMessage(
     )
 
   const m = pickModel(input.model ?? conversation.model)
-  const knowledge = await loadKnowledge(env, deps.manifest)
+  const knowledge = await loadKnowledge(env, deps.manifest, session)
   const skills = await allSkills(deps.skills, store, session.login)
   const project = conversation.project_id
     ? await store.project(conversation.project_id, session.login).catch(() => null)

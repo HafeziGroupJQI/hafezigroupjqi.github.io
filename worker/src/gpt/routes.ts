@@ -43,7 +43,7 @@ export async function gptRoutes(
 
   // ---- bootstrap: everything the composer needs in one call ----
   if (path === "/bootstrap" && method === "GET") {
-    const knowledge = await loadKnowledge(env, deps.manifest)
+    const knowledge = await loadKnowledge(env, deps.manifest, session)
     const skills = await allSkills(deps.skills, store, login)
     return json({
       models: MODELS.map(({ id, label, blurb }) => ({ id, label, blurb })),
@@ -65,7 +65,7 @@ export async function gptRoutes(
 
   // ---- @-mention lookup: titles/slugs/paths of pages and private documents ----
   if (path === "/pages" && method === "GET") {
-    const knowledge = await loadKnowledge(env, deps.manifest)
+    const knowledge = await loadKnowledge(env, deps.manifest, session)
     const q = (url.searchParams.get("q") ?? "").trim().toLowerCase()
     const limit = Math.min(Number(url.searchParams.get("limit")) || 12, 30)
     const out: Array<{ ref: string; title: string; kind: "page" | "document"; hint: string }> = []
@@ -97,7 +97,7 @@ export async function gptRoutes(
       write()
       const project = await store.createProject(
         login,
-        await readProject((await readJson(request)) as Record<string, unknown>, env, deps),
+        await readProject((await readJson(request)) as Record<string, unknown>, env, deps, session),
       )
       record("gpt.project.create", project.id, {
         name: project.name,
@@ -123,7 +123,7 @@ export async function gptRoutes(
       return json(file, 201)
     }
     if (method === "GET") {
-      const knowledge = await loadKnowledge(env, deps.manifest)
+      const knowledge = await loadKnowledge(env, deps.manifest, session)
       const files = await store.projectFiles(project.id)
       const corpus = await projectKnowledge(project, knowledge, files, env)
       return json({
@@ -140,6 +140,7 @@ export async function gptRoutes(
         (await readJson(request)) as Record<string, unknown>,
         env,
         deps,
+        session,
       )
       const updated = await store.updateProject({ ...project, ...fields })
       record("gpt.project.update", project.id, {
@@ -188,7 +189,7 @@ export async function gptRoutes(
   if (toolMatch) {
     if (method !== "POST") throw new HttpError(405, "method not allowed")
     write()
-    return json(await vaultTool(toolMatch[1], await readJson(request), env, store, deps))
+    return json(await vaultTool(toolMatch[1], await readJson(request), env, store, deps, session))
   }
 
   // ---- the lab's AI chats ----
@@ -264,7 +265,7 @@ export async function gptRoutes(
       const project = projectId ? await store.project(projectId, login) : null
       let origin: string | null = null
       if (typeof body.origin_slug === "string" && body.origin_slug) {
-        const knowledge = await loadKnowledge(env, deps.manifest)
+        const knowledge = await loadKnowledge(env, deps.manifest, session)
         const hit = knowledge.resolve(body.origin_slug)
         origin = hit ? (hit.kind === "page" ? hit.page.slug : hit.path) : null
       }
@@ -400,6 +401,7 @@ async function readProject(
   body: Record<string, unknown>,
   env: Env,
   deps: GptDeps,
+  session: Session,
 ): Promise<Omit<Project, "id" | "owner" | "created_at" | "updated_at">> {
   const name = str(body.name, 120, "name")
   if (!name) throw new HttpError(422, "give the project a name")
@@ -412,7 +414,7 @@ async function readProject(
   }
   const topics = list(body.topics, "topics", 20).map((t) => t.replace(/^#/, ""))
   for (const t of topics) if (!TAG.test(t)) throw new HttpError(422, `"${t}" is not a tag`)
-  const knowledge = await loadKnowledge(env, deps.manifest)
+  const knowledge = await loadKnowledge(env, deps.manifest, session)
   const pinned = list(body.pinned, "pinned pages", 50).map((ref) => {
     const hit = knowledge.resolve(ref)
     if (!hit || hit.kind !== "page") throw new HttpError(422, `no page named "${ref}"`)

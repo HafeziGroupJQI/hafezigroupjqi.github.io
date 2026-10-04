@@ -1,8 +1,15 @@
+import { slugPath, shardValues } from "../acl/content-index"
+import { type AclViewer, aclRefs, aclViewer } from "../acl/index"
+import type { AclPolicy } from "../acl/policy"
+import { documentPath } from "../docs"
 import type { DocsManifest, DocumentEntry, Env } from "../env"
+import type { Session } from "../session"
 
 // What Hafezi GPT knows about the site: every page of the member edition (the Quartz content
 // index, full text, public + private) and every private binary document (the docs manifest).
-// Loaded once per isolate from the ASSETS build; searched with a small in-memory BM25.
+// Loaded once per isolate from the ASSETS build; searched with a small in-memory BM25. Restricted
+// pages (src/acl/) come from the build's per-rule shards, and each member searches and reads a
+// view of it without what they may not read, kept per isolate by the rules they may read.
 
 export interface Page {
   slug: string
@@ -44,13 +51,19 @@ export function tokenize(text: string): string[] {
   )
 }
 
+interface Index {
+  docs: Array<{ slug: string; tf: Map<string, number>; len: number }>
+  df: Map<string, number>
+  avg: number
+}
+
 export class Knowledge {
   readonly pages = new Map<string, Page>()
-  private index: {
-    docs: Array<{ slug: string; tf: Map<string, number>; len: number }>
-    df: Map<string, number>
-    avg: number
-  } | null = null
+  /** The search index over every page, which views of this knowledge share. */
+  private shared: { pages: Map<string, Page>; index: Index | null } = {
+    pages: this.pages,
+    index: null,
+  }
 
   constructor(
     entries: Record<string, RawEntry>,
@@ -73,6 +86,25 @@ export class Knowledge {
     }
   }
 
+  /**
+   * This knowledge as one reader may see it: only the pages and documents `page` and `document`
+   * let through, the search index shared (it is built once, over every page).
+   */
+  only(
+    page: (page: Page) => boolean,
+    document: (path: string, entry: DocumentEntry) => boolean,
+  ): Knowledge {
+    const view = Object.create(Knowledge.prototype) as Knowledge
+    return Object.assign(view, {
+      siteUrl: this.siteUrl,
+      shared: this.shared,
+      pages: new Map([...this.pages].filter(([, value]) => page(value))),
+      documents: Object.fromEntries(
+        Object.entries(this.documents).filter(([path, entry]) => document(path, entry)),
+      ),
+    })
+  }
+
   url(slug: string): string {
     const clean = slug.replace(/(^|\/)index$/, "$1")
     return `${this.siteUrl.replace(/\/$/, "")}/${clean}`
@@ -92,7 +124,7 @@ export class Knowledge {
     slug = decodeURIComponent(slug)
       .replace(/^\/+/, "")
       .replace(/[?#].*$/, "")
-    const document = this.documents[slug]
+    const document = Object.hasOwn(this.documents, slug) ? this.documents[slug] : undefined
     if (document) return { kind: "document", path: slug, entry: document }
     slug = slug.replace(/\.(md|html)$/, "").replace(/\/$/, "/index")
     const page =
@@ -136,7 +168,8 @@ export class Knowledge {
     const b = 0.75
     const hits: SearchHit[] = []
     for (const doc of index.docs) {
-      const page = this.pages.get(doc.slug)!
+      const page = this.pages.get(doc.slug)
+      if (!page) continue
       if (tags.length && !tags.some((t) => page.tags.some((x) => x === t || x.startsWith(t + "/"))))
         continue
       let score = 0
@@ -164,11 +197,11 @@ export class Knowledge {
   }
 
   private buildIndex() {
-    if (this.index) return this.index
+    if (this.shared.index) return this.shared.index
     const docs: Array<{ slug: string; tf: Map<string, number>; len: number }> = []
     const df = new Map<string, number>()
     let total = 0
-    for (const page of this.pages.values()) {
+    for (const page of this.shared.pages.values()) {
       const tf = new Map<string, number>()
       // Title ×3 and tags ×2 so a page about a thing outranks one that mentions it.
       const weighted: Array<[string, number]> = [
@@ -187,8 +220,8 @@ export class Knowledge {
       docs.push({ slug: page.slug, tf, len })
       total += len
     }
-    this.index = { docs, df, avg: total / Math.max(1, docs.length) }
-    return this.index
+    this.shared.index = { docs, df, avg: total / Math.max(1, docs.length) }
+    return this.shared.index
   }
 }
 
@@ -208,11 +241,26 @@ export function snippet(content: string, terms: string[], width = 320): string {
 }
 
 let cached: { key: string; knowledge: Promise<Knowledge> } | null = null
+const views = new Map<string, Knowledge>()
+/** Views kept per isolate: a few readers' sets of rules at a time. */
+const VIEWS_KEPT = 8
 
-/** The member edition's knowledge, memoized per isolate (it only changes with a deploy). */
-export function loadKnowledge(env: Env, manifest: DocsManifest): Promise<Knowledge> {
-  const key = `${manifest.generatedAt ?? ""}|${env.PUBLIC_SITE_URL}`
+/** Forget the knowledge this isolate keeps (tests). */
+export function resetKnowledge(): void {
+  cached = null
+  views.clear()
+}
+
+/**
+ * Every page and document of the member edition, restricted ones included, memoized per isolate
+ * (it changes with a deploy, or when a rule is made or deleted: their shards are what restricted
+ * pages are). Who may read what is the views' business, so a group's new member costs no new index.
+ */
+function allKnowledge(env: Env, manifest: DocsManifest, policy: AclPolicy): Promise<Knowledge> {
+  const rules = policy.rules.map((rule) => rule.id).sort()
+  const key = `${manifest.generatedAt ?? ""}|${env.PUBLIC_SITE_URL}|${rules.join(",")}`
   if (cached?.key === key) return cached.knowledge
+  views.clear()
   const knowledge = env.ASSETS.fetch(new Request("https://assets.local/static/contentIndex.json"))
     .then(async (response) => {
       const raw = response.ok ? await response.json().catch(() => ({})) : {}
@@ -220,7 +268,8 @@ export function loadKnowledge(env: Env, manifest: DocsManifest): Promise<Knowled
         raw && typeof raw === "object" && !Array.isArray(raw)
           ? (raw as Record<string, RawEntry>)
           : {}
-      return new Knowledge(entries, manifest.documents, env.PUBLIC_SITE_URL)
+      const restricted = (await shardValues(env, policy)) as Record<string, RawEntry>
+      return new Knowledge({ ...entries, ...restricted }, manifest.documents, env.PUBLIC_SITE_URL)
     })
     .catch((error) => {
       cached = null
@@ -228,4 +277,36 @@ export function loadKnowledge(env: Env, manifest: DocsManifest): Promise<Knowled
     })
   cached = { key, knowledge }
   return knowledge
+}
+
+/** The member edition's knowledge as a reader may see it: only pages and documents they may read. */
+export async function knowledgeFor(
+  env: Env,
+  manifest: DocsManifest,
+  viewer: AclViewer,
+): Promise<Knowledge> {
+  const all = await allKnowledge(env, manifest, viewer.policy)
+  if (viewer.open) return all
+  const kept = views.get(viewer.key)
+  if (kept) return kept
+  const refs = await aclRefs(env)
+  const view = all.only(
+    (page) => {
+      const path = slugPath(refs, page.slug)
+      return path === null || viewer.canRead(path)
+    },
+    (path, entry) => viewer.canRead(documentPath(path, entry)),
+  )
+  if (views.size >= VIEWS_KEPT) views.delete(views.keys().next().value!)
+  views.set(viewer.key, view)
+  return view
+}
+
+/** The member edition's knowledge as a session's member may see it (src/acl/). */
+export async function loadKnowledge(
+  env: Env,
+  manifest: DocsManifest,
+  session: Session,
+): Promise<Knowledge> {
+  return knowledgeFor(env, manifest, await aclViewer(env, session))
 }

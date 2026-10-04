@@ -1,4 +1,5 @@
 import type { Env } from "../env"
+import type { Session } from "../session"
 import { HttpError } from "../http"
 import type { GptDeps } from "./chat"
 import { loadKnowledge } from "./knowledge"
@@ -37,13 +38,14 @@ export async function vaultTool(
   env: Env,
   store: GptStore,
   deps: GptDeps,
+  session: Session,
 ): Promise<{ text: string; summary: string; is_error: boolean }> {
   if (!(VAULT_TOOLS as readonly string[]).includes(name)) throw new HttpError(404, "no such tool")
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw new HttpError(422, "the tool's input must be an object")
   const outcome = await runTool(name, input as Record<string, unknown>, {
     env,
-    knowledge: await loadKnowledge(env, deps.manifest),
+    knowledge: await loadKnowledge(env, deps.manifest, session),
     store,
     skills: [],
     // These tools never touch a conversation (read_file and use_skill do, and aren't offered).

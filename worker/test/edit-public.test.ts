@@ -135,24 +135,25 @@ const publish = (client: Client, id: string) =>
   client.json(`/api/edit/drafts/${id}/send`, { method: "POST" })
 
 describe("public pages: who may edit which", () => {
-  it("lets any member edit most pages, a People page only its own member or an admin", async () => {
+  it("lets any member edit most pages, People pages only an admin", async () => {
     const ada = await as("ada")
+    const why = "Only an admin can edit a People page. To change your own, use Settings."
+    // Her own People page too: she changes it from Settings.
     expect((await source(ada, "content/people/ada-lovelace.md")).body).toMatchObject({
       repo: "vault",
       repo_name: "HafeziGroupJQI/vault",
       main: { text: ADA },
-      can_edit: true,
+      can_edit: false,
+      why,
       review: null,
     })
     expect((await source(ada, "content/research/engines.md")).body.can_edit).toBe(true)
     expect((await source(ada, "content/people/eve-other.md")).body).toMatchObject({
       can_edit: false,
-      why: "Only Eve Other or an admin can edit this People page.",
+      why,
     })
     await env.DB.prepare("DELETE FROM profiles WHERE login = 'eve'").run()
-    expect((await source(ada, "content/people/eve-other.md")).body.why).toMatch(
-      /^Only the person on this page/,
-    )
+    expect((await source(ada, "content/people/eve-other.md")).body.why).toBe(why)
     for (const path of ["content/index.md", "content/privacy.md"])
       expect((await source(ada, path)).body).toMatchObject({
         can_edit: false,
@@ -161,6 +162,13 @@ describe("public pages: who may edit which", () => {
     const owner = await as("olivia", "owner")
     for (const path of ["content/index.md", "content/people/eve-other.md"])
       expect((await source(owner, path)).body.can_edit).toBe(true)
+    await env.DB.prepare(
+      "INSERT INTO admins (login, added_by, added_at) VALUES ('ad', 'x', 0)",
+    ).run()
+    expect((await source(await as("ad"), "content/people/ada-lovelace.md")).body.can_edit).toBe(
+      true,
+    )
+    await env.DB.prepare("DELETE FROM admins WHERE login = 'ad'").run()
     // Pages the site makes whole, files that aren't pages, and paths out of content/.
     for (const path of [
       "content/people/index.md",
@@ -173,6 +181,7 @@ describe("public pages: who may edit which", () => {
       expect((await source(ada, path)).status, path).toBe(422)
     // Refused before a draft exists, and again on every save and send.
     expect((await draft(ada, "content/people/eve-other.md", EVE + "x\n")).status).toBe(403)
+    expect((await draft(ada, "content/people/ada-lovelace.md", ADA + "x\n")).status).toBe(403)
     expect((await draft(ada, "content/index.md", "---\ntitle: Mine\n---\n")).status).toBe(403)
   })
 })
@@ -181,9 +190,8 @@ describe("public pages: publishing", () => {
   it("queues an edit for the hour after, then commits it to main as the member's own commit", async () => {
     const ada = await as("ada")
     const main = vault.head
-    const text = ADA.replace("scope: engines", "scope: analytical engines")
-    const id = (await draft(ada, "content/people/ada-lovelace.md", text, "Say what I work on")).body
-      .id
+    const text = RESEARCH.replace("About engines.", "About analytical engines.")
+    const id = (await draft(ada, "content/research/engines.md", text, "Say what I work on")).body.id
     const before = Date.now()
     const queued = await publish(ada, id)
     expect(queued.status).toBe(200)
@@ -204,13 +212,13 @@ describe("public pages: publishing", () => {
       ).results
     expect(await recent()).toEqual([
       {
-        path: "content/people/ada-lovelace.md",
-        slug: "people/ada-lovelace",
+        path: "content/research/engines.md",
+        slug: "research/engines",
         kind: "edit",
         state: "sent",
         repo: "vault",
         author: "Ada Lovelace",
-        summary: "edit content/people/ada-lovelace.md by ada lovelace: say what i work on",
+        summary: "edit content/research/engines.md by ada lovelace: say what i work on",
         commit_sha: null,
       },
     ])
@@ -220,12 +228,12 @@ describe("public pages: publishing", () => {
     expect(await commitDue(env as any, vault.fetch, due - 3_600_000)).toMatchObject({ merged: [] })
     expect(vault.calls.length).toBe(calls)
     expect(await commitDue(env as any, vault.fetch, due)).toMatchObject({ merged: [id] })
-    expect(vault.text("content/people/ada-lovelace.md")).toBe(text)
+    expect(vault.text("content/research/engines.md")).toBe(text)
     // Under the name the site shows for her (her People page's), and her GitHub no-reply address.
     expect(vault.commit(vault.head)).toMatchObject({
       parents: [main],
       message:
-        "edit content/people/ada-lovelace.md by ada lovelace: say what i work on from the members site editor",
+        "edit content/research/engines.md by ada lovelace: say what i work on from the members site editor",
       author: { name: "Ada Lovelace", email: "ada@users.noreply.github.com" },
     })
     expect((await ada.json(`/api/edit/drafts/${id}`)).body).toMatchObject({
@@ -245,7 +253,7 @@ describe("public pages: publishing", () => {
     const ada = await as("ada")
     const bob = await as("bob")
     const main = vault.head
-    const one = (await draft(ada, "content/people/ada-lovelace.md", ADA + "More.\n")).body.id
+    const one = (await draft(ada, "content/equipment/laser.md", LASER + "More.\n")).body.id
     const two = (await draft(bob, "content/research/engines.md", RESEARCH + "And more.\n")).body.id
     const due = (await publish(ada, one)).body.due_at
     await publish(bob, two)
@@ -504,17 +512,19 @@ describe("public pages: what the vault's check would refuse", () => {
     expect(
       await refused(owner, person, ADA.replace("group: Graduate Students", "group: Wizards")),
     ).toContain("/group must be equal to one of the allowed values")
+    // What only an admin may change in a person's record (members no longer edit People pages
+    // from the editor, but the check stands for any edit that isn't an admin's).
     expect(
-      await refused(ada, person, ADA.replace("group: Graduate Students", "group: Staff")),
+      pageProblems(ADA.replace("group: Graduate Students", "group: Staff"), ADA, false),
     ).toContain("only an admin can change a person's group")
-    expect(await refused(ada, person, ADA.replace("role: Graduate", "role: Chief"))).toContain(
+    expect(pageProblems(ADA.replace("role: Graduate", "role: Chief"), ADA, false)).toContain(
       "only an admin can change a person's role",
     )
-    expect(await refused(ada, person, ADA.replace("github: ada", "github: mallory"))).toContain(
+    expect(pageProblems(ADA.replace("github: ada", "github: mallory"), ADA, false)).toContain(
       "only an admin can change a person's github",
     )
     expect(
-      await refused(ada, person, ADA.replace("  - atlantic-2369", "  - atlantic-2400")),
+      await refused(owner, person, ADA.replace("  - atlantic-2369", "  - atlantic-2400")),
     ).toContain("places/places.yml doesn't list this person in atlantic-2400")
     expect(
       await refused(

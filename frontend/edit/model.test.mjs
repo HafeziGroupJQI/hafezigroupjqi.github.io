@@ -59,9 +59,22 @@ test("a page's Edit opens its own file in the editor, never the page the site ma
   )
   // A public page's file is in the public vault.
   assert.equal(
-    editAction({ editRepo: "vault", editPath: "content/people/ada.md" }, "/people/ada")?.href,
+    editAction({ editRepo: "vault", editPath: "content/research/engines.md" }, "/research/engines")
+      ?.href,
+    "/edit?repo=vault&path=content%2Fresearch%2Fengines.md&page=%2Fresearch%2Fengines",
+  )
+  // A People page is an admin's to edit: members change their own from Settings.
+  const person = { editRepo: "vault", editPath: "content/people/ada.md" }
+  assert.equal(editAction(person, "/people/ada"), null)
+  assert.equal(
+    editAction({ ...person, editPath: "content/people/alumni/old-member.md" }, "/people/x"),
+    null,
+  )
+  assert.equal(
+    editAction(person, "/people/ada", { admin: true })?.href,
     "/edit?repo=vault&path=content%2Fpeople%2Fada.md&page=%2Fpeople%2Fada",
   )
+  assert.ok(editAction({ editRepo: "vault", editPath: "content/people/index.md" }, "/people/"))
   // A Wolfram notebook is edited in the Scratchpad; a drawing is replaced whole, not edited here.
   assert.deepEqual(
     editAction(

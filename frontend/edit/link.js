@@ -17,10 +17,22 @@ export function editUrl({ repo, path, page = null, sha = null, note = null }) {
   return `/edit?${params}`
 }
 
-/** What a page's Edit does, from its tools row's data: open the editor, the Scratchpad, or nothing. */
-export function editAction(dataset, page) {
+/** A People page's file in the public vault (worker/src/profile/vault.ts PEOPLE_PAGE). */
+const PEOPLE_PAGE = /^content\/people\/(?:alumni\/)?[a-z0-9]+(?:-[a-z0-9]+)*\.md$/
+
+/** Whether only an admin may open a file in the editor: a People page (members change their own
+ *  from Settings; the Worker refuses anyone else, worker/src/edit/rules.ts). */
+export const adminOnly = (repo, path) =>
+  repo === "vault" && PEOPLE_PAGE.test(path) && !path.endsWith("/index.md")
+
+/**
+ * What a page's Edit does, from its tools row's data: open the editor, the Scratchpad, or nothing
+ * (a file that is replaced whole, or a People page for anyone but an admin).
+ */
+export function editAction(dataset, page, { admin = false } = {}) {
   const { editRepo: repo, editPath: path, editMode: mode, editSha: sha, editNote: note } = dataset
   if (!repo || !path || mode === "file") return null
+  if (!admin && adminOnly(repo, path)) return null
   if (mode === "scratchpad")
     return {
       label: "Edit in Scratchpad",
@@ -34,9 +46,9 @@ export function editAction(dataset, page) {
   }
 }
 
-/** Put the Edit button first in a page's tools row. */
-export function mountEditButton(tools) {
-  const action = editAction(tools.dataset, location.pathname)
+/** Put the Edit button first in a page's tools row (`admin`: the member is an admin). */
+export function mountEditButton(tools, { admin = false } = {}) {
+  const action = editAction(tools.dataset, location.pathname, { admin })
   if (!action) return
   tools.prepend(
     h("a", { class: "page-edit", href: action.href, title: action.title, text: action.label }),

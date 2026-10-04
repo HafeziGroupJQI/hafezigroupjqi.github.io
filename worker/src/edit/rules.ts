@@ -11,8 +11,8 @@ import { FORBIDDEN, checkContent, vaultPath } from "../uploads/rules"
 // its pages (.md, and .qmd, whose code runs when the site builds) and Jupyter notebooks (.ipynb)
 // under the folders uploads may change (uploads/rules.ts); a Wolfram notebook (.nb) is edited in
 // the Scratchpad and a drawing is replaced whole on /uploads. In the public vault they are its
-// pages (content/**.md), a People page only by its own member or an admin, and the home and
-// privacy pages only by an admin. An edit is a draft of the uploads pipeline (one change, whose
+// pages (content/**.md), People pages and the home and privacy pages only by an admin (members
+// change their own People page from /settings). An edit is a draft of the uploads pipeline (one change, whose
 // base is the blob the member loaded), checked here as uploads are, and a public page's by
 // public.ts as the public vault's own check would.
 
@@ -180,9 +180,9 @@ export const freezeDir = (path: string) => `_freeze/${path.replace(/\.qmd$/i, ""
 
 /**
  * Whether the member may change a file (can_edit), and if not why, in a sentence for the editor.
- * Any member may edit the private vault's pages and most public ones; a People page is its own
- * member's (their approved link, /settings) or an admin's, and the home and privacy pages an
- * admin's. Admins may also add what runs in browsers to a public page (public.ts).
+ * Any member may edit the private vault's pages and most public ones; People pages and the home
+ * and privacy pages are an admin's (a member changes their own People page from /settings).
+ * Admins may also add what runs in browsers to a public page (public.ts).
  */
 export async function editAccess(
   env: Env,
@@ -194,21 +194,13 @@ export async function editAccess(
   if (repo === "vault-private" || admin) return { can_edit: true, why: null, admin }
   if (ADMIN_ONLY.has(path))
     return { can_edit: false, why: "Only an admin can edit this page.", admin }
-  if (PEOPLE_PAGE.test(path) && !path.endsWith("/index.md")) {
-    const owner = await env.DB.prepare(
-      "SELECT login, name FROM profiles WHERE path = ? AND status = 'approved'",
-    )
-      .bind(path)
-      .first<{ login: string; name: string | null }>()
-    if (owner?.login.toLowerCase() === session.login.toLowerCase())
-      return { can_edit: true, why: null, admin }
+  // A People page is edited by an admin; its own member changes theirs from Settings (its
+  // name, photo and links: src/profile/routes.ts), which keeps the page's record whole.
+  if (PEOPLE_PAGE.test(path) && !path.endsWith("/index.md"))
     return {
       can_edit: false,
-      why: owner
-        ? `Only ${owner.name || owner.login} or an admin can edit this People page.`
-        : "Only the person on this page (once they link it in Settings) or an admin can edit it.",
+      why: "Only an admin can edit a People page. To change your own, use Settings.",
       admin,
     }
-  }
   return { can_edit: true, why: null, admin }
 }

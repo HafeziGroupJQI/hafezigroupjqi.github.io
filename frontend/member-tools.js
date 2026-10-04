@@ -338,7 +338,7 @@ if (session.user) {
   // Edit: the page's own file in its vault (JqiFrame's [data-page-tools] names it), opened in the
   // site's editor (frontend/edit/), never the page the site made from it.
   const pageTools = document.querySelector("[data-page-tools][data-edit-path]")
-  if (pageTools) mountEditButton(pageTools)
+  if (pageTools) mountEditButton(pageTools, { admin: Boolean(session.user.is_admin) })
   // A page's rating (frontend/ratings/): ▲ score ▼ and its readers, in its tools row. Pages with a
   // source only, never the tool pages (/recent, /leaderboard, the dashboards).
   const ratingTools = document.querySelector("[data-page-tools][data-source]")

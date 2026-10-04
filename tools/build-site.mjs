@@ -27,6 +27,7 @@ import { overlayFiles, restrictedDirs } from "./acl/vaults.mjs"
 import { normalizeSnapshot } from "./acl/policy.mjs"
 import { checkCoverage, markPages, readSnapshot, writeBuildVersion } from "./acl/snapshot.mjs"
 import { aclRefs, writeContentIndex, writeRefs } from "./acl/outputs.mjs"
+import { leakScan, report as leakReport } from "./acl-leak-scan.mjs"
 
 const options = parseBuildOptions(process.argv.slice(2))
 // The members API (Cloudflare Worker) that the github.io site signs in with and that serves the
@@ -233,6 +234,16 @@ try {
         `${Object.keys(refs.notebookAssets).length} notebook assets, ${Object.keys(refs.pdfs).length} pdfs, ` +
         `${Object.keys(refs.files).length} restricted files in ${path.relative(options.output, written)}`,
     )
+    // No restricted page's words outside what its rule's members get (tools/acl-leak-scan.mjs).
+    const started = Date.now()
+    const scan = leakScan(options.output, { acl, documents: manifest })
+    console.log(
+      `acl leak scan: ${scan.needles} needles in ${scan.files} files, ${scan.hits.length} found, in ${((Date.now() - started) / 1000).toFixed(1)} s`,
+    )
+    if (scan.hits.length)
+      throw new Error(
+        `restricted pages' words are in files their rules don't cover:\n${leakReport(scan.hits)}`,
+      )
   }
   const outputAudit = await auditOutput(
     options.output,

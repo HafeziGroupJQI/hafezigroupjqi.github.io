@@ -1,0 +1,188 @@
+[
+  {
+    "snapshot": {
+      "version": 1,
+      "groups": {
+        "optical-rl": {
+          "logins": ["anishgoyal1108", "lidaxu-physics", "mjalalim3"],
+          "people": [
+            "people/mohammad-hafezi",
+            "people/lida-xu",
+            "people/anish-goyal",
+            "people/mahmoud-jalali-mehrabad",
+            "people/pavel-dolgirev",
+            "people/shi-yuan-ma"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "id": "r1",
+          "pattern": "projects/optical-rl/",
+          "allow": ["group:optical-rl"],
+          "deny": [],
+          "note": "optical rl project"
+        }
+      ]
+    },
+    "cases": [
+      {
+        "path": "projects/optical-rl/notes/project-meeting-2026-10-03-optical-rl.qmd",
+        "login": "anishgoyal1108",
+        "readable": true,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl/notes/project-meeting-2026-10-03-optical-rl.qmd",
+        "login": "AnishGoyal1108",
+        "readable": true,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl/assets/project-meeting-2026-10-03/plot.png",
+        "login": "lidaxu-physics",
+        "readable": true,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl/notes/project-meeting-2026-10-03-optical-rl.qmd",
+        "login": "someone-else",
+        "readable": false,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl/files/analysis/optical-rl-2026-10-03/run.py",
+        "login": "someone-else",
+        "person": "people/pavel-dolgirev",
+        "readable": true,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl/files/analysis/optical-rl-2026-10-03/run.py",
+        "login": "someone-else",
+        "person": "people/someone-else",
+        "readable": false,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl/notes/x.md",
+        "login": "someone-else",
+        "admin": true,
+        "readable": true,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl/notes/x.md",
+        "login": "probe-0a1b2c3d",
+        "readable": false,
+        "rule": "r1"
+      },
+      {
+        "path": "projects/optical-rl-other/x.md",
+        "login": "someone-else",
+        "readable": true,
+        "rule": null
+      },
+      { "path": "projects/optical-rl", "login": "someone-else", "readable": true, "rule": null },
+      { "path": "notes/group-meeting.md", "login": "someone-else", "readable": true, "rule": null }
+    ]
+  },
+  {
+    "snapshot": {
+      "version": 7,
+      "groups": {
+        "team": { "logins": ["alice"], "people": ["people/carol"] },
+        "other": { "logins": ["bob"], "people": [] }
+      },
+      "rules": [
+        { "id": "r1", "pattern": "projects/", "allow": ["group:team"], "deny": [] },
+        { "id": "r2", "pattern": "projects/open/", "allow": [], "deny": [] },
+        { "id": "r3", "pattern": "projects/open/secret.md", "allow": ["login:bob"], "deny": [] },
+        {
+          "id": "r4",
+          "pattern": "**/*.private.md",
+          "allow": ["group:team"],
+          "deny": ["login:dave"]
+        },
+        { "id": "r5", "pattern": "drafts/*/draft.md", "allow": [], "deny": ["group:other"] },
+        { "id": "r6", "pattern": "notes/", "allow": [], "deny": ["login:eve"] },
+        {
+          "id": "r7",
+          "pattern": "library/a/",
+          "allow": ["login:alice", "login:bob"],
+          "deny": ["login:bob"]
+        },
+        { "id": "r10", "pattern": "tie/*/x.md", "allow": ["login:bob"], "deny": [] },
+        { "id": "r9", "pattern": "tie/a/*.md", "allow": ["login:alice"], "deny": [] },
+        { "id": "r11", "pattern": "library/**", "allow": ["login:frank"], "deny": [] },
+        { "id": "r12", "pattern": "library/*.md", "allow": ["login:gina"], "deny": [] },
+        { "id": "r13", "pattern": "data/**/raw/", "allow": ["login:alice"], "deny": [] },
+        { "id": "r14", "pattern": "people-notes/", "allow": ["person:people/dan"], "deny": [] }
+      ]
+    },
+    "cases": [
+      { "path": "projects/x.md", "login": "alice", "readable": true, "rule": "r1" },
+      { "path": "projects/x.md", "login": "bob", "readable": false, "rule": "r1" },
+      {
+        "path": "projects/x.md",
+        "login": "carol-l",
+        "person": "people/carol",
+        "readable": true,
+        "rule": "r1"
+      },
+      { "path": "projects/x.md", "login": "carol-l", "readable": false, "rule": "r1" },
+      { "path": "projects/open/y.md", "login": "bob", "readable": true, "rule": "r2" },
+      { "path": "projects/open/secret.md", "login": "alice", "readable": false, "rule": "r3" },
+      { "path": "projects/open/secret.md", "login": "bob", "readable": true, "rule": "r3" },
+      {
+        "path": "projects/open/secret.md",
+        "login": "zed",
+        "admin": true,
+        "readable": true,
+        "rule": "r3"
+      },
+      { "path": "notes/a.private.md", "login": "dave", "readable": true, "rule": "r6" },
+      { "path": "notes/a.private.md", "login": "eve", "readable": false, "rule": "r6" },
+      { "path": "code/z.private.md", "login": "alice", "readable": true, "rule": "r4" },
+      { "path": "code/z.private.md", "login": "dave", "readable": false, "rule": "r4" },
+      { "path": "code/z.private.md", "login": "zed", "readable": false, "rule": "r4" },
+      { "path": "code/deep/er/z.private.md", "login": "alice", "readable": true, "rule": "r4" },
+      { "path": "z.private.md", "login": "zed", "readable": false, "rule": "r4" },
+      { "path": "drafts/w/draft.md", "login": "bob", "readable": false, "rule": "r5" },
+      { "path": "drafts/w/draft.md", "login": "alice", "readable": true, "rule": "r5" },
+      { "path": "drafts/w/v/draft.md", "login": "bob", "readable": true, "rule": null },
+      { "path": "notes/b.md", "login": "eve", "readable": false, "rule": "r6" },
+      { "path": "notes/b.md", "login": "zed", "readable": true, "rule": "r6" },
+      { "path": "library/a/x.md", "login": "alice", "readable": true, "rule": "r7" },
+      { "path": "library/a/x.md", "login": "bob", "readable": false, "rule": "r7" },
+      { "path": "library/x.md", "login": "gina", "readable": true, "rule": "r12" },
+      { "path": "library/x.md", "login": "frank", "readable": false, "rule": "r12" },
+      { "path": "library/sub/x.md", "login": "frank", "readable": true, "rule": "r11" },
+      { "path": "library/sub/x.md", "login": "gina", "readable": false, "rule": "r11" },
+      { "path": "tie/a/x.md", "login": "alice", "readable": true, "rule": "r9" },
+      { "path": "tie/a/x.md", "login": "bob", "readable": false, "rule": "r9" },
+      { "path": "tie/b/x.md", "login": "bob", "readable": true, "rule": "r10" },
+      { "path": "data/raw/f.csv", "login": "alice", "readable": true, "rule": "r13" },
+      { "path": "data/raw/f.csv", "login": "zed", "readable": false, "rule": "r13" },
+      { "path": "data/x/y/raw/g.csv", "login": "zed", "readable": false, "rule": "r13" },
+      { "path": "data/rawish/f.csv", "login": "zed", "readable": true, "rule": null },
+      {
+        "path": "people-notes/plan.md",
+        "login": "dan-x",
+        "person": "people/dan",
+        "readable": true,
+        "rule": "r14"
+      },
+      { "path": "people-notes/plan.md", "login": "dan-x", "readable": false, "rule": "r14" },
+      { "path": "people-notes/plan.md", "login": "Alice", "readable": false, "rule": "r14" },
+      { "path": "onboarding/start.md", "login": "zed", "readable": true, "rule": null }
+    ]
+  },
+  {
+    "snapshot": { "version": 0, "groups": {}, "rules": [] },
+    "cases": [
+      { "path": "projects/optical-rl/notes/x.md", "login": "zed", "readable": true, "rule": null },
+      { "path": "notes/x.md", "login": "zed", "admin": true, "readable": true, "rule": null }
+    ]
+  }
+]

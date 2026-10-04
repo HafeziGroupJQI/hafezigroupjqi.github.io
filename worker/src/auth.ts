@@ -1,7 +1,7 @@
 import { audit } from "./audit"
 import type { Env } from "./env"
 import { HttpError, json, readJson } from "./http"
-import { issueSession, randomToken, sign, timingSafeEqual, verify } from "./session"
+import { PROBE_LOGIN, issueSession, randomToken, sign, timingSafeEqual, verify } from "./session"
 
 // Sign-in for the github.io site. The browser never visits the Worker:
 //   1. /auth/login (a static github.io page) POSTs /api/auth/start and gets GitHub's authorize URL,
@@ -38,6 +38,15 @@ export function decide(
   if (org && org.state === "active" && org.role === "admin") return [true, "owner"]
   if (team && team.state === "active") return [true, "member"]
   return [false, "not a member of the lab team"]
+}
+
+/**
+ * Why a lab member's login can't sign in, if it can't: probe-<8 hex> is kept for admins' probe
+ * sessions (src/session.ts), so a GitHub account of that name can't pass for one and inherit the
+ * groups a probe was added to.
+ */
+export function reservedLogin(login: string): string | null {
+  return PROBE_LOGIN.test(login.toLowerCase()) ? "this login is reserved for probe sessions" : null
 }
 
 // Only same-site paths may be used as a post-login destination.
@@ -152,14 +161,15 @@ export async function exchange(
   // GitHub logins are case-insensitive: the site keeps them lowercase everywhere (the lab's
   // tickets, D1's owner columns), and GitHub's casing only as the default display name.
   const login = profile.login.toLowerCase()
-  if (!allowed) {
+  const refusal = allowed ? reservedLogin(login) : role
+  if (!allowed || refusal) {
     audit(env, ctx, request, {
       login,
       action: "auth.denied",
       status: 403,
-      detail: { reason: role },
+      detail: { reason: refusal },
     })
-    throw new HttpError(403, `${profile.login}: ${role}`)
+    throw new HttpError(403, `${profile.login}: ${refusal}`)
   }
   const user = { login, name: profile.name ?? profile.login, role }
   audit(env, ctx, request, { login: user.login, role, action: "auth.login", status: 200 })

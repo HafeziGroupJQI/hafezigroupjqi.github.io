@@ -25,6 +25,8 @@ export const githubAccounts: Record<string, { org?: object; team?: object }> = {
   "code-owner": { org: { state: "active", role: "admin" } },
   "code-member": { team: { state: "active" } },
   "code-Mixed-Case": { team: { state: "active" } },
+  // A lab member whose GitHub login has a probe session's form (src/auth.ts reservedLogin).
+  "code-probe-1a2b3c4d": { team: { state: "active" } },
   "code-outsider": {},
 }
 let lastCode = ""

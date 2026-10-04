@@ -1,6 +1,6 @@
 import { SELF, createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest"
-import { decide, safeNext } from "../src/auth"
+import { decide, reservedLogin, safeNext } from "../src/auth"
 import { sign } from "../src/session"
 import { ORIGIN, SITE, member, signIn } from "./helpers"
 import worker, { githubCalls } from "./worker"
@@ -379,5 +379,35 @@ describe("CORS for the github.io site", () => {
       body: JSON.stringify({ code_name: "evil-pc" }),
     })
     expect(response.status).toBe(403)
+  })
+})
+
+describe("reserved logins", () => {
+  it("refuses a lab member's sign-in under a probe session's login, and audits it", async () => {
+    const github = { AUTH_MODE: "github" }
+    const started = (await (
+      await call("/api/auth/start", postJson({ next: "/" }), github)
+    ).json()) as { authorize_url: string; nonce: string }
+    const state = new URL(started.authorize_url).searchParams.get("state")!
+    const exchanged = await call(
+      "/api/auth/exchange",
+      postJson({ code: "code-probe-1a2b3c4d", state, nonce: started.nonce }),
+      github,
+    )
+    expect(exchanged.status).toBe(403)
+    expect(await exchanged.text()).toMatch(/reserved for probe sessions/)
+  })
+
+  it("keeps probe-<8 hex> for probe sessions, and nothing else", () => {
+    expect(reservedLogin("probe-1a2b3c4d")).toMatch(/reserved/)
+    expect(reservedLogin("Probe-1A2B3C4D")).toMatch(/reserved/)
+    for (const login of [
+      "anishgoyal1108",
+      "probe",
+      "probe-123",
+      "probe-1a2b3c4d5",
+      "my-probe-1a2b3c4d",
+    ])
+      expect(reservedLogin(login), login).toBeNull()
   })
 })

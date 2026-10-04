@@ -21,6 +21,7 @@ import { isLabGptPath, labGptRequest } from "./gpt/lab"
 import { isLabAgentPath, labAgent } from "./gpt/lab-agent"
 import { gptRoutes } from "./gpt/routes"
 import { prefsRoutes } from "./prefs"
+import { recordView, viewedPage } from "./ratings/views"
 import { navIdentity, profileRoutes } from "./profile/routes"
 import type { VaultFetch } from "./profile/vault"
 import type { RepoFetch } from "./repo"
@@ -212,7 +213,7 @@ export function createHandler(
       return withPrivateHeaders(json({ ok: true }))
     }
     if (path === SITE_PREFIX || path.startsWith(SITE_PREFIX + "/"))
-      return site(request, url, env, ctx, path.slice(SITE_PREFIX.length) || "/", record)
+      return site(request, url, env, ctx, path.slice(SITE_PREFIX.length) || "/", session, record)
 
     // The Scratchpad's compute relay audits its own control actions (compute.*): every JupyterLab
     // request is a POST envelope, which must not become an api.POST row each, and relayed answers
@@ -293,6 +294,7 @@ export function createHandler(
     env: Env,
     ctx: ExecutionContext,
     sitePath: string,
+    session: Session,
     record: Auditor,
   ): Promise<Response> {
     if (request.method !== "GET" && request.method !== "HEAD")
@@ -316,7 +318,12 @@ export function createHandler(
         return canonical(target.pathname + target.search)
       }
     }
-    if (asset.status !== 404) return withPrivateHeaders(asset, { store: isHashedAsset(sitePath) })
+    if (asset.status !== 404) {
+      // A page read: its readers on /leaderboard (src/ratings/views.ts), after the answer.
+      const page = viewedPage(sitePath, request.method, asset, MEMBER_PAGES)
+      if (page) recordView(env, ctx, session.login, page)
+      return withPrivateHeaders(asset, { store: isHashedAsset(sitePath) })
+    }
     const docPath = decodeSegment(sitePath).replace(/^\//, "")
     const entry = documents[docPath]
     if (entry) {

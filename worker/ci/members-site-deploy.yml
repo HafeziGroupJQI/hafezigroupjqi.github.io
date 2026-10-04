@@ -2,7 +2,14 @@
 # .github/workflows/deploy.yml. It is kept here so changes are reviewed with the Worker.
 #
 # Secrets in members-site: VAULT_PRIVATE_READ_TOKEN (fine-grained PAT, contents:read on
-# vault-private), CLOUDFLARE_API_TOKEN (Workers scripts, D1, R2 edit), CLOUDFLARE_ACCOUNT_ID.
+# vault-private and the restricted vaults), CLOUDFLARE_API_TOKEN (Workers scripts, D1, R2 edit),
+# CLOUDFLARE_ACCOUNT_ID.
+#
+# Restricted vaults (website worker/vaults.json): repositories only some members may read, each
+# overlaid onto vault-private at its folder (vault-optical-rl at projects/optical-rl/). The build
+# takes their checkouts from VAULT_RESTRICTED_DIRS, applies vault-private's access rules
+# (.hafezi/acl.json) and fails if a restricted page's words reach what other members get. A website
+# commit from before restricted vaults ignores them, and builds without their pages.
 #
 # Notebooks: every .ipynb and Wolfram .nb in the vaults becomes a page, rendered from the outputs
 # saved in it (tools/notebooks/). Wolfram notebooks need a licensed Wolfram Engine, which only the
@@ -41,6 +48,7 @@ jobs:
       website: ${{ steps.commits.outputs.website }}
       vault: ${{ steps.commits.outputs.vault }}
       vault_private: ${{ steps.commits.outputs.vault_private }}
+      vault_optical_rl: ${{ steps.commits.outputs.vault_optical_rl }}
     steps:
       - name: checkout the website (the renderer)
         uses: actions/checkout@v5
@@ -58,18 +66,33 @@ jobs:
           repository: HafeziGroupJQI/vault-private
           path: vault-private
           token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
+      - name: checkout the optical rl vault (restricted)
+        uses: actions/checkout@v5
+        with:
+          repository: HafeziGroupJQI/vault-optical-rl
+          path: vault-optical-rl
+          token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
       - name: record the commits this deploy builds
         id: commits
         run: |
           echo "website=$(git -C website rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "vault=$(git -C vault rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "vault_private=$(git -C vault-private rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "vault_optical_rl=$(git -C vault-optical-rl rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: overlay the restricted vaults onto the private vault
+        # Their notebooks render with vault-private's (one renderer run); the build matches renders
+        # by each notebook's bytes. A file vault-private has too stops the deploy here.
+        working-directory: vault-optical-rl
+        run: |
+          clash=$(git ls-files projects/optical-rl | while read -r f; do [ -e "../vault-private/$f" ] && echo "$f"; done)
+          if [ -n "$clash" ]; then echo "already in vault-private:"; echo "$clash"; exit 1; fi
+          git ls-files -z projects/optical-rl | tar --null -cf - -T - | tar -xf - -C ../vault-private
       # The host's own node and wolframscript (no setup actions: the runner is not Ubuntu). No
       # dependency's install script runs on the compute host: stage 1 needs none (sharp's binary
       # is a package of its own).
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: website
-      - name: render the Wolfram notebooks of both vaults
+      - name: render the Wolfram notebooks of every vault
         working-directory: website
         env:
           # Kept between deploys; keyed by each notebook's sha256, so it only saves time.
@@ -110,6 +133,15 @@ jobs:
           path: vault-private
           token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
           # The whole history too, for its pages' histories and the changes import.
+          fetch-depth: 0
+      - name: checkout the optical rl vault (restricted)
+        uses: actions/checkout@v5
+        with:
+          repository: HafeziGroupJQI/vault-optical-rl
+          ref: ${{ needs.notebooks.outputs.vault_optical_rl }}
+          path: vault-optical-rl
+          token: ${{ secrets.VAULT_PRIVATE_READ_TOKEN }}
+          # Its own history, for its pages' histories and the changes import.
           fetch-depth: 0
       - name: the notebook renders made for these commits
         uses: actions/download-artifact@v7
@@ -169,6 +201,8 @@ jobs:
         env:
           VAULT_PUBLIC_DIR: ../vault/content
           VAULT_PRIVATE_DIR: ../vault-private
+          # Overlaid onto vault-private at their folders (worker/vaults.json); access rules apply.
+          VAULT_RESTRICTED_DIRS: vault-optical-rl=../vault-optical-rl
           # Stage 2 (pages) runs in the build from the renders above; .ipynb render with Quarto.
           NOTEBOOK_RENDERS: ../notebook-renders
           NOTEBOOK_CACHE_PRUNE: "1"
@@ -188,17 +222,20 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: website/worker
           command: d1 migrations apply hafezi-members --remote
-      - name: import both vaults' commits into the members' recent changes
+      - name: import every vault's commits into the members' recent changes
         # D1 changes (tools/changes-import.mjs): only commits it doesn't have, so a rerun changes
         # nothing. It never holds up a deploy; the next one catches up. Website commits from before
-        # the importer have none, so this workflow still builds them.
+        # the importer have none, so this workflow still builds them; older importers ignore
+        # --restricted (the restricted vaults' commits, under their own repo names).
         if: hashFiles('website/tools/changes-import.mjs') != ''
         continue-on-error: true
         working-directory: website
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node tools/changes-import.mjs --vault ../vault --vault-private ../vault-private --remote
+        run: >
+          node tools/changes-import.mjs --vault ../vault --vault-private ../vault-private
+          --restricted vault-optical-rl=../vault-optical-rl --remote
       - name: deploy the worker and static assets
         uses: cloudflare/wrangler-action@v4
         with:

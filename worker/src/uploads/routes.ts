@@ -1,3 +1,4 @@
+import { aclViewer, requireRead } from "../acl/index"
 import { type Auditor, isAdmin } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
@@ -175,6 +176,13 @@ export async function uploadRoutes(
     const changes = await changesOf(env, id)
     return draftView(draftRepoName(env, row, changes), row, changes)
   }
+  // Restricted pages (src/acl/): what a member may not read isn't in the vault for them, and a
+  // change takes reading every path it touches.
+  const mayRead = (paths: string[], message = "not found") =>
+    requireRead(env, session, paths, record, message)
+  /** A draft the member may still see: none of its files out of their reach. */
+  const draftReadable = async (row: DraftRow, changes?: ChangeRow[]) =>
+    mayRead(touched(changes ?? (await changesOf(env, row.id))), "no such draft")
   /** A draft holds files of one repository: a change to another's is refused. */
   const sameVault = (changes: ChangeRow[], ...paths: string[]) =>
     oneVault([...touched(changes), ...paths])
@@ -192,13 +200,16 @@ export async function uploadRoutes(
       env,
       results.map((row) => row.id),
     )
+    // A draft with a file the member can no longer read is left out, title, links and all.
+    const acl = await aclViewer(env, session)
+    const shown = results.filter((row) => touched(changes.get(row.id) ?? []).every(acl.canRead))
     return json({
       ready: repo.ready,
       repo: repo.repo,
       folders: FOLDERS,
       types: Object.keys(TYPES),
       limits: { file: FILE_MAX, draft: DRAFT_MAX, changes: CHANGES_MAX, drafts: DRAFTS_MAX },
-      drafts: results.map((row) =>
+      drafts: shown.map((row) =>
         draftView(
           draftRepoName(env, row, changes.get(row.id) ?? []),
           row,
@@ -211,6 +222,10 @@ export async function uploadRoutes(
   // A folder of the vault at main, for choosing where files go and which to replace or move.
   if (path === "/api/uploads/folder" && request.method === "GET") {
     const folder = vaultFolder(url.searchParams.get("path"))
+    const acl = await aclViewer(env, session)
+    // A folder the member may not read is no folder; in one they may, what they may not read isn't there.
+    if (folder && !acl.canRead(`${folder}/`))
+      return json({ path: folder, exists: false, entries: [] })
     const listing = await new DraftRepo(env, fetcher, "vault-private", vaultOfFolder(folder)).list(
       folder,
     )
@@ -219,6 +234,7 @@ export async function uploadRoutes(
       .filter(({ name }) => !listing?.some((entry) => entry.name === name))
       .map(({ name, path }) => ({ name, path, type: "dir" as const, sha: "", size: 0 }))
     const entries = [...(listing ?? []), ...mounts]
+      .filter((entry) => acl.canRead(entry.type === "dir" ? `${entry.path}/` : entry.path))
       .filter((entry) =>
         entry.type === "dir"
           ? folder
@@ -274,6 +290,7 @@ export async function uploadRoutes(
 
   if (!part && request.method === "GET") {
     const row = await ownDraft(env, id, session)
+    await draftReadable(row)
     // While a pull request waits for its hour, what its check says so far.
     const check =
       row.status === "open" && row.head_sha
@@ -288,6 +305,7 @@ export async function uploadRoutes(
   if (!part && request.method === "PATCH") {
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
+    await draftReadable(row)
     const body = (await readJson(request)) as { note?: unknown }
     await underLimit(env, session.login, EDITS, EDITS_PER_DAY, "changes to uploads")
     await env.DB.prepare("UPDATE upload_drafts SET note = ? WHERE id = ?")
@@ -310,6 +328,7 @@ export async function uploadRoutes(
   if (part === "file" && request.method === "GET") {
     const row = await ownDraft(env, id, session)
     const target = url.searchParams.get("path") ?? ""
+    await mayRead([target], "no such staged file")
     const change = (await changesOf(env, row.id)).find((c) => c.path === target)
     const object =
       change && (change.action === "add" || change.action === "replace")
@@ -332,6 +351,7 @@ export async function uploadRoutes(
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
     const target = vaultPath(url.searchParams.get("path"))
+    await mayRead([target])
     const replace = url.searchParams.get("mode") === "replace"
     const type = typeOf(target)
     await underLimit(env, session.login, EDITS, EDITS_PER_DAY, "changes to uploads")
@@ -423,6 +443,7 @@ export async function uploadRoutes(
     if (body.action === "rename") {
       const from = vaultPath(body.from)
       const to = vaultPath(body.to)
+      await mayRead([from, to])
       if (from === to) throw new HttpError(422, "choose a new name or folder")
       if (extension(from) !== extension(to))
         throw new HttpError(
@@ -455,6 +476,7 @@ export async function uploadRoutes(
       record("uploads.rename", from, { draft: row.id, to })
     } else if (body.action === "delete") {
       const target = vaultPath(body.path)
+      await mayRead([target])
       taken(target)
       sameVault(changes, target)
       const source = await existing(target)
@@ -498,6 +520,7 @@ export async function uploadRoutes(
     const row = await ownDraft(env, id, session, { change: true, kind: "upload" })
     const changes = await changesOf(env, row.id)
     if (!changes.length) throw new HttpError(422, "add a file, a rename or a deletion first")
+    await draftReadable(row, changes)
     await underLimit(env, session.login, ["uploads.send"], SENDS_PER_DAY, "sends")
     const { display_name } = await navIdentity(env, session)
     await send(env, draftRepo(env, fetcher, row, changes), row, changes, display_name)

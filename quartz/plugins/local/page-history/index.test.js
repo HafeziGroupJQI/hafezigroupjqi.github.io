@@ -58,6 +58,20 @@ test("a page's history is its file's revisions, or none", () => {
   )
 })
 
+test("a restricted vault's page names that vault's repository on GitHub", () => {
+  const vaults = [
+    { repo: "vault-private", prefix: "" },
+    { repo: "vault-optical-rl", prefix: "projects/optical-rl/" },
+  ]
+  const restricted = { edit_repo: "vault-private", edit_path: "projects/optical-rl/notes/x.qmd" }
+  assert.equal(pageHistory(restricted, {}, vaults).github, "HafeziGroupJQI/vault-optical-rl")
+  assert.equal(pageHistory(restricted, {}, vaults).repo, "vault-private")
+  const own = { edit_repo: "vault-private", edit_path: "projects/index.md" }
+  assert.equal(pageHistory(own, {}, vaults).github, undefined)
+  const open = { edit_repo: "vault", edit_path: "content/people/anish-goyal.md" }
+  assert.equal(pageHistory(open, {}, vaults).github, undefined)
+})
+
 test("the emitter writes each page's history from the build's histories", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "page-history-"))
   const saved = process.env.SITE_HISTORY

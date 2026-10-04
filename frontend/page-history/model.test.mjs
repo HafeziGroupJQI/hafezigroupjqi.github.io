@@ -32,6 +32,21 @@ test("reads public revisions from GitHub and private ones through the Worker", (
     fileHistoryUrl("vault-private", "code/fit.qmd"),
     "https://github.com/HafeziGroupJQI/vault-private/commits/main/code/fit.qmd",
   )
+  // A restricted vault's page: the build names its own repository.
+  const github = "HafeziGroupJQI/vault-optical-rl"
+  assert.equal(
+    commitUrl("vault-private", SHA, github),
+    `https://github.com/HafeziGroupJQI/vault-optical-rl/commit/${SHA}`,
+  )
+  assert.equal(
+    fileHistoryUrl("vault-private", "projects/optical-rl/notes/x.qmd", github),
+    "https://github.com/HafeziGroupJQI/vault-optical-rl/commits/main/projects/optical-rl/notes/x.qmd",
+  )
+  // Only a repository of the group's.
+  assert.equal(
+    commitUrl("vault-private", SHA, "evil/repo"),
+    `https://github.com/HafeziGroupJQI/vault-private/commit/${SHA}`,
+  )
 })
 
 test("knows each revision's file and the one before it, across moves", () => {

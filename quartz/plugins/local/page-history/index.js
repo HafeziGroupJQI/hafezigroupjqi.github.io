@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { PRIVATE_REPO, readVaults, vaultOf } from "../../../../tools/acl/vaults.mjs"
 
 // Each page's revisions, written next to its HTML (<slug>.history.json beside <slug>.html), for the
 // page's History button (frontend/page-history/). A page gets one when the build recorded its own
@@ -30,11 +31,21 @@ export function historyPath(output, data) {
   return path.join(output, slug + ".history.json")
 }
 
-/** A page's history file: its vault file and that file's revisions, newest first. */
-export function pageHistory(frontmatter, histories) {
+/**
+ * A page's history file: its vault file and that file's revisions, newest first. A file of a
+ * restricted vault mounted in the private one (`vaults`, worker/vaults.json) names that vault's
+ * GitHub repository (`github`), for the History's commit links; only its members get the file.
+ */
+export function pageHistory(frontmatter, histories, vaults = []) {
   const file = vaultFile(frontmatter)
   const { revisions = [], more = false } = histories[`${file.repo}:${file.path}`] ?? {}
-  return { ...file, revisions, more }
+  const vault = file.repo === PRIVATE_REPO ? vaultOf(vaults, file.path) : file.repo
+  return {
+    ...file,
+    ...(vault !== file.repo ? { github: `HafeziGroupJQI/${vault}` } : {}),
+    revisions,
+    more,
+  }
 }
 
 export default () => ({
@@ -43,13 +54,14 @@ export default () => ({
     const source = process.env.SITE_HISTORY
     const histories =
       source && fs.existsSync(source) ? JSON.parse(await fs.promises.readFile(source, "utf8")) : {}
+    const vaults = readVaults()
     for (const [, file] of content) {
       const destination = historyPath(ctx.argv.output, file.data)
       if (!destination) continue
       await fs.promises.mkdir(path.dirname(destination), { recursive: true })
       await fs.promises.writeFile(
         destination,
-        JSON.stringify(pageHistory(file.data.frontmatter, histories)),
+        JSON.stringify(pageHistory(file.data.frontmatter, histories, vaults)),
       )
       yield destination
     }

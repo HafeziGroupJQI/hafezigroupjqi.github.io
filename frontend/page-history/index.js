@@ -244,7 +244,7 @@ function historyDialog(url, edit = {}) {
               )
             : []),
           h("a", {
-            href: commitUrl(page.repo, revision.commit),
+            href: commitUrl(page.repo, revision.commit, page.github),
             text: revision.commit.slice(0, 7),
             title: "The commit on GitHub",
             rel: "noopener",
@@ -288,7 +288,11 @@ function historyDialog(url, edit = {}) {
       page.repo === "vault" ? "Public vault: " : "Private vault: ",
       h("code", { text: page.path }),
       " · ",
-      h("a", { href: fileHistoryUrl(page.repo, page.path), text: "on GitHub", rel: "noopener" }),
+      h("a", {
+        href: fileHistoryUrl(page.repo, page.path, page.github),
+        text: "on GitHub",
+        rel: "noopener",
+      }),
       ...(members ? [" · ", h("a", { href: "/recent", text: "recent changes" })] : []),
     )
     list.replaceChildren(...page.revisions.map((revision, i) => row(revision, i, page.revisions)))

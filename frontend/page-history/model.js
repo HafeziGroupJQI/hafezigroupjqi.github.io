@@ -22,11 +22,20 @@ export function revisionUrl(repo, commit, path) {
   return `/api/history/file?${new URLSearchParams({ repo, rev: commit, path })}`
 }
 
-export const commitUrl = (repo, commit) => `https://github.com/${REPOS[repo]}/commit/${commit}`
+/**
+ * The GitHub repository a history's file is in: the build names it (`github`) for a page of a
+ * restricted vault mounted in the private one (worker/vaults.json, quartz/plugins/local/page-history),
+ * whose history file only its members get; otherwise its vault's.
+ */
+export const githubRepo = (repo, github = null) =>
+  typeof github === "string" && /^HafeziGroupJQI\/[\w.-]+$/.test(github) ? github : REPOS[repo]
+
+export const commitUrl = (repo, commit, github = null) =>
+  `https://github.com/${githubRepo(repo, github)}/commit/${commit}`
 
 /** The file's full history on GitHub, older revisions included. */
-export const fileHistoryUrl = (repo, path) =>
-  `https://github.com/${REPOS[repo]}/commits/main/${encodePath(path)}`
+export const fileHistoryUrl = (repo, path, github = null) =>
+  `https://github.com/${githubRepo(repo, github)}/commits/main/${encodePath(path)}`
 
 /** Whether the History compares a file's versions: not a Wolfram notebook's, whose text is its
  *  whole front end's state (the Worker serves pages' only, worker/src/history.ts). */

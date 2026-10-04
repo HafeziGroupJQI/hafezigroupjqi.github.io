@@ -21,6 +21,7 @@ import { isLabGptPath, labGptRequest } from "./gpt/lab"
 import { isLabAgentPath, labAgent } from "./gpt/lab-agent"
 import { gptRoutes } from "./gpt/routes"
 import { prefsRoutes } from "./prefs"
+import { ratingRoutes } from "./ratings/routes"
 import { recordView, viewedPage } from "./ratings/views"
 import { navIdentity, profileRoutes } from "./profile/routes"
 import type { VaultFetch } from "./profile/vault"
@@ -281,6 +282,8 @@ export function createHandler(
     if (changes) return changes
     const prefs = await prefsRoutes(request, url, env, session, record)
     if (prefs) return prefs
+    const ratings = await ratingRoutes(request, url, env, session, record, MEMBER_PAGES)
+    if (ratings) return ratings
     const history = await historyRoutes(request, url, env, ctx, upstream)
     if (history) return history
     return problem(404, "not found")

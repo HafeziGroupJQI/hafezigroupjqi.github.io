@@ -7,18 +7,20 @@ import {
   type DraftRow,
   type Status,
   changesOf,
+  changesOfAll,
   needsReview,
   send,
   settle,
   stagedKey,
 } from "./drafts"
-import { PrivateVault } from "./github"
+import { type DraftRepo, PrivateVault, draftRepo } from "./github"
 import { baseKey, baseText, firstState, openConflict } from "../edit/conflicts"
 import { threeWay } from "../edit/merge"
 import { contentReport } from "../edit/rules"
 
 // The hourly merge of members' uploads and private page edits (the Worker's "2 * * * *" cron): a draft sent in an earlier hour whose pull request's validate check is green is marked
-// ready and merged into vault-private's main by rebase, as the member's own commit. A failed check or a conflict stays open for
+// ready and merged into its repository's main (vault-private's, or the restricted vault's its
+// files are in) by rebase, as the member's own commit. A failed check or a conflict stays open for
 // its author to revise or discard; a draft with something in it that runs waits, checked and
 // ready, for an admin to merge it on GitHub; a draft changed since it was sent waits for the next
 // send. Nothing reaches main without a green check. What GitHub doesn't answer is tried next hour.
@@ -57,7 +59,7 @@ async function mark(env: Env, row: DraftRow, status: Status, detail: Detail): Pr
 
 async function settleDraft(
   env: Env,
-  repo: PrivateVault,
+  repo: DraftRepo,
   row: DraftRow,
   result: MergeResult,
 ): Promise<void> {
@@ -214,7 +216,7 @@ async function settleDraft(
 }
 
 /** Rebuild a page edit made on top of a change that has merged since, on main as it is now. */
-async function rebuild(env: Env, repo: PrivateVault, row: DraftRow, result: MergeResult) {
+async function rebuild(env: Env, repo: DraftRepo, row: DraftRow, result: MergeResult) {
   const [change] = await changesOf(env, row.id)
   const [main, staged, base] = await Promise.all([
     repo.file(change.path),
@@ -293,8 +295,7 @@ export async function mergeDue(
     waiting: [],
     closed: [],
   }
-  const repo = new PrivateVault(env, fetcher)
-  if (!repo.ready) return result
+  if (!new PrivateVault(env, fetcher).ready) return result
   // Due drafts first, oldest first; then those waiting for an admin, to see whether one merged.
   const { results } = await env.DB.prepare(
     `SELECT * FROM upload_drafts
@@ -304,10 +305,18 @@ export async function mergeDue(
   )
     .bind(now + SLACK_MS, perRun)
     .all<DraftRow>()
+  // Each in its own repository: vault-private, or the restricted vault its files are in.
+  const changes = await changesOfAll(
+    env,
+    results.map((row) => row.id),
+  )
   for (const row of results)
-    await settleDraft(env, repo, row, result).catch((error) => {
-      console.error(`merging upload ${row.id} failed`, error)
-      result.waiting.push(row.id)
-    })
+    await Promise.resolve()
+      .then(() => draftRepo(env, fetcher, row, changes.get(row.id) ?? []))
+      .then((repo) => settleDraft(env, repo, row, result))
+      .catch((error) => {
+        console.error(`merging upload ${row.id} failed`, error)
+        result.waiting.push(row.id)
+      })
   return result
 }

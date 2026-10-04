@@ -1,13 +1,13 @@
 import { createHandler } from "../src/app"
 import manifest from "./fixtures/docs-manifest.json"
 import skills from "./fixtures/gpt-skills.json"
-import { privateVault, vault } from "./vault-fake"
+import { opticalVault, privateVault, privateVaults, vault } from "./vault-fake"
 
 // The Durable Object class must be exported from the test entry module too.
 export { DeviceHub } from "../src/devices/hub"
 export { ComputeRelay } from "../src/compute/relay"
 // The public vault's GitHub API (profile edits) and vault-private's (uploads), in memory.
-export { privateVault, vault }
+export { opticalVault, privateVault, privateVaults, vault }
 
 // The test Worker shares the isolate with the tests, so they can inspect the GitHub blob calls.
 export const upstreamCalls: string[] = []
@@ -15,6 +15,8 @@ export const upstreamBodies: Record<string, [number, string]> = {
   "0123456789abcdef0123456789abcdef01234567": [200, "%PDF-1.4 laser"],
   fedcba9876543210fedcba9876543210fedcba98: [500, "boom"],
   aaaabbbbccccddddeeeeffff0000111122223333: [200, "<svg></svg>"],
+  // A document of the restricted vault mounted at projects/optical-rl/ (worker/vaults.json).
+  "0b71ca1000000000000000000000000000000001": [200, "%PDF-1.4 optical"],
 }
 
 // A stand-in for GitHub OAuth + REST during sign-in (AUTH_MODE=github tests).
@@ -153,7 +155,7 @@ export default createHandler(manifest, {
     return new Response("", { status: 404 })
   },
   vault: vault.fetch,
-  privateVault: privateVault.fetch,
+  privateVault: privateVaults,
   upstream: async (input) => {
     upstreamCalls.push(input)
     const sha = input.split("/").pop() ?? ""

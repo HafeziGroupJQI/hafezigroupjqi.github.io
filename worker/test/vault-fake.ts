@@ -79,6 +79,8 @@ export class FakeVault {
   constructor(
     readonly repo = "HafeziGroupJQI/vault",
     private token = "test-vault-token",
+    /** Pull requests' GraphQL ids start with this (two fakes behind one fetch keep theirs apart). */
+    readonly nodePrefix = "PR_",
   ) {}
 
   get head(): string {
@@ -443,7 +445,7 @@ export class FakeVault {
       const number = this.pulls.size + 1
       const pull: FakePull = {
         number,
-        node_id: `PR_${number}`,
+        node_id: `${this.nodePrefix}${number}`,
         title: body.title,
         body: body.body,
         head: body.head,
@@ -496,3 +498,21 @@ export const privateVault = new FakeVault(
   "HafeziGroupJQI/vault-private",
   "test-vault-private-token",
 )
+
+/** A restricted vault mounted in vault-private (worker/vaults.json), with the same token. */
+export const opticalVault = new FakeVault(
+  "HafeziGroupJQI/vault-optical-rl",
+  "test-vault-private-token",
+  "PR_optical_",
+)
+
+/** vault-private and the restricted vaults, as the Worker's one private-vault fetch reaches them:
+ *  each request goes to the repository it names (a GraphQL call, to the one whose pull it is). */
+export const privateVaults = async (input: string, init: RequestInit): Promise<Response> => {
+  const url = new URL(input)
+  const optical =
+    url.pathname === "/graphql"
+      ? String(JSON.parse(String(init.body)).variables?.id).startsWith(opticalVault.nodePrefix)
+      : url.pathname.startsWith(`/repos/${opticalVault.repo}/`)
+  return (optical ? opticalVault : privateVault).fetch(input, init)
+}

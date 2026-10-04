@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk"
-import type { Upstream } from "../docs"
+import { type Upstream, documentRepo } from "../docs"
 import type { DocumentEntry, Env } from "../env"
 import { HttpError, SANDBOX_CSP } from "../http"
 import type { Knowledge, Page } from "./knowledge"
@@ -234,6 +234,7 @@ function textDocument(title: string, context: string, data: string): Block {
 /** Snapshot a vault-private binary into R2 (keyed by its immutable git blob sha). */
 async function snapshotDocument(
   env: Env,
+  path: string,
   entry: DocumentEntry,
   upstream: Upstream,
 ): Promise<string> {
@@ -241,7 +242,7 @@ async function snapshotDocument(
   if (await env.ARTIFACTS.head(key)) return key
   if (!env.GITHUB_DOCS_TOKEN) throw new HttpError(503, "the document store is not configured")
   const blob = await upstream(
-    `https://api.github.com/repos/${env.DOCS_REPO}/git/blobs/${entry.sha}`,
+    `https://api.github.com/repos/${documentRepo(env, path, entry)}/git/blobs/${entry.sha}`,
     {
       headers: {
         accept: "application/vnd.github.raw+json",
@@ -305,7 +306,7 @@ export async function refContent(
     }
   const kind = uploadKind(entry.contentType, name)
   if (kind === "text") {
-    const key = await snapshotDocument(env, entry, upstream)
+    const key = await snapshotDocument(env, path, entry, upstream)
     const text = (await (await env.ARTIFACTS.get(key))!.text()).slice(
       offset,
       offset + MAX_TEXT_FILE_CHARS,
@@ -313,7 +314,7 @@ export async function refContent(
     return { blocks: [textDocument(name, url, text)], label }
   }
   if (kind === "pdf" || kind === "image") {
-    const key = await snapshotDocument(env, entry, upstream)
+    const key = await snapshotDocument(env, path, entry, upstream)
     const blob: BlobRef = {
       type: "hafezi_blob",
       key,

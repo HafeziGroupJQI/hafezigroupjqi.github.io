@@ -1,0 +1,4 @@
+[
+  { "repo": "vault-private", "prefix": "" },
+  { "repo": "vault-optical-rl", "prefix": "projects/optical-rl/" }
+]

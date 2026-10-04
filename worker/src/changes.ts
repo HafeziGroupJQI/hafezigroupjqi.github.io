@@ -1,5 +1,6 @@
 import type { Env } from "./env"
 import { HttpError, json } from "./http"
+import { VAULTS, vaultNamed, vaultOf, vaultRepo } from "./vaults"
 
 // The site's activity (D1 changes, migration 0014), like MediaWiki's recentchanges: each change to
 // a file of either vault, one row per file. Every members deploy imports both vaults' commits
@@ -8,12 +9,13 @@ import { HttpError, json } from "./http"
 // the members' /recent feed (frontend/recent/), each member's contributions (?login=) and a page's
 // pending changes (?path=). Members only: it names the private vault's files and unmerged work.
 
-export type ChangeRepo = "vault" | "vault-private"
+/** The public vault, vault-private, or a restricted vault mounted in it (src/vaults.ts). */
+export type ChangeRepo = "vault" | "vault-private" | (string & {})
 export type ChangeKind = "new" | "edit" | "rename" | "delete" | "upload" | "profile"
 export type ChangeState =
   "draft" | "sent" | "review" | "failed" | "conflict" | "merged" | "discarded"
 
-export const REPOS: ChangeRepo[] = ["vault", "vault-private"]
+export const REPOS: ChangeRepo[] = ["vault", ...VAULTS.map((vault) => vault.repo)]
 export const KINDS: ChangeKind[] = ["new", "edit", "rename", "delete", "upload", "profile"]
 export const STATES: ChangeState[] = [
   "draft",
@@ -55,7 +57,7 @@ export const PAGE_MAX = 100
 export const repoName = (env: Env, repo: ChangeRepo) =>
   repo === "vault"
     ? env.VAULT_REPO || "HafeziGroupJQI/vault"
-    : env.DOCS_REPO || "HafeziGroupJQI/vault-private"
+    : vaultRepo(env, vaultNamed(repo) ?? vaultOf(""))
 
 // ---- what the site records as members act: one statement each, since a Workers Free invocation
 // may make 50 D1 queries, the hourly runs' included ----
@@ -125,7 +127,7 @@ export function recordChanges(env: Pick<Env, "DB">, changes: SiteChange[]): D1Pr
 
 /** A draft's files as the changes it sends: an upload's each, or the page an edit changes. */
 export function draftChanges(
-  draft: { id: string; login: string; repo?: ChangeRepo; kind?: "upload" | "edit" },
+  draft: { id: string; login: string; repo?: "vault" | "vault-private"; kind?: "upload" | "edit" },
   files: {
     path: string
     action: "add" | "replace" | "rename" | "delete"
@@ -138,7 +140,8 @@ export function draftChanges(
     at: sent.at,
     login: draft.login,
     author: sent.author,
-    repo: draft.repo ?? "vault-private",
+    // A private file's change is its repository's: vault-private, or a restricted vault's.
+    repo: draft.repo === "vault" ? "vault" : vaultOf(file.path).repo,
     path: file.path,
     from_path: file.from_path,
     kind:

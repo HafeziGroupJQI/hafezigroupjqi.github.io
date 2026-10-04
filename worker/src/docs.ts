@@ -1,5 +1,6 @@
 import type { DocumentEntry, Env } from "./env"
 import { SANDBOX_CSP, problem, withPrivateHeaders } from "./http"
+import { vaultOf, vaultRepo } from "./vaults"
 
 const USER_AGENT = "hafezi-members-worker"
 
@@ -7,6 +8,14 @@ const USER_AGENT = "hafezi-members-worker"
 // git blob sha; the Worker fetches the blob on first use and keeps it in the edge cache
 // under that sha, so a changed file gets a new key and nothing needs purging.
 export type Upstream = (input: string, init: RequestInit) => Promise<Response>
+
+/** A document's path in the private vault: as the build gives it, else its site path's. */
+export const documentPath = (sitePath: string, entry: DocumentEntry) =>
+  entry.path ?? sitePath.replace(/^\/?resources\//, "")
+
+/** The GitHub repository a document's blob is in: vault-private, or the restricted vault it is in. */
+export const documentRepo = (env: Env, sitePath: string, entry: DocumentEntry) =>
+  vaultRepo(env, vaultOf(documentPath(sitePath, entry)))
 
 export async function serveDocument(
   request: Request,
@@ -35,7 +44,7 @@ export async function serveDocument(
   if (cached) return finish(cached)
   if (!env.GITHUB_DOCS_TOKEN) return problem(503, "document store not configured")
   const blob = await upstream(
-    `https://api.github.com/repos/${env.DOCS_REPO}/git/blobs/${entry.sha}`,
+    `https://api.github.com/repos/${documentRepo(env, sitePath, entry)}/git/blobs/${entry.sha}`,
     {
       headers: {
         accept: "application/vnd.github.raw+json",

@@ -5,7 +5,7 @@ import { HttpError } from "../http"
 import { dueAt } from "../profile/routes"
 import { CLAIM_MS, UNCLAIMED } from "../edit/conflicts"
 import { RepoConflict, RepoMissing } from "../repo"
-import { type DraftRepo, type RepoName, repoFullName } from "./github"
+import { type DraftRepo, type RepoName, draftRepoName } from "./github"
 
 // Members' upload drafts in D1 (upload_drafts, upload_changes) and R2 (uploads/<id>/<path>), and
 // what turns one into a pull request on vault-private: the routes (routes.ts), the hourly merge
@@ -114,7 +114,7 @@ export async function liveDrafts(env: Env) {
     results.map((row) => row.id),
   )
   return results.map((row) =>
-    draftView(repoFullName(env, row.repo), row, changes.get(row.id) ?? []),
+    draftView(draftRepoName(env, row, changes.get(row.id) ?? []), row, changes.get(row.id) ?? []),
   )
 }
 

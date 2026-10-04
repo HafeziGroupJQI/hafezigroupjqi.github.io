@@ -1,6 +1,7 @@
 import type { Env } from "../env"
 import { HttpError } from "../http"
 import { GitRepo, type ListEntry, type RepoFetch } from "../repo"
+import { PRIVATE_VAULT, type VaultMount, oneVault, vaultOf, vaultRepo } from "../vaults"
 
 // The repositories members' drafts go to, each with a token of its own that may write it:
 // vault-private (DOCS_REPO, GITHUB_VAULT_PRIVATE_TOKEN: a fine-grained token on that repository
@@ -33,7 +34,9 @@ export interface Check {
   description: string | null
 }
 
-/** The two vaults, as a draft names its repository (D1 upload_drafts.repo). */
+/** The two vaults, as a draft names its repository (D1 upload_drafts.repo). A private draft's
+ *  files may be in a restricted vault mounted in vault-private (src/vaults.ts): its commit and pull
+ *  request go to that vault's repository. */
 export type RepoName = "vault" | "vault-private"
 export const REPO_NAMES: RepoName[] = ["vault", "vault-private"]
 
@@ -48,10 +51,12 @@ export class DraftRepo extends GitRepo {
     env: Env,
     fetcher: RepoFetch,
     readonly name: RepoName,
+    /** For the private vault, which of its repositories (vault-private or a restricted vault). */
+    readonly vault: VaultMount = PRIVATE_VAULT,
   ) {
     super(
       fetcher,
-      repoFullName(env, name),
+      name === "vault" ? repoFullName(env, name) : vaultRepo(env, vault),
       name === "vault" ? env.GITHUB_VAULT_TOKEN : env.GITHUB_VAULT_PRIVATE_TOKEN,
       name === "vault"
         ? "editing public pages is not set up yet: the site has no token for the vault"
@@ -146,6 +151,31 @@ export class DraftRepo extends GitRepo {
     return this.answer(response, "PUT", `/pulls/${number}/merge`)
   }
 }
+
+/** The paths a draft's changes touch: each file, and a renamed file's old name. */
+export const touched = (changes: { path: string; from_path: string | null }[]) =>
+  changes.flatMap((change) => (change.from_path ? [change.path, change.from_path] : [change.path]))
+
+/** The repository a draft's changes go to: the public vault, or the private vault's repository its
+ *  files are in. */
+export const draftRepo = (
+  env: Env,
+  fetcher: RepoFetch,
+  row: { repo: RepoName },
+  changes: { path: string; from_path: string | null }[],
+) =>
+  new DraftRepo(
+    env,
+    fetcher,
+    row.repo,
+    row.repo === "vault" ? PRIVATE_VAULT : oneVault(touched(changes)),
+  )
+
+/** A draft's repository's "owner/name", for its links (never refused, unlike draftRepo). */
+export const draftRepoName = (env: Env, row: { repo: RepoName }, changes: { path: string }[]) =>
+  row.repo === "vault"
+    ? repoFullName(env, "vault")
+    : vaultRepo(env, vaultOf(changes[0]?.path ?? ""))
 
 /** vault-private, where members' uploads go. */
 export class PrivateVault extends DraftRepo {

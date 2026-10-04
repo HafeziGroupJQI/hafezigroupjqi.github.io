@@ -19,7 +19,7 @@ import {
   send,
   stagedKey,
 } from "./drafts"
-import { PrivateVault, repoFullName } from "./github"
+import { DraftRepo, PrivateVault, draftRepo, draftRepoName, touched } from "./github"
 import {
   CHANGES_MAX,
   DRAFT_MAX,
@@ -33,6 +33,7 @@ import {
   vaultFolder,
   vaultPath,
 } from "./rules"
+import { mountsIn, oneVault, vaultOf, vaultOfFolder } from "../vaults"
 
 // Members' uploads to vault-private (/uploads): files added, replaced, renamed or deleted from
 // the site. A draft is one change set, staged in R2 and D1 (drafts.ts) until the member sends it;
@@ -164,11 +165,19 @@ export async function uploadRoutes(
   // Code in a member's lab can read its ticket; what reaches the vault comes from the site.
   if (session.lab) throw new HttpError(403, "uploads are made from the members site")
   const repo = new PrivateVault(env, fetcher)
+  // A path's repository: vault-private, or the restricted vault mounted where it is (src/vaults.ts).
+  const repoAt = (path: string) => new DraftRepo(env, fetcher, "vault-private", vaultOf(path))
+  const repoOfDraft = async (row: DraftRow) =>
+    draftRepo(env, fetcher, row, await changesOf(env, row.id))
   // A draft's links go to its own repository: a public page's edit is the public vault's.
   const view = async (id: string) => {
     const row = (await draftRow(env, id))!
-    return draftView(repoFullName(env, row.repo), row, await changesOf(env, id))
+    const changes = await changesOf(env, id)
+    return draftView(draftRepoName(env, row, changes), row, changes)
   }
+  /** A draft holds files of one repository: a change to another's is refused. */
+  const sameVault = (changes: ChangeRow[], ...paths: string[]) =>
+    oneVault([...touched(changes), ...paths])
 
   if (path === "/api/uploads" && request.method === "GET") {
     // Every live draft, and the settled ones of the last 30 days.
@@ -190,7 +199,11 @@ export async function uploadRoutes(
       types: Object.keys(TYPES),
       limits: { file: FILE_MAX, draft: DRAFT_MAX, changes: CHANGES_MAX, drafts: DRAFTS_MAX },
       drafts: results.map((row) =>
-        draftView(repoFullName(env, row.repo), row, changes.get(row.id) ?? []),
+        draftView(
+          draftRepoName(env, row, changes.get(row.id) ?? []),
+          row,
+          changes.get(row.id) ?? [],
+        ),
       ),
     })
   }
@@ -198,8 +211,14 @@ export async function uploadRoutes(
   // A folder of the vault at main, for choosing where files go and which to replace or move.
   if (path === "/api/uploads/folder" && request.method === "GET") {
     const folder = vaultFolder(url.searchParams.get("path"))
-    const listing = await repo.list(folder)
-    const entries = (listing ?? [])
+    const listing = await new DraftRepo(env, fetcher, "vault-private", vaultOfFolder(folder)).list(
+      folder,
+    )
+    // Restricted vaults mounted here are folders of it too.
+    const mounts = mountsIn(folder)
+      .filter(({ name }) => !listing?.some((entry) => entry.name === name))
+      .map(({ name, path }) => ({ name, path, type: "dir" as const, sha: "", size: 0 }))
+    const entries = [...(listing ?? []), ...mounts]
       .filter((entry) =>
         entry.type === "dir"
           ? folder
@@ -218,7 +237,7 @@ export async function uploadRoutes(
       .sort((a, b) =>
         a.type === b.type ? a.name.localeCompare(b.name) : a.type === "folder" ? -1 : 1,
       )
-    return json({ path: folder, exists: listing !== null, entries })
+    return json({ path: folder, exists: listing !== null || mounts.length > 0, entries })
   }
 
   if (path === "/api/uploads/drafts" && request.method === "POST") {
@@ -258,7 +277,7 @@ export async function uploadRoutes(
     // While a pull request waits for its hour, what its check says so far.
     const check =
       row.status === "open" && row.head_sha
-        ? await repo.check(row.head_sha).catch((error) => {
+        ? await (await repoOfDraft(row)).check(row.head_sha).catch((error) => {
             console.error("reading an upload's check failed", error)
             return null
           })
@@ -282,7 +301,7 @@ export async function uploadRoutes(
   if (!part && request.method === "DELETE") {
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true })
-    await discard(env, repo, row, "discarded by its author")
+    await discard(env, await repoOfDraft(row), row, "discarded by its author")
     record(`${row.kind === "edit" ? "edit" : "uploads"}.discard`, row.id, { pull: row.pr_number })
     return json(await view(row.id))
   }
@@ -323,6 +342,7 @@ export async function uploadRoutes(
       (c) => c.path === target && (c.action === "add" || c.action === "replace"),
     )
     const others = changes.filter((c) => c !== existing)
+    sameVault(changes, target)
     if (inDraft(others, target))
       throw new HttpError(
         409,
@@ -338,7 +358,7 @@ export async function uploadRoutes(
     let action = existing?.action
     let base = existing?.base_sha ?? null
     if (!action) {
-      const { found, clash } = await repo.entry(target)
+      const { found, clash } = await repoAt(target).entry(target)
       if (found && found.type !== "file") throw new HttpError(409, `${target} is a folder`)
       if (clash)
         throw new HttpError(
@@ -382,7 +402,7 @@ export async function uploadRoutes(
     }
     const changes = await changesOf(env, row.id)
     const existing = async (path: string) => {
-      const { found } = await repo.entry(path)
+      const { found } = await repoAt(path).entry(path)
       if (found?.type !== "file") throw new HttpError(404, `${path} isn't in the vault`)
       return found
     }
@@ -411,8 +431,9 @@ export async function uploadRoutes(
         )
       taken(from)
       taken(to)
+      sameVault(changes, from, to)
       const source = await existing(from)
-      const { found, clash } = await repo.entry(to)
+      const { found, clash } = await repoAt(to).entry(to)
       if (found) throw new HttpError(409, `${to} is already in the vault`)
       // Only a rename of the file itself may change just the case of its name.
       if (clash && `${to.slice(0, to.lastIndexOf("/") + 1)}${clash}` !== from)
@@ -435,6 +456,7 @@ export async function uploadRoutes(
     } else if (body.action === "delete") {
       const target = vaultPath(body.path)
       taken(target)
+      sameVault(changes, target)
       const source = await existing(target)
       await insertChange(env, {
         draft_id: row.id,
@@ -478,7 +500,7 @@ export async function uploadRoutes(
     if (!changes.length) throw new HttpError(422, "add a file, a rename or a deletion first")
     await underLimit(env, session.login, ["uploads.send"], SENDS_PER_DAY, "sends")
     const { display_name } = await navIdentity(env, session)
-    await send(env, repo, row, changes, display_name)
+    await send(env, draftRepo(env, fetcher, row, changes), row, changes, display_name)
     const sent = await view(row.id)
     record("uploads.send", row.id, {
       pull: sent.pull?.number,

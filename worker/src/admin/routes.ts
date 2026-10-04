@@ -10,8 +10,8 @@ import { decideClaim, pendingClaims } from "../profile/routes"
 import type { VaultFetch } from "../profile/vault"
 import type { RepoFetch } from "../repo"
 import type { Session } from "../session"
-import { discard, draftRow, liveDrafts } from "../uploads/drafts"
-import { PrivateVault } from "../uploads/github"
+import { changesOf, discard, draftRow, liveDrafts } from "../uploads/drafts"
+import { draftRepo } from "../uploads/github"
 
 // Group-admin console: the audit log, the admin allow-list, Hafezi GPT usage + budgets,
 // members' claims of People pages, members' upload drafts, members' Hafezi GPT conversations and
@@ -317,7 +317,7 @@ export async function adminRoutes(
     if (!row) throw new HttpError(404, "no such draft")
     await discard(
       env,
-      new PrivateVault(env, privateVaultFetch),
+      draftRepo(env, privateVaultFetch, row, await changesOf(env, row.id)),
       row,
       `discarded by ${session.login}`,
     )

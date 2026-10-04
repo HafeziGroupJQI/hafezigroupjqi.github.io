@@ -52,6 +52,8 @@ export interface Env {
 }
 
 export interface DocumentEntry {
+  /** Its path in the private vault, when the build says (else its site path without resources/). */
+  path?: string
   sha: string
   size: number
   contentType: string

@@ -21,6 +21,11 @@
       "sha": "aaaabbbbccccddddeeeeffff0000111122223333",
       "size": 11,
       "contentType": "text/plain; charset=utf-8"
+    },
+    "resources/projects/optical-rl/files/run.pdf": {
+      "sha": "0b71ca1000000000000000000000000000000001",
+      "size": 16,
+      "contentType": "application/pdf"
     }
   }
 }

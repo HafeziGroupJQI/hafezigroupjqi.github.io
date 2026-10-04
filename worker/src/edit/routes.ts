@@ -19,7 +19,8 @@ import {
   send,
   stagedKey,
 } from "../uploads/drafts"
-import { DraftRepo, REPO_NAMES, type RepoName, repoFullName } from "../uploads/github"
+import { DraftRepo, REPO_NAMES, type RepoName, draftRepoName } from "../uploads/github"
+import { PRIVATE_VAULT, vaultOf } from "../vaults"
 import { SENDS_PER_DAY, ownDraft, underLimit } from "../uploads/routes"
 import { draftChanges, recordChanges, unsentChanges } from "../changes"
 import {
@@ -193,9 +194,14 @@ export async function editRoutes(
   if (path !== "/api/edit" && !path.startsWith("/api/edit/")) return null
   // Code in a member's lab can read its ticket; what reaches a vault comes from the site.
   if (session.lab) throw new HttpError(403, "pages are edited from the members site")
-  const repoOf = (name: RepoName) => new DraftRepo(env, fetchers[name], name)
-  const view = async (row: DraftRow) =>
-    draftView(repoOf(row.repo).repo, row, await changesOf(env, row.id))
+  // A page's repository: the public vault, vault-private, or the restricted vault mounted where
+  // the page is (src/vaults.ts). An edit is one page, so its draft is in that page's repository.
+  const repoOf = (name: RepoName, path: string) =>
+    new DraftRepo(env, fetchers[name], name, name === "vault" ? PRIVATE_VAULT : vaultOf(path))
+  const view = async (row: DraftRow) => {
+    const changes = await changesOf(env, row.id)
+    return draftView(draftRepoName(env, row, changes), row, changes)
+  }
 
   // A page's file at main, the member's own draft of it, and who else is editing it.
   if (path === "/api/edit/source" && request.method === "GET") {
@@ -203,7 +209,7 @@ export async function editRoutes(
     const { path: file, kind } = editablePath(name, url.searchParams.get("path"))
     // A folder's own page that isn't there yet (from its automatic folder page).
     const making = url.searchParams.get("new") === "1" ? newIndexPath(name, file) : null
-    const repo = repoOf(name)
+    const repo = repoOf(name, file)
     const [main, mine, others, admin] = await Promise.all([
       repo.file(file),
       liveEdit(env, session.login, name, file),
@@ -265,7 +271,7 @@ export async function editRoutes(
     const then = from ? editablePath(name, from).path : file
     if (mode === "undo" && kind === "ipynb")
       throw new HttpError(422, "a notebook's change can't be undone on its own: restore a version")
-    const repo = repoOf(name)
+    const repo = repoOf(name, file)
     const [commit, at, main] = await Promise.all([
       repo.commitInfo(rev),
       repo.file(then, rev),
@@ -317,7 +323,7 @@ export async function editRoutes(
     // A revert from the page's History says what it restores or undoes.
     const revert =
       body.revert === undefined || body.revert === null ? null : revertParam(body.revert)
-    const repo = repoOf(name)
+    const repo = repoOf(name, file)
     if (!repo.ready) throw new HttpError(503, "editing isn't set up yet: ask an admin")
     const access = await editAccess(env, session, name, file)
     if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
@@ -486,7 +492,7 @@ export async function editRoutes(
     // someone else's that was dropped on the way shows in the audit log.
     let rebase: { from: string | null; to: string; clean: boolean } | null = null
     if (base !== null) {
-      const repo = repoOf(row.repo)
+      const repo = repoOf(row.repo, change.path)
       const main = await repo.file(change.path)
       if (main?.sha !== base)
         throw new HttpError(409, "that isn't main's version of the page; load it again")
@@ -520,7 +526,7 @@ export async function editRoutes(
         first.sent_at === null
       )
         throw new HttpError(409, "that isn't a sent change to this page")
-      const their = await sentText(env, repoOf(row.repo), first, change.path)
+      const their = await sentText(env, repoOf(row.repo, change.path), first, change.path)
       if (their === null) throw new HttpError(409, "that change's text is gone")
       // The member built on the version they were shown: if its author sent a new one since,
       // this draft would drop what that one added.
@@ -598,7 +604,7 @@ export async function editRoutes(
     const report = checkEdit(row.repo, change.path, text)
     if (report.problems.length) throw new HttpError(422, report.problems.join("; "))
     await underLimit(env, session.login, ["uploads.send", "edit.send"], SENDS_PER_DAY, "sends")
-    const repo = repoOf(row.repo)
+    const repo = repoOf(row.repo, change.path)
     const { display_name } = await navIdentity(env, session)
     // Main as it is now: a page that changed there since the member loaded it comes back merged
     // with their text, or with what changed for them to take in (conflicts.ts).
@@ -662,7 +668,7 @@ export async function editRoutes(
         429,
         `you have ${CONFLICTS_OPEN_MAX} changes waiting to be settled; withdraw one first`,
       )
-    const repo = repoOf(row.repo)
+    const repo = repoOf(row.repo, change.path)
     const check = await checkSend(env, repo, row, change, text, access)
     if (check.kind !== "pending" && check.kind !== "main")
       throw new HttpError(
@@ -736,7 +742,8 @@ export async function editRoutes(
   if (!part && request.method === "DELETE") {
     requireMutation(request, env)
     const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
-    await discard(env, repoOf(row.repo), row, "discarded by its author")
+    const [change] = await changesOf(env, row.id)
+    await discard(env, repoOf(row.repo, change?.path ?? ""), row, "discarded by its author")
     record("edit.discard", row.id, { pull: row.pr_number })
     return json(await view((await draftRow(env, row.id))!))
   }
@@ -795,14 +802,14 @@ async function conflictRoutes(
   session: Session,
   record: Auditor,
   [, id, part]: RegExpMatchArray,
-  repoOf: (name: RepoName) => DraftRepo,
+  repoOf: (name: RepoName, path: string) => DraftRepo,
 ): Promise<Response> {
   // The two changes and a proposed merge, for the settle view (/edit?conflict=<id>): its two
   // editors and admins only.
   if (!part && request.method === "GET") {
     const { row, view } = await visibleConflict(env, session, id)
     if (row.state !== "open") return json({ conflict: view, due_at: null })
-    const { texts } = await conflictTexts(env, repoOf(row.repo), row)
+    const { texts } = await conflictTexts(env, repoOf(row.repo, row.path), row)
     return json({
       conflict: view,
       ...texts,
@@ -832,7 +839,7 @@ async function conflictRoutes(
     const choice = body.choice
     if (choice !== "first" && choice !== "second" && choice !== "merged")
       throw new HttpError(422, "choice must be first, second or merged")
-    const repo = repoOf(row.repo)
+    const repo = repoOf(row.repo, row.path)
     const { display_name } = await navIdentity(env, session)
     const settler = plainName(display_name, session.login)
     const now = Date.now()
@@ -982,7 +989,11 @@ async function conflictRoutes(
     const draft = (await draftRow(env, row.draft_id))!
     return json({
       conflict: { ...view, state: "resolved", resolution: choice, can_settle: false },
-      draft: draftView(repoFullName(env, draft.repo), draft, await changesOf(env, draft.id)),
+      draft: draftView(
+        draftRepoName(env, draft, await changesOf(env, draft.id)),
+        draft,
+        await changesOf(env, draft.id),
+      ),
     })
   }
 
@@ -1013,7 +1024,11 @@ async function conflictRoutes(
     const draft = (await draftRow(env, row.draft_id))!
     return json({
       conflict: { ...view, state: "withdrawn", can_settle: false, can_withdraw: false },
-      draft: draftView(repoFullName(env, draft.repo), draft, await changesOf(env, draft.id)),
+      draft: draftView(
+        draftRepoName(env, draft, await changesOf(env, draft.id)),
+        draft,
+        await changesOf(env, draft.id),
+      ),
     })
   }
   throw new HttpError(405, "method not allowed")

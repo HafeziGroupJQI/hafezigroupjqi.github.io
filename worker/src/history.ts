@@ -2,6 +2,7 @@ import type { Upstream } from "./docs"
 import type { Env } from "./env"
 import { HttpError, SANDBOX_CSP, withPrivateHeaders } from "./http"
 import { vaultPath } from "./uploads/rules"
+import { PRIVATE_VAULT, vaultNamed, vaultOf, vaultRepo } from "./vaults"
 
 // A private page's file as it was at a commit, for the page's History (frontend/page-history/):
 // GET /api/history/file?repo=vault-private&rev=<commit>&path=<file>, members only, pages only
@@ -35,11 +36,14 @@ export async function historyRoutes(
   if (url.pathname !== "/api/history/file") return null
   if (request.method !== "GET" && request.method !== "HEAD")
     throw new HttpError(405, "method not allowed")
-  if (url.searchParams.get("repo") !== "vault-private")
+  // vault-private, or a restricted vault mounted in it: either way the page's own repository is
+  // asked, the one its path is in (src/vaults.ts).
+  if (!vaultNamed(url.searchParams.get("repo") ?? ""))
     throw new HttpError(422, "only the private vault's revisions come from here")
   const rev = url.searchParams.get("rev") ?? ""
   if (!COMMIT.test(rev)) throw new HttpError(422, "rev must be a commit's full sha")
   const path = historyPath(url.searchParams.get("path"))
+  const vault = vaultOf(path)
   // Private and never stored by the browser, as every member answer is (src/app.ts): the edge
   // cache is what spares GitHub.
   const finish = (response: Response) => {
@@ -47,12 +51,17 @@ export async function historyRoutes(
     out.headers.set("content-security-policy", SANDBOX_CSP)
     return out
   }
-  const key = new Request(new URL(`/__history/${rev}/${encodeURIComponent(path)}`, url).toString())
+  const key = new Request(
+    new URL(
+      `/__history/${vault === PRIVATE_VAULT ? "" : `${vault.repo}/`}${rev}/${encodeURIComponent(path)}`,
+      url,
+    ).toString(),
+  )
   const cached = await caches.default.match(key)
   if (cached) return finish(cached)
   if (!env.GITHUB_DOCS_TOKEN) throw new HttpError(503, "the document store is not configured")
   const file = await upstream(
-    `https://api.github.com/repos/${env.DOCS_REPO}/contents/${path
+    `https://api.github.com/repos/${vaultRepo(env, vault)}/contents/${path
       .split("/")
       .map(encodeURIComponent)
       .join("/")}?ref=${rev}`,

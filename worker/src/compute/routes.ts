@@ -1,3 +1,4 @@
+import { computeAcl } from "../acl/compute"
 import { requireRead } from "../acl/index"
 import { requireMutation } from "../auth"
 import { hashSecret } from "../devices/keys"
@@ -64,12 +65,17 @@ export async function computeHostRoute(
   url: URL,
   env: Env,
 ): Promise<Response | null> {
-  if (url.pathname !== `${PREFIX}/host`) return null
+  if (url.pathname !== `${PREFIX}/host` && url.pathname !== `${PREFIX}/acl`) return null
   if (!env.COMPUTE_HOST_KEY_HASH) throw new HttpError(503, "compute is not configured")
   const key = bearer(request)
   if (!key) throw new HttpError(401, "host key required")
   if (!timingSafeEqual(await hashSecret(key), env.COMPUTE_HOST_KEY_HASH.trim().toLowerCase()))
     throw new HttpError(401, "unknown host key")
+  // Who may read which restricted vault and rule, for the host's ~/published mounts (src/acl/).
+  if (url.pathname === `${PREFIX}/acl`) {
+    if (request.method !== "GET") throw new HttpError(405, "method not allowed")
+    return withPrivateHeaders(await computeAcl(url, env))
+  }
   if (request.headers.get("upgrade") !== "websocket")
     throw new HttpError(426, "expected websocket upgrade")
   return relay(env).fetch("https://relay/host", request)

@@ -124,6 +124,7 @@ export function createHandler(
       const isAgent =
         url.pathname.startsWith("/api/agent/") ||
         url.pathname === "/api/compute/host" ||
+        url.pathname === "/api/compute/acl" ||
         isLabPath(url.pathname)
       if (request.method === "OPTIONS" && !isAgent) return preflight(origin, allowed)
       let response: Response

@@ -142,6 +142,19 @@ export async function personOf(env: Pick<Env, "DB">, login: string): Promise<str
   return person
 }
 
+/** Every login's approved People page, at once (the compute host's question about everyone). */
+export async function peopleOf(env: Pick<Env, "DB">): Promise<Map<string, string>> {
+  const { results } = await env.DB.prepare(
+    "SELECT login, path FROM profiles WHERE status = 'approved'",
+  ).all<{ login: string; path: string }>()
+  const out = new Map<string, string>()
+  for (const row of results) {
+    const person = PEOPLE_PATH.exec(row.path)?.[1]
+    if (person) out.set(row.login.toLowerCase(), person)
+  }
+  return out
+}
+
 // ---- readers ----
 
 export interface AclViewer {

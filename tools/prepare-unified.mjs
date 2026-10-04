@@ -5,8 +5,10 @@ import { prepareSite } from "./prepare-site.mjs"
 import { recentChanges } from "./recent-changes.mjs"
 import { recentPage } from "./site-model.mjs"
 import { writeTagPages } from "./tag-pages.mjs"
-import { normalizeSnapshot } from "./acl/policy.mjs"
+import { slugifyFilePath } from "@quartz-community/utils"
+import { aclKey, normalizeSnapshot } from "./acl/policy.mjs"
 import { markPage } from "./acl/snapshot.mjs"
+import { aclList, wrapEmbeds } from "./acl/lists.mjs"
 
 export const excluded = new Set([
   "node_modules",
@@ -21,6 +23,10 @@ export const excluded = new Set([
   // Hafezi GPT skills: baked into the Worker (tools/gpt-manifest.mjs), not published as pages.
   "gpt",
 ])
+const frontOf = (text, yaml) => {
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
+  return match ? (yaml.parse(match[1]) ?? {}) : {}
+}
 const walk = (dir) =>
   fs
     .readdirSync(dir, { withFileTypes: true })
@@ -205,14 +211,18 @@ export function prepareUnified(
       const ids = Array.isArray(fm.equipment) ? fm.equipment : fm.equipment ? [fm.equipment] : []
       for (const id of ids) {
         if (!documents.has(id)) documents.set(id, [])
+        const slug = path.relative(prepared.output, file).replace(/\.md$/, "")
         documents.get(id).push({
-          slug: path.relative(prepared.output, file).replace(/\.md$/, ""),
+          slug,
+          href: "/" + slugifyFilePath(slug + ".md"),
           title: String(fm.title ?? path.basename(file, ".md")),
+          acl: fm.acl ?? null,
         })
       }
     }
+    // An equipment record is every member's: a restricted note is listed under its rule's data-acl.
     const memberSection = (links) =>
-      `\n\n## Documents (members)\n\n${links.map((link) => `- [[${link.slug}|${link.title}]]`).join("\n")}\n`
+      `\n\n## Documents (members)\n\n${aclList(links, null, (link) => `- [[${link.slug}|${link.title}]]`)}\n`
     for (const file of walk(prepared.output)) {
       if (!file.endsWith(".md") || file.startsWith(destination + path.sep)) continue
       const text = fs.readFileSync(file, "utf8")
@@ -241,16 +251,19 @@ export function prepareUnified(
       page(
         "resources/drawings/index",
         "Lab drawings",
-        drawings
-          .map((file) => {
+        aclList(
+          drawings.map((file) => {
             const slug = path.relative(prepared.output, file).replace(/\.md$/, "")
             const title = path
               .basename(file)
               .replace(/\.excalidraw\.md$/, "")
               .replace(/-/g, " ")
-            return `- [${title}](/${slug})`
-          })
-          .join("\n"),
+            const acl = frontOf(fs.readFileSync(file, "utf8"), yaml).acl ?? null
+            return { slug, href: `/${slug}`, title, acl }
+          }),
+          null,
+          (item) => `- [${item.title}](${item.href})`,
+        ),
         ["internal", "excalidraw"],
       )
     }
@@ -281,13 +294,23 @@ export function prepareUnified(
     fs.mkdirSync(destination, { recursive: true })
     // Notebooks become pages later in the build (render-qmd, tools/notebooks/), at their own
     // paths, so indexes list them by those paths.
+    // A restricted page (tools/acl/) of another rule than the index is listed under its data-acl.
     const pageFile = /\.(md|qmd|ipynb|nb)$/
+    const pageAcl = (file) =>
+      file.endsWith(".md")
+        ? (frontOf(fs.readFileSync(file, "utf8"), yaml).acl ?? null)
+        : aclKey(acl, path.relative(destination, file).split(path.sep).join("/"))
     const pageLinks = (directory, index) =>
       walk(directory)
         .filter((file) => pageFile.test(file) && file !== index)
         .map((file) => {
           const relative = path.relative(prepared.output, file).replace(pageFile, "")
-          return `- [[${relative}|${path.basename(file).replace(pageFile, "")}]]`
+          return {
+            relative,
+            href: "/" + slugifyFilePath(relative + ".md"),
+            title: path.basename(file).replace(pageFile, ""),
+            acl: pageAcl(file),
+          }
         })
     // A section without an index of its own in the vault gets one here: its one-line description,
     // above the automatic listing of its folders, pages and files that every folder without an
@@ -309,8 +332,12 @@ export function prepareUnified(
       const front = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)
       if (!front || yaml.parse(front[1])?.list_pages !== true) continue
       const links = pageLinks(path.dirname(index), index)
-      if (links.length)
-        fs.writeFileSync(index, `${text.trimEnd()}\n\n## Pages\n\n${links.join("\n")}\n`)
+      const list = aclList(
+        links,
+        yaml.parse(front[1])?.acl ?? null,
+        (link) => `- [[${link.relative}|${link.title}]]`,
+      )
+      if (links.length) fs.writeFileSync(index, `${text.trimEnd()}\n\n## Pages\n\n${list}\n`)
     }
     // Every topic tag used by private notes, grouped by its root, so members can browse
     // by function (code/simulation), tool, equipment, project, research area, or person.
@@ -334,8 +361,10 @@ export function prepareUnified(
     const counts = new Map()
     for (const file of walk(destination)) {
       if (!file.endsWith(".md") || file.endsWith(".excalidraw.md")) continue
-      const match = fs.readFileSync(file, "utf8").match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
-      const tags = match ? (yaml.parse(match[1]) ?? {}).tags : []
+      const fm = frontOf(fs.readFileSync(file, "utf8"), yaml)
+      // A restricted page's topics aren't counted: the topics page is every member's.
+      if (fm.acl) continue
+      const tags = fm.tags
       for (const tag of Array.isArray(tags) ? tags : [])
         if (tag !== "internal") counts.set(String(tag), (counts.get(String(tag)) ?? 0) + 1)
     }
@@ -485,6 +514,36 @@ export function prepareUnified(
       [],
       { layout: "dashboard" },
     )
+    // An embed of a restricted page or file (`![[page]]`, `![](image)`) in a page of another rule
+    // goes under that rule's data-acl (tools/acl/lists.mjs). Its target is a /resources/ path, as
+    // the private pages' links were rewritten above; its rule is its file's in the vault.
+    if (acl.rules.length) {
+      const targetAcl = (target) => {
+        let site
+        try {
+          site = decodeURI(target)
+        } catch {
+          site = target
+        }
+        site = site.replace(/^\//, "").split(/[#?]/)[0]
+        if (!site.startsWith("resources/")) return null
+        const vaultPath = site.slice("resources/".length)
+        const stem = vaultPath.replace(/\.md$/, "")
+        const own = [
+          vaultPath,
+          ...["md", "qmd", "ipynb", "nb"].map((ext) => `${stem}.${ext}`),
+        ].find((candidate) =>
+          fs.statSync(path.join(root, candidate), { throwIfNoEntry: false })?.isFile(),
+        )
+        return aclKey(acl, own ?? vaultPath)
+      }
+      for (const file of walk(prepared.output)) {
+        if (!file.endsWith(".md")) continue
+        const text = fs.readFileSync(file, "utf8")
+        const wrapped = wrapEmbeds(text, frontOf(text, yaml).acl ?? null, targetAcl)
+        if (wrapped !== text) fs.writeFileSync(file, wrapped)
+      }
+    }
     writeTagPages(prepared.output, yaml)
     return prepared
   } catch (error) {

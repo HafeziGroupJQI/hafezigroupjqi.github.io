@@ -44,6 +44,8 @@ export function writeTagPages(output, yaml) {
     const slug = path.relative(output, file).split(path.sep).join("/").replace(/\.md$/, "")
     if (slug.startsWith("tags/")) continue
     const fm = frontmatter(fs.readFileSync(file, "utf8"))
+    // A restricted page (an access rule's, tools/acl/) neither names a tag nor is one's note.
+    if (fm.acl) continue
     titles.set(slug, String(fm.title ?? path.basename(slug)))
     for (const tag of Array.isArray(fm.tags) ? fm.tags : []) {
       const parts = String(tag).split("/")

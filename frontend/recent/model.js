@@ -1,6 +1,8 @@
 // Pure helpers for the members' Recently modified page (frontend/recent/index.js), so node:test
 // covers them. A change is the Worker's view of one row of D1 changes (worker/src/changes.ts).
 
+import { DEFAULT_PERIOD, PERIODS } from "../leaderboard/model.js"
+
 /** The page's filters, as its URL and the form carry them, with what each option shows. */
 export const REPOS = [
   ["", "Both vaults"],
@@ -129,14 +131,6 @@ export function dayLabel(at, now = Date.now(), locale = undefined) {
 
 // ---- the Contributions tab: the leaderboard (worker/src/changes.ts, GET /api/changes/scores) ----
 
-/** The leaderboard's periods, as its URL carries them, with what each button says. */
-export const PERIODS = [
-  ["week", "This week"],
-  ["month", "This month"],
-  ["all", "All time"],
-]
-export const DEFAULT_PERIOD = "all"
-
 /** Which tab the address asks for (?view=contributions&period=week); unknown values are dropped. */
 export function viewOf(search) {
   const query = new URLSearchParams(search)
@@ -157,12 +151,6 @@ export function viewSearch({ view, period }, filters = {}) {
 
 /** The Worker's leaderboard for a period. */
 export const scoresUrl = (period) => `/api/changes/scores?period=${encodeURIComponent(period)}`
-
-/** The score's formula with a member's own numbers, for the score's tooltip. */
-export function scoreTitle(member) {
-  const repeats = Math.max(0, member.changes - member.files)
-  return `${member.files} files + 2 × √${repeats} repeat changes = ${member.score}`
-}
 
 /** The formula, in one plain sentence for the page. */
 export const SCORE_SENTENCE =

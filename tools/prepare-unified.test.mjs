@@ -83,6 +83,7 @@ test("combined content keeps homepage, namespaces private links and aliases, and
       "resources/index.md",
       "resources/notes/index.md",
       "recent.md",
+      "leaderboard.md",
       "uploads.md",
     ])
       assert.doesNotMatch(read(page), /edit_path/, page)
@@ -106,6 +107,8 @@ test("combined content keeps homepage, namespaces private links and aliases, and
       read("recent.md"),
       /title: Recently modified[\s\S]*<div class="member-tools recent" data-recent><p>No changes to list yet/,
     )
+    // The Leaderboard is another member page, filled live.
+    assert.match(read("leaderboard.md"), /title: Leaderboard[\s\S]*data-leaderboard/)
     // The devices dashboard renders full-bleed; the legacy pages still exist and redirect to it.
     assert.match(read("devices.md"), /layout: dashboard/)
     assert.match(read("devices.md"), /data-dashboard/)

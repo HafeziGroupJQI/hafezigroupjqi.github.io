@@ -349,9 +349,10 @@ body {
   margin: 20px 0 4px;
   font-size: 1.15rem;
 }
-// Its tabs (Changes, Contributions) and the leaderboard's periods and table. A tab's parts are
-// hidden while the other shows.
-.recent [hidden] {
+// Its tabs (Changes, Contributions) and the leaderboard's (/leaderboard, frontend/leaderboard/)
+// tabs, periods and tables. A tab's parts are hidden while the other shows.
+.recent [hidden],
+.leaderboard [hidden] {
   display: none;
 }
 .recent-tabs {

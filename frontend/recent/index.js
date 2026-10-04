@@ -8,9 +8,10 @@
 // all time (GET /api/changes/scores), each name linking to that member's contributions.
 
 import { h } from "../dashboard/dom.js"
+import { PERIODS, scoreTitle } from "../leaderboard/model.js"
+import { rankTable } from "../leaderboard/table.js"
 import {
   KINDS,
-  PERIODS,
   REPOS,
   SCORE_COLUMNS,
   SCORE_SENTENCE,
@@ -23,7 +24,6 @@ import {
   scoreCells,
   scoreNotes,
   scoresUrl,
-  scoreTitle,
   searchOf,
   stateLabel,
   viewOf,
@@ -102,42 +102,19 @@ function select(name, options, value, label) {
 function scoreTable(board) {
   if (!board.members.length)
     return h("p", { class: "muted", text: "No changes went into the vault in this period." })
-  return h(
-    "div",
-    { class: "recent-scores" },
-    h(
-      "table",
-      {},
-      h(
-        "thead",
-        {},
-        h(
-          "tr",
-          {},
-          SCORE_COLUMNS.map((text) => h("th", { scope: "col", text })),
-        ),
-      ),
-      h(
-        "tbody",
-        {},
-        board.members.map((member) => {
-          const cells = scoreCells(member)
-          return h(
-            "tr",
-            {},
-            cells.map((text, index) =>
-              index === 1
-                ? h(
-                    "th",
-                    { scope: "row" },
-                    link(`/recent${searchOf({ user: member.login })}`, text, {
-                      title: `${text}'s contributions`,
-                    }),
-                  )
-                : h("td", index === 2 ? { title: scoreTitle(member), text } : { text }),
-            ),
-          )
-        }),
+  return rankTable(
+    SCORE_COLUMNS,
+    board.members.map((member) =>
+      scoreCells(member).map((text, index) =>
+        index === 1
+          ? {
+              text,
+              href: `/recent${searchOf({ user: member.login })}`,
+              title: `${text}'s contributions`,
+            }
+          : index === 2
+            ? { text, title: scoreTitle(member) }
+            : text,
       ),
     ),
   )

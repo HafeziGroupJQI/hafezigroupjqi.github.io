@@ -87,6 +87,7 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "settings",
       "uploads",
       "recent",
+      "leaderboard",
       "edit",
       // The Scratchpad's JupyterLab: the service worker answers /jupyter/* from the compute relay.
       "jupyter",
@@ -371,6 +372,13 @@ export function prepareUnified(publicSource, privateSource, yaml) {
       "recent",
       "Recently modified",
       `<div class="member-tools recent" data-recent>${recentPage(recentChanges(prepared.input, prepared.records))}</div>`,
+    )
+    // Members only: members by their contributions and the votes and readers of their pages, and
+    // the pages members liked most (frontend/leaderboard/, the Worker's src/ratings/).
+    page(
+      "leaderboard",
+      "Leaderboard",
+      '<div class="member-tools leaderboard" data-leaderboard><p class="muted">Loading…</p></div>',
     )
     page(
       "calendar",

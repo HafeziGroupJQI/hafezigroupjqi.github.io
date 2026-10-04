@@ -355,6 +355,12 @@ if (session.user) {
       .then(({ mountRecent }) => mountRecent(root, { api, session }))
       .catch((error) => showError(root, error)),
   )
+  // The Leaderboard: members by contributions, karma and reach, and the top pages.
+  mount("data-leaderboard", (root) =>
+    import("./leaderboard/index.js")
+      .then(({ mountLeaderboard }) => mountLeaderboard(root, { api, session }))
+      .catch((error) => showError(root, error)),
+  )
   // Uploads to the private vault: drafts that become pull requests merged hourly (src/uploads/).
   mount("data-uploads", (root) =>
     import("./uploads/index.js")

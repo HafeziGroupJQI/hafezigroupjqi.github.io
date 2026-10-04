@@ -62,6 +62,7 @@ export const MEMBER_PAGES = [
   "/settings",
   "/uploads",
   "/recent",
+  "/leaderboard",
   "/edit",
 ]
 

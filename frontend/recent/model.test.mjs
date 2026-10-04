@@ -12,7 +12,6 @@ import {
   SCORE_SENTENCE,
   scoreNotes,
   scoresUrl,
-  scoreTitle,
   searchOf,
   stateLabel,
   viewOf,
@@ -137,7 +136,6 @@ test("a leaderboard row shows the score beside the numbers it comes from", () =>
   assert.deepEqual(cells.slice(0, 7), ["1", "Ada Lovelace", "5.5", "2", "5", "1", "+120 −7"])
   assert.match(cells[7], /Sep 29, 2026/)
   assert.equal(scoreCells({ ...member, author: "" })[1], "ada")
-  assert.equal(scoreTitle(member), "2 files + 2 × √3 repeat changes = 5.5")
   // The page says the formula in one sentence, and what counts.
   assert.match(SCORE_SENTENCE, /^Score = [^.]+\.$/)
   assert.match(scoreNotes(50), /more than 50 files/)

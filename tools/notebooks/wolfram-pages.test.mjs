@@ -298,6 +298,14 @@ test("writeWolframPages puts a page next to every notebook, matched by the noteb
     assert.equal(entry.path, assetPath(name))
     assert.ok(fs.existsSync(path.join(assetsDir, entry.path)))
   }
+  // Each page names the assets it cites (the access refs need their owners): the figure only on
+  // the page with it, the shared symbols on every page.
+  const owned = Object.fromEntries(result.pages.map((p) => [p.page, p.assets]))
+  const paths = new Set([...result.assets.values()].map((entry) => entry.path))
+  for (const list of Object.values(owned)) assert.ok(list.every((asset) => paths.has(asset)))
+  assert.ok(owned["resources/guide/01-start.md"].length > owned["public/demo.md"].length)
+  for (const list of Object.values(owned))
+    assert.ok(owned["public/demo.md"].every((asset) => list.includes(asset)))
   const img = page.match(/src="\/notebook-assets\/([0-9a-f]{2}\/[0-9a-f]{32}\.(webp|png))"/)
   assert.ok(img && fs.existsSync(path.join(assetsDir, img[1])))
 })

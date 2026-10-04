@@ -127,10 +127,13 @@ export class AssetStore {
     this.keys = new Set() // conversion cache entries this run used
     fs.mkdirSync(this.cacheDir, { recursive: true })
     this.used = new Map()
+    // The assets the page being written cites (writeWolframPages), by path under ASSET_URL.
+    this.page = null
     this.stats = { converted: 0, reused: 0, webp: 0, svgo: 0 }
   }
 
   record(name, bytes) {
+    this.page?.add(assetPath(name))
     const file = path.join(this.outDir, assetPath(name))
     if (!fs.existsSync(file)) {
       fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -637,6 +640,7 @@ export async function writeWolframPages({
   const pages = []
   for (const entry of uniqueTitles(entries)) {
     store.sourceDir = entry.render.assetsDir
+    store.page = new Set(symbolsName ? [assetPath(symbolsName)] : [])
     const notebook = { ...entry.render, page: entry.rel.replace(/\.nb$/, "") }
     const source = forkSource(entry.rel, forkPrefix)
     const body = resolveNotebookLinks(
@@ -688,7 +692,10 @@ export async function writeWolframPages({
       inputs,
       outputs,
       failed_cells: entry.render.blocks.filter((block) => block.t === "error").length,
+      // Its assets, by path under /notebook-assets/ (the access refs, tools/acl/outputs.mjs).
+      assets: [...store.page].sort(),
     })
+    store.page = null
   }
   const pruned = prune ? store.prune() : 0
   return { pages, missing, conflicts, assets: store.used, stats: { ...store.stats, pruned } }

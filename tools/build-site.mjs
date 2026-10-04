@@ -97,7 +97,10 @@ fs.writeFileSync(
 // pages (quartz/plugins/local/folder-index/): a folder without an index lists them as downloads.
 const foldersFile = path.join(stage, "folders.json")
 if (options.mode === "internal")
-  fs.writeFileSync(foldersFile, JSON.stringify(vaultFolders(privateRoot, { excluded, restricted })))
+  fs.writeFileSync(
+    foldersFile,
+    JSON.stringify(vaultFolders(privateRoot, { excluded, restricted, acl })),
+  )
 const config = yaml.parse(fs.readFileSync(options.config, "utf8"))
 if (options.mode === "internal") {
   const index = config.plugins.find((plugin) => plugin.source === "@quartz-community/content-index")

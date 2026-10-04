@@ -13,8 +13,13 @@ import { folderTitle } from "./names.js"
 //     tools/folder-files.mjs), so every folder of the private vault can be browsed;
 //   - a listing of subfolders first, then pages A to Z, each page with its description and the date
 //     of its newest revision in the vault's history (SITE_HISTORY, tools/history.mjs), never the
-//     build's time; then the folder's documents as downloads.
-// A page with an index of its own is rendered by Quartz's FolderContent exactly as before.
+//     build's time; then the folder's documents as downloads;
+//   - restricted pages, folders and documents (an access rule's, tools/acl/: `acl` in their front
+//     matter or folder map entry) listed with data-acl="<rule>" when the folder page isn't that
+//     rule's own, so the Worker shows them only to the members that rule lets in. They are unlisted,
+//     so Quartz's own listings leave them out.
+// A page with an index of its own is rendered by Quartz's FolderContent as before, its restricted
+// rows of other rules after it, under data-acl.
 // The rows' markup is Quartz's PageList's (same package, MIT), so the site's listing styles apply.
 export const manifest = {
   name: "folder-index",
@@ -62,6 +67,8 @@ export const folderOf = (slug) => String(slug).replace(/\/?index$/, "")
 export function automaticPages(pages, taken = [], folders = {}) {
   const auto = (slug, title) => {
     const entry = folderEntry(folders, folderOf(slug))
+    // A restricted folder's page is its rule's, unlisted like its pages.
+    const acl = typeof entry?.acl === "string" ? entry.acl : null
     return {
       slug,
       title,
@@ -72,7 +79,9 @@ export function automaticPages(pages, taken = [], folders = {}) {
           folder_index: AUTO,
           socialImage: SOCIAL_IMAGE,
           ...(entry?.path ? { folder_path: entry.path } : {}),
+          ...(acl ? { acl, unlisted: true } : {}),
         },
+        ...(acl ? { unlisted: true } : {}),
       },
     }
   }
@@ -101,16 +110,25 @@ const byTitle = (a, b) =>
   a.title.localeCompare(b.title, "en", { numeric: true, sensitivity: "base" }) ||
   a.slug.localeCompare(b.slug)
 
+/** A page's access rule (tools/acl/), or null when it isn't restricted. */
+export const aclOf = (frontmatter) =>
+  typeof frontmatter?.acl === "string" && frontmatter.acl ? frontmatter.acl : null
+
+/** The attributes that tag a listed item of another rule than the page listing it. */
+export const aclAttributes = (acl, pageAcl) => (acl && acl !== pageAcl ? { "data-acl": acl } : {})
+
 /**
  * A folder page's rows: its subfolders first, then its pages, each group A to Z by title. A row is
- * `{slug, title, folder, description, day, tags}`; only pages have a day, and only when the vault's
- * history has one.
+ * `{slug, title, folder, description, day, tags, acl}`; only pages have a day, and only when the
+ * vault's history has one. A restricted page or folder (unlisted, with an access rule) is a row
+ * with its rule as `acl`; any other unlisted page is left out.
  */
 export function folderRows(slug, allFiles, histories = {}) {
   const prefix = folderOf(slug) + "/"
   const rows = []
   for (const file of allFiles ?? []) {
-    if (!file?.slug || file.unlisted === true || !file.slug.startsWith(prefix)) continue
+    if (!file?.slug || !file.slug.startsWith(prefix)) continue
+    if (file.unlisted === true && !aclOf(file.frontmatter)) continue
     const rest = file.slug.slice(prefix.length)
     if (!rest || rest === "index") continue
     const parts = rest.split("/")
@@ -125,6 +143,7 @@ export function folderRows(slug, allFiles, histories = {}) {
         typeof frontmatter.description === "string" ? frontmatter.description.trim() : "",
       day: folder ? null : modifiedDay(frontmatter, histories),
       tags: folder ? [] : (frontmatter.tags ?? []).map(String),
+      acl: aclOf(frontmatter),
     })
   }
   return [
@@ -158,60 +177,63 @@ function Day({ day, locale }) {
   return h("time", { dateTime: day }, text)
 }
 
-function Listing({ fileData, allFiles, cfg }) {
-  const slug = fileData.slug
-  const rows = folderRows(slug, allFiles, siteHistory())
-  const files = folderEntry(siteFolders(), folderOf(slug))?.files ?? []
-  const locale = cfg?.locale ?? "en-US"
+function Rows({ slug, rows, locale, pageAcl }) {
   return h(
-    "div",
-    { class: "page-listing folder-listing" },
-    rows.length > 0 &&
+    "ul",
+    { class: "section-ul" },
+    rows.map((row) =>
       h(
-        "ul",
-        { class: "section-ul" },
-        rows.map((row) =>
+        "li",
+        { class: "section-li", ...aclAttributes(row.acl, pageAcl) },
+        h(
+          "div",
+          { class: "section" },
           h(
-            "li",
-            { class: "section-li" },
+            "p",
+            { class: "meta" },
+            row.folder ? "Folder" : row.day && h(Day, { day: row.day, locale }),
+          ),
+          h(
+            "div",
+            { class: "desc" },
             h(
-              "div",
-              { class: "section" },
+              "h3",
+              null,
+              h("a", { href: resolveRelative(slug, row.slug), class: "internal" }, row.title),
+            ),
+            row.description && h("p", { class: "folder-listing__description" }, row.description),
+          ),
+          h(
+            "ul",
+            { class: "tags" },
+            row.tags.map((tag) =>
               h(
-                "p",
-                { class: "meta" },
-                row.folder ? "Folder" : row.day && h(Day, { day: row.day, locale }),
-              ),
-              h(
-                "div",
-                { class: "desc" },
+                "li",
+                null,
                 h(
-                  "h3",
-                  null,
-                  h("a", { href: resolveRelative(slug, row.slug), class: "internal" }, row.title),
-                ),
-                row.description &&
-                  h("p", { class: "folder-listing__description" }, row.description),
-              ),
-              h(
-                "ul",
-                { class: "tags" },
-                row.tags.map((tag) =>
-                  h(
-                    "li",
-                    null,
-                    h(
-                      "a",
-                      { class: "internal tag-link", href: resolveRelative(slug, `tags/${tag}`) },
-                      tag,
-                    ),
-                  ),
+                  "a",
+                  { class: "internal tag-link", href: resolveRelative(slug, `tags/${tag}`) },
+                  tag,
                 ),
               ),
             ),
           ),
         ),
       ),
+    ),
+  )
+}
+
+function Listing({ fileData, allFiles, cfg }) {
+  const slug = fileData.slug
+  const pageAcl = aclOf(fileData.frontmatter)
+  const rows = folderRows(slug, allFiles, siteHistory())
+  const files = folderEntry(siteFolders(), folderOf(slug))?.files ?? []
+  const locale = cfg?.locale ?? "en-US"
+  return h(
+    "div",
+    { class: "page-listing folder-listing" },
+    rows.length > 0 && h(Rows, { slug, rows, locale, pageAcl }),
     files.length > 0 &&
       h(
         Fragment,
@@ -223,7 +245,7 @@ function Listing({ fileData, allFiles, cfg }) {
           files.map((file) =>
             h(
               "li",
-              { class: "section-li" },
+              { class: "section-li", ...aclAttributes(file.acl, pageAcl) },
               h(
                 "div",
                 { class: "section" },
@@ -250,6 +272,41 @@ function Listing({ fileData, allFiles, cfg }) {
   )
 }
 
+/**
+ * Whether a folder holds restricted pages or folders (at any depth) of another rule than its own
+ * page's: Quartz's listing of it would name their folders, so it is made without them.
+ */
+export function holdsOtherRules(slug, allFiles, pageAcl) {
+  const prefix = folderOf(slug) + "/"
+  return (allFiles ?? []).some((file) => {
+    const acl = aclOf(file?.frontmatter)
+    return acl && acl !== pageAcl && file.slug?.startsWith(prefix)
+  })
+}
+
+// A page with an index of its own, holding restricted pages of other rules: Quartz's listing from
+// its listed pages alone (its folder tree names every folder), then those rows, each rule's under
+// its data-acl.
+function RestrictedRows({ fileData, allFiles, cfg }) {
+  const slug = fileData.slug
+  const pageAcl = aclOf(fileData.frontmatter)
+  const locale = cfg?.locale ?? "en-US"
+  const byRule = new Map()
+  for (const row of folderRows(slug, allFiles, siteHistory()))
+    if (row.acl && row.acl !== pageAcl) byRule.set(row.acl, [...(byRule.get(row.acl) ?? []), row])
+  return h(
+    Fragment,
+    null,
+    [...byRule].map(([acl, rows]) =>
+      h(
+        "div",
+        { class: "page-listing folder-listing", "data-acl": acl },
+        h(Rows, { slug, rows, locale, pageAcl: acl }),
+      ),
+    ),
+  )
+}
+
 export default (options) => {
   const quartz = QuartzFolderPage(options)
   return {
@@ -265,7 +322,14 @@ export default (options) => {
     body() {
       const QuartzFolderContent = quartz.body()
       const FolderIndex = (props) => {
-        if (props.fileData?.frontmatter?.folder_index !== AUTO) return QuartzFolderContent(props)
+        if (props.fileData?.frontmatter?.folder_index !== AUTO) {
+          const pageAcl = aclOf(props.fileData?.frontmatter)
+          if (!holdsOtherRules(props.fileData?.slug, props.allFiles, pageAcl))
+            return QuartzFolderContent(props)
+          // Without the folder tree, Quartz's FolderContent lists the folder's listed pages.
+          const listed = { ...props, ctx: { ...props.ctx, trie: undefined } }
+          return h(Fragment, null, QuartzFolderContent(listed), h(RestrictedRows, props))
+        }
         // A page the build wrote for a section keeps its text; a virtual page has none.
         const own = props.fileData.filePath ? QuartzFolderContent(props) : null
         return h(Fragment, null, own, h(Listing, props))

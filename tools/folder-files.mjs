@@ -5,6 +5,8 @@
 // documents have a page each, so neither is listed as a file; a folder of images alone has no entry.
 import path from "node:path"
 import { documentKey, imagePattern, isDocument, listVaultFiles } from "./docs-manifest.mjs"
+import { aclKey } from "./acl/policy.mjs"
+import { folderAcl } from "./acl/snapshot.mjs"
 
 const rendered = /\.(?:qmd|ipynb|nb)$/i
 
@@ -17,14 +19,21 @@ const byName = (a, b) => a.name.localeCompare(b.name, "en", { numeric: true, sen
 /**
  * `{<folder's slug>: {name, path, files}}` from the vault's tracked files
  * (`{path, size}`), where a file is `{name, href, size, type}`. Every folder above a listed one has
- * an entry too, so each can be reached from its parent; the vault's root has none.
+ * an entry too, so each can be reached from its parent; the vault's root has none. With the access
+ * rules (`acl`, tools/acl/), a restricted folder or file has its rule's id as `acl`.
  */
-export function folderMap(files, { prefix = "resources" } = {}) {
+export function folderMap(files, { prefix = "resources", acl = null } = {}) {
   const folders = {}
   const entry = (folder) => {
     const key = folderSlug(folder, prefix)
     if (!folders[key]) {
-      folders[key] = { name: path.posix.basename(folder), path: folder, files: [] }
+      const rule = acl && folderAcl(acl, folder)
+      folders[key] = {
+        name: path.posix.basename(folder),
+        path: folder,
+        ...(rule ? { acl: rule } : {}),
+        files: [],
+      }
       const parent = path.posix.dirname(folder)
       if (parent !== ".") entry(parent)
     }
@@ -35,11 +44,13 @@ export function folderMap(files, { prefix = "resources" } = {}) {
     if (folder === "." || imagePattern.test(file.path)) continue
     const own = entry(folder)
     if (!isDocument(file.path) || rendered.test(file.path)) continue
+    const rule = acl && aclKey(acl, file.path)
     own.files.push({
       name: path.posix.basename(file.path),
       href: "/" + documentKey(file.path, prefix),
       size: file.size,
       type: path.posix.extname(file.path).slice(1).toUpperCase() || "File",
+      ...(rule ? { acl: rule } : {}),
     })
   }
   for (const folder of Object.values(folders)) folder.files.sort(byName)
@@ -50,5 +61,5 @@ export function folderMap(files, { prefix = "resources" } = {}) {
  *  vaults overlaid on it (`restricted`, tools/acl/vaults.mjs). */
 export const vaultFolders = (
   privateRoot,
-  { excluded = new Set(), prefix = "resources", restricted = [] } = {},
-) => folderMap(listVaultFiles(privateRoot, { excluded, restricted }), { prefix })
+  { excluded = new Set(), prefix = "resources", restricted = [], acl = null } = {},
+) => folderMap(listVaultFiles(privateRoot, { excluded, restricted }), { prefix, acl })

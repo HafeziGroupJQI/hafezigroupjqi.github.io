@@ -141,6 +141,7 @@ test("a folder lists its subfolders first, then its own pages, each A to Z", () 
     description: "What was decided.",
     day: "2026-09-29",
     tags: [],
+    acl: null,
   })
 })
 
@@ -273,4 +274,124 @@ test("an automatic page lists the folder's documents as downloads, with type and
   assert.equal(formatSize(31_600_000), "31.6 MB")
   assert.equal(formatSize(316_000_000), "316 MB")
   assert.equal(formatSize(1_500_000_000), "1.5 GB")
+})
+
+test("restricted pages, folders and files are listed under data-acl on other rules' pages", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "folder-index-"))
+  const saved = process.env.SITE_FOLDERS
+  try {
+    process.env.SITE_FOLDERS = path.join(directory, "folders.json")
+    fs.writeFileSync(
+      process.env.SITE_FOLDERS,
+      JSON.stringify({
+        "resources/projects": { name: "projects", path: "projects", files: [] },
+        "resources/projects/optical-rl": {
+          name: "optical-rl",
+          path: "projects/optical-rl",
+          acl: "r1",
+          files: [],
+        },
+        "resources/projects/optical-rl/files": {
+          name: "files",
+          path: "projects/optical-rl/files",
+          acl: "r1",
+          files: [{ name: "run.py", href: "/x/run.py", size: 9, type: "PY", acl: "r1" }],
+        },
+      }),
+    )
+    // A restricted folder's automatic page is its rule's, and unlisted.
+    const [optical] = automaticPages([], [], {
+      "resources/projects/optical-rl": {
+        name: "optical-rl",
+        path: "projects/optical-rl",
+        acl: "r1",
+      },
+    })
+    assert.equal(optical.data.unlisted, true)
+    assert.equal(optical.data.frontmatter.acl, "r1")
+    assert.equal(optical.data.frontmatter.unlisted, true)
+    assert.equal(automaticPages([], [], folders)[0].data.unlisted, undefined)
+
+    const all = [
+      { slug: "resources/projects/index", frontmatter: { title: "Projects index" } },
+      { slug: "resources/projects/topo", frontmatter: { title: "Topo log" } },
+      {
+        slug: "resources/projects/optical-rl/index",
+        unlisted: true,
+        frontmatter: { title: "Optical rl", folder_index: "auto", acl: "r1" },
+      },
+      {
+        slug: "resources/projects/optical-rl/meeting",
+        unlisted: true,
+        frontmatter: { title: "Kerr microring meeting", acl: "r1" },
+      },
+      {
+        slug: "resources/projects/optical-rl/files/index",
+        unlisted: true,
+        frontmatter: { title: "Files", folder_index: "auto", acl: "r1" },
+      },
+      { slug: "resources/projects/draft", unlisted: true, frontmatter: { title: "Draft" } },
+    ]
+    const rows = folderRows("resources/projects/index", all)
+    assert.deepEqual(
+      rows.map((row) => [row.title, row.acl]),
+      [
+        ["Optical rl", "r1"],
+        ["Topo log", null],
+      ],
+    )
+    const Body = FolderIndex().body()
+    const props = (slug, frontmatter, filePath) => ({
+      fileData: { slug, frontmatter, filePath },
+      allFiles: all,
+      cfg: { locale: "en-US" },
+      tree: { type: "root", children: [] },
+      ctx: {},
+    })
+    // The rule's own folder page lists its pages and files plainly.
+    const own = render(
+      h(
+        Body,
+        props("resources/projects/optical-rl/index", {
+          title: "Optical rl",
+          folder_index: "auto",
+          acl: "r1",
+        }),
+      ),
+    )
+    assert.match(own, /Kerr microring meeting/)
+    assert.doesNotMatch(own, /data-acl/)
+    const files = render(
+      h(
+        Body,
+        props("resources/projects/optical-rl/files/index", {
+          title: "Files",
+          folder_index: "auto",
+          acl: "r1",
+        }),
+      ),
+    )
+    assert.match(files, /run\.py/)
+    assert.doesNotMatch(files, /data-acl/)
+    // Another folder's automatic page tags them.
+    const auto = render(
+      h(Body, props("resources/projects/index", { title: "Projects", folder_index: "auto" })),
+    )
+    assert.match(auto, /<li class="section-li" data-acl="r1">[^]*?Optical rl/)
+    assert.doesNotMatch(auto, /Draft/)
+    // A page with an index of its own: Quartz's listing without them, then theirs under data-acl.
+    const index = render(
+      h(Body, props("resources/projects/index", { title: "Projects index" }, "/x/index.md")),
+    )
+    const tagged = index.indexOf('data-acl="r1"')
+    assert.ok(tagged > 0)
+    assert.ok(index.indexOf("Topo log") < tagged)
+    // Nothing before the tagged rows names the restricted folder.
+    assert.ok(index.indexOf("ptical") > tagged)
+    assert.match(index, /<p>1 item under this folder\.<\/p>/)
+  } finally {
+    if (saved === undefined) delete process.env.SITE_FOLDERS
+    else process.env.SITE_FOLDERS = saved
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
 })

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { folderMap, folderSlug } from "./folder-files.mjs"
+import { normalizeSnapshot } from "./acl/policy.mjs"
 
 test("a vault folder's slug is the one its pages and documents are served under", () => {
   assert.equal(
@@ -68,4 +69,33 @@ test("each folder lists its documents with sizes; images and notebooks are left 
       type: "File",
     },
   ])
+})
+
+test("a restricted folder or document carries its access rule", () => {
+  const acl = normalizeSnapshot({
+    version: 1,
+    rules: [
+      { id: "r1", pattern: "projects/optical-rl/", allow: ["group:optical-rl"] },
+      { id: "r2", pattern: "files/secret.pdf", allow: ["login:ada"] },
+    ],
+  })
+  const folders = folderMap(
+    [
+      { path: "projects/optical-rl/files/run.py", size: 9 },
+      { path: "files/secret.pdf", size: 1 },
+      { path: "files/open.pdf", size: 1 },
+    ],
+    { acl },
+  )
+  assert.equal(folders["resources/projects"].acl, undefined)
+  assert.equal(folders["resources/projects/optical-rl"].acl, "r1")
+  assert.equal(folders["resources/projects/optical-rl/files"].files[0].acl, "r1")
+  assert.equal(folders["resources/files"].acl, undefined)
+  assert.deepEqual(
+    folders["resources/files"].files.map((file) => [file.name, file.acl]),
+    [
+      ["open.pdf", undefined],
+      ["secret.pdf", "r2"],
+    ],
+  )
 })

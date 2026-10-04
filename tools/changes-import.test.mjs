@@ -12,6 +12,7 @@ import {
   isContent,
   literal,
   pageSlug,
+  unrecorded,
 } from "./changes-import.mjs"
 
 // A git work tree with the given files, committed in turn: [[message, author, {path: text|null}]].
@@ -169,6 +170,78 @@ test("imports each content file of both vaults' commits, credited, and nothing e
     },
   )
   assert.doesNotMatch(JSON.stringify(rows), /@/)
+})
+
+test("imports commits made on github to a restricted vault under its own repo, once", () => {
+  const vault = repo([["start", undefined, { "content/people/ada-lovelace.md": ADA }]])
+  const vaultPrivate = repo([["notes", undefined, { "notes/a.md": "a\n" }]])
+  const restricted = repo([
+    [
+      "the restricted vault",
+      undefined,
+      {
+        "README.md": "readme\n",
+        ".github/workflows/validate.yml": "on: push\n",
+        "projects/optical-rl/notes/meeting.qmd": "minutes\n",
+      },
+    ],
+    [
+      "ada's analysis, straight on github",
+      ["ada", "ada@users.noreply.github.com"],
+      {
+        "projects/optical-rl/files/run.py": "print(1)\n",
+        "projects/optical-rl/notes/meeting.qmd": "minutes, corrected\n",
+      },
+    ],
+  ])
+  const vaults = {
+    vault: path.join(vault.dir, "content"),
+    "vault-private": vaultPrivate.dir,
+    restricted: [{ repo: "vault-optical-rl", prefix: "projects/optical-rl/", dir: restricted.dir }],
+  }
+  const rows = importRows(vaults)
+  const brief = (row) => [row.repo, row.kind, row.path, row.slug, row.login, row.commit_sha]
+  assert.deepEqual(rows.filter((row) => row.repo !== "vault").map(brief), [
+    ["vault-private", "new", "notes/a.md", "resources/notes/a", null, vaultPrivate.shas[0]],
+    [
+      "vault-optical-rl",
+      "new",
+      "projects/optical-rl/files/run.py",
+      null,
+      "ada",
+      restricted.shas[1],
+    ],
+    [
+      "vault-optical-rl",
+      "edit",
+      "projects/optical-rl/notes/meeting.qmd",
+      "resources/projects/optical-rl/notes/meeting",
+      "ada",
+      restricted.shas[1],
+    ],
+    [
+      "vault-optical-rl",
+      "new",
+      "projects/optical-rl/notes/meeting.qmd",
+      "resources/projects/optical-rl/notes/meeting",
+      null,
+      restricted.shas[0],
+    ],
+  ])
+  // A rerun after the import finds every commit in D1, and sends nothing.
+  const recorded = new Set(rows.map((row) => `${row.repo} ${row.commit_sha}`))
+  assert.deepEqual(unrecorded(importRows(vaults), recorded), [])
+  // A new commit to the restricted vault alone is all a later run sends.
+  const later = unrecorded(
+    importRows(vaults),
+    new Set([...recorded].filter((key) => key !== `vault-optical-rl ${restricted.shas[1]}`)),
+  )
+  assert.deepEqual(
+    later.map((row) => row.path),
+    ["projects/optical-rl/files/run.py", "projects/optical-rl/notes/meeting.qmd"],
+  )
+  assert.equal(isContent("vault-optical-rl", "README.md", "projects/optical-rl/"), false)
+  assert.equal(isContent("vault-optical-rl", "notes/x.md", "projects/optical-rl/"), false)
 })
 
 test("knows which vault files are the site's content, and their pages", () => {

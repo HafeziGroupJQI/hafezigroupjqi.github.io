@@ -1,4 +1,4 @@
-// Both vaults' commits into the Worker's changes table (D1, worker/migrations/0014_changes.sql), on
+// Every vault's commits into the Worker's changes table (D1, worker/migrations/0014_changes.sql), on
 // every members deploy (worker/ci/members-site-deploy.yml): one row per file of a commit, credited as
 // the pages' histories are (tools/history.mjs), so /recent lists changes made outside the site too.
 // Idempotent: the table keeps one row per commit and file (changes_commit), and with --remote the
@@ -8,6 +8,10 @@
 //
 //   node tools/changes-import.mjs --vault ../vault --vault-private ../vault-private --sql out.sql
 //   node tools/changes-import.mjs --vault ../vault --vault-private ../vault-private --remote
+//     [--restricted vault-optical-rl=../vault-optical-rl …]
+// The restricted vaults (worker/vaults.json) come from --restricted, or else VAULT_RESTRICTED_DIRS
+// (tools/acl/vaults.mjs): their rows carry the vault's own repo and the file's vault path (which is
+// its repo path), so a commit made on GitHub to a restricted vault is listed like vault-private's.
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -15,6 +19,7 @@ import { fileURLToPath } from "node:url"
 import yaml from "yaml"
 import { KINDS, creditOf, people, readLog } from "./history.mjs"
 import { excluded } from "./prepare-unified.mjs"
+import { restrictedDirs } from "./acl/vaults.mjs"
 
 export const COLUMNS = [
   "at",
@@ -38,13 +43,14 @@ const ROWS_MAX = 200
 
 /**
  * Whether a vault file is content the site shows: the public vault's content/ folder, and every
- * file of vault-private the member build copies (tools/prepare-unified.mjs), never a dotfile.
+ * file of vault-private the member build copies (tools/prepare-unified.mjs), never a dotfile. A
+ * restricted vault's (`prefix`, its folder in vault-private) only under its folder.
  */
-export function isContent(repo, file) {
+export function isContent(repo, file, prefix = "") {
   const segments = file.split("/")
   if (segments.some((segment) => segment.startsWith("."))) return false
   if (repo === "vault") return segments[0] === "content" && segments.length > 1
-  return !segments.some((segment) => excluded.has(segment))
+  return file.startsWith(prefix) && !segments.some((segment) => excluded.has(segment))
 }
 
 /**
@@ -82,11 +88,12 @@ export function peopleRecords(vaultRoot) {
 }
 
 /** The changes table's rows for one vault's commits (readLog), its content files only. */
-export function changeRows(repo, commits, known) {
+export function changeRows(repo, commits, known, { prefix = "" } = {}) {
   const rows = []
   for (const commit of commits)
     for (const file of commit.files) {
-      if (!isContent(repo, file.path) && !(file.from && isContent(repo, file.from))) continue
+      if (!isContent(repo, file.path, prefix) && !(file.from && isContent(repo, file.from, prefix)))
+        continue
       const { login, name } = creditOf(commit, file.path, known)
       rows.push({
         at: commit.at,
@@ -145,17 +152,27 @@ export function insertStatements(rows) {
   return statements
 }
 
-/** Both vaults' rows: `vaults` is `{vault, "vault-private"}`, each a folder of its work tree. */
+/**
+ * Every vault's rows: `vaults` is `{vault, "vault-private", restricted}`, the first two a folder of
+ * their work trees, `restricted` the restricted vaults' checkouts (`[{repo, prefix, dir}]`).
+ */
 export function importRows(vaults) {
-  const logs = {}
-  for (const repo of ["vault", "vault-private"]) {
-    if (!vaults[repo]) continue
-    logs[repo] = readLog(vaults[repo])
-    if (!logs[repo]) throw new Error(`${vaults[repo]} is not in a git work tree`)
+  const logs = []
+  const read = (repo, dir, prefix = "") => {
+    const log = readLog(dir)
+    if (!log) throw new Error(`${dir} is not in a git work tree`)
+    logs.push({ repo, log, prefix })
   }
-  const known = people(logs.vault ? peopleRecords(logs.vault.root) : [])
-  return Object.entries(logs).flatMap(([repo, log]) => changeRows(repo, log.commits, known))
+  for (const repo of ["vault", "vault-private"]) if (vaults[repo]) read(repo, vaults[repo])
+  for (const { repo, dir, prefix } of vaults.restricted ?? []) read(repo, dir, prefix)
+  const publicLog = logs.find((entry) => entry.repo === "vault")?.log
+  const known = people(publicLog ? peopleRecords(publicLog.root) : [])
+  return logs.flatMap(({ repo, log, prefix }) => changeRows(repo, log.commits, known, { prefix }))
 }
+
+/** The rows of commits D1 has none of yet (`recorded`: "<repo> <sha>", recordedCommits). */
+export const unrecorded = (rows, recorded) =>
+  rows.filter((row) => !recorded.has(`${row.repo} ${row.commit_sha}`))
 
 // ---- the command line (the members deploy) ----
 
@@ -194,12 +211,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const at = process.argv.indexOf(`--${name}`)
     return at > 0 ? process.argv[at + 1] : undefined
   }
+  const repeated = (name) =>
+    process.argv.flatMap((arg, at) => (arg === `--${name}` ? [process.argv[at + 1]] : []))
   const remote = process.argv.includes("--remote")
   const workerDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "worker")
   const database = option("database") ?? "hafezi-members"
-  const all = importRows({ vault: option("vault"), "vault-private": option("vault-private") })
+  const named = repeated("restricted")
+  const all = importRows({
+    vault: option("vault"),
+    "vault-private": option("vault-private"),
+    restricted: restrictedDirs(
+      named.length ? named.join(",") : (process.env.VAULT_RESTRICTED_DIRS ?? ""),
+    ),
+  })
   const recorded = remote ? recordedCommits(database, workerDir) : new Set()
-  const rows = all.filter((row) => !recorded.has(`${row.repo} ${row.commit_sha}`))
+  const rows = unrecorded(all, recorded)
   const statements = insertStatements(rows)
   const sql = option("sql")
   if (sql) fs.writeFileSync(sql, statements.map((statement) => statement + "\n").join(""))

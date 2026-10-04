@@ -1,3 +1,4 @@
+import { aclViewer, requireRead } from "../acl/index"
 import { type Auditor, isAdmin } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
@@ -202,11 +203,16 @@ export async function editRoutes(
     const changes = await changesOf(env, row.id)
     return draftView(draftRepoName(env, row, changes), row, changes)
   }
+  // Restricted pages (src/acl/): a private page the member may not read is, for the editor, not in
+  // the vault; writing one takes reading every path it touches.
+  const mayRead = (name: RepoName, paths: string[], message = `${paths[0]} isn't in the vault`) =>
+    name === "vault" ? Promise.resolve() : requireRead(env, session, paths, record, message)
 
   // A page's file at main, the member's own draft of it, and who else is editing it.
   if (path === "/api/edit/source" && request.method === "GET") {
     const name = repoParam(url.searchParams.get("repo"))
     const { path: file, kind } = editablePath(name, url.searchParams.get("path"))
+    await mayRead(name, [file])
     // A folder's own page that isn't there yet (from its automatic folder page).
     const making = url.searchParams.get("new") === "1" ? newIndexPath(name, file) : null
     const repo = repoOf(name, file)
@@ -269,6 +275,7 @@ export async function editRoutes(
     // A page renamed since: its version at the commit is under its old name.
     const from = url.searchParams.get("from")
     const then = from ? editablePath(name, from).path : file
+    await mayRead(name, [file, then])
     if (mode === "undo" && kind === "ipynb")
       throw new HttpError(422, "a notebook's change can't be undone on its own: restore a version")
     const repo = repoOf(name, file)
@@ -315,6 +322,7 @@ export async function editRoutes(
     const body = (await readJson(request)) as Record<string, unknown>
     const name = repoParam(body.repo)
     const { path: file, kind } = editablePath(name, body.path)
+    await mayRead(name, [file])
     const text = editText(body.text)
     // A folder's new page (index.md) has no base: it isn't in the vault yet.
     const making = body.new === true ? newIndexPath(name, file) : null
@@ -423,15 +431,23 @@ export async function editRoutes(
     )
       .bind(me)
       .all<ConflictRow & { author: string | null; summary: string | null }>()
-    const counts = await env.DB.prepare(
-      `SELECT SUM(${where.mine}) AS mine, SUM(${where.first}) AS first
-       FROM edit_conflicts x WHERE x.state = 'open'`,
+    // Conflicts over pages the member may not read aren't theirs to see, nor to count.
+    const acl = await aclViewer(env, session)
+    const shown = (row: { repo: string; path: string }) =>
+      row.repo === "vault" || acl.canRead(row.path)
+    const { results: counted } = await env.DB.prepare(
+      `SELECT x.repo, x.path, ${where.mine} AS mine, ${where.first} AS first
+       FROM edit_conflicts x WHERE x.state = 'open' AND (${where.mine} OR ${where.first})`,
     )
       .bind(me)
-      .first<{ mine: number | null; first: number | null }>()
+      .all<{ repo: string; path: string; mine: number; first: number }>()
+    const counts = counted.filter(shown)
     return json({
-      conflicts: results.map((row) => conflictView(row, { login: me, admin })),
-      counts: { mine: counts?.mine ?? 0, first: counts?.first ?? 0 },
+      conflicts: results.filter(shown).map((row) => conflictView(row, { login: me, admin })),
+      counts: {
+        mine: counts.filter((row) => row.mine).length,
+        first: counts.filter((row) => row.first).length,
+      },
     })
   }
 
@@ -443,6 +459,7 @@ export async function editRoutes(
   if (!part && request.method === "GET") {
     const row = await ownDraft(env, id, session, { kind: "edit" })
     const [change] = await changesOf(env, row.id)
+    if (change) await mayRead(row.repo, [change.path], "no such draft")
     const shown = await view(row)
     return json({
       ...shown,
@@ -459,6 +476,7 @@ export async function editRoutes(
     const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
     await notHeld(env, row)
     const [change] = await changesOf(env, row.id)
+    await mayRead(row.repo, [change.path], "no such draft")
     const body = (await readJson(request)) as Record<string, unknown>
     const access = await editAccess(env, session, row.repo, change.path)
     if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
@@ -597,6 +615,7 @@ export async function editRoutes(
     await notHeld(env, row)
     const changes = await changesOf(env, row.id)
     const [change] = changes
+    await mayRead(row.repo, [change.path], "no such draft")
     if (!row.summary) throw new HttpError(422, "say in a line what you changed, then send it")
     const access = await editAccess(env, session, row.repo, change.path)
     if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
@@ -645,6 +664,7 @@ export async function editRoutes(
     const row = await ownDraft(env, id, session, { change: true, kind: "edit" })
     await notHeld(env, row)
     const [change] = await changesOf(env, row.id)
+    await mayRead(row.repo, [change.path], "no such draft")
     if (!row.summary) throw new HttpError(422, "say in a line what you changed, then queue it")
     const access = await editAccess(env, session, row.repo, change.path)
     if (!access.can_edit) throw new HttpError(403, access.why ?? "you can't edit this page")
@@ -759,6 +779,9 @@ async function visibleConflict(env: Env, session: Session, id: string) {
   const admin = await isAdmin(env, session)
   const me = session.login.toLowerCase()
   if (!row || (!admin && row.login.toLowerCase() !== me && row.first_login?.toLowerCase() !== me))
+    throw new HttpError(404, "no such conflict")
+  // Nor a conflict over a page the member may not read (src/acl/): neither text shows.
+  if (row.repo !== "vault" && !(await aclViewer(env, session)).canRead(row.path))
     throw new HttpError(404, "no such conflict")
   return { row, admin, view: conflictView(row, { login: session.login, admin }) }
 }

@@ -4632,6 +4632,80 @@ body:has(.scratchpad.scratch-open) .gpt-fab {
     display: none;
   }
 }
+// A page's rating (frontend/ratings/): ▲ score ▼ and its readers, at the end of its tools row.
+// The buttons are outlined, not the row's dark ones; a vote fills its arrow with the accent (up)
+// or the info color (down), as reddit does.
+.page-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  .page-rating__vote {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0 6px;
+    border: 1px solid var(--c-rule, #ddd);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--c-muted, #555);
+    font: inherit;
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    &:hover {
+      border-color: var(--gray, #b8b8b8);
+      color: var(--dark, #222);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--c-focus, #3987e5);
+      outline-offset: 1px;
+    }
+  }
+  .page-rating__vote--up[aria-pressed="true"] {
+    border-color: var(--secondary, #e21833);
+    background: var(--secondary, #e21833);
+    color: var(--c-on-accent, #fff);
+  }
+  .page-rating__vote--down[aria-pressed="true"] {
+    border-color: var(--c-info, #1d5fae);
+    background: var(--c-info, #1d5fae);
+    color: var(--c-on-accent, #fff);
+  }
+  .page-rating__score {
+    min-width: 2.2em;
+    text-align: center;
+    font-weight: 600;
+    color: var(--dark, #222);
+  }
+  .page-rating__readers {
+    margin-left: 8px;
+    color: var(--c-muted, #555);
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  // Heard, not seen, unless a vote failed.
+  .page-rating__status:not(.is-error) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .page-rating__status.is-error {
+    flex-basis: 100%;
+    color: var(--c-err, #b3261e);
+    font-size: 0.85rem;
+  }
+}
+// On a phone the rating takes its own line under the page's other tools.
+@media (max-width: 480px) {
+  .page-rating {
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+}
 .page-export {
   position: relative;
   & > summary {

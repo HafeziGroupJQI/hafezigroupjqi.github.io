@@ -11,6 +11,7 @@ import { mountDashboard } from "./dashboard/index.js"
 import { legacyRedirect } from "./dashboard/router.js"
 import { mountEditButton } from "./edit/link.js"
 import { mountFolderTools } from "./folder-tools.js"
+import { rateable } from "./ratings/model.js"
 import { startFigures } from "./theme/figures.js"
 import { startThemeSync } from "./theme/sync.js"
 import { uploadsUrl } from "./uploads/model.js"
@@ -327,6 +328,13 @@ if (session.user) {
   // site's editor (frontend/edit/), never the page the site made from it.
   const pageTools = document.querySelector("[data-page-tools][data-edit-path]")
   if (pageTools) mountEditButton(pageTools)
+  // A page's rating (frontend/ratings/): ▲ score ▼ and its readers, in its tools row. Pages with a
+  // source only, never the tool pages (/recent, /leaderboard, the dashboards).
+  const ratingTools = document.querySelector("[data-page-tools][data-source]")
+  if (rateable({ hasSource: !!ratingTools, isToolPage: !!document.querySelector(".member-tools") }))
+    import("./ratings/index.js")
+      .then(({ mountRating }) => mountRating(ratingTools, { api }))
+      .catch((error) => console.error(error))
   // An automatic folder page (no file of its own): upload to its folder of the private vault.
   const folderTools = document.querySelector("[data-page-tools][data-folder]")
   if (folderTools) mountFolderTools(folderTools)

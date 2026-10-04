@@ -1,4 +1,5 @@
 import { adminRoutes } from "./admin/routes"
+import { announcementRoutes } from "./announcements"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
 import { type GitHubFetch, allowedOrigins, exchange, requireMutation, startLogin } from "./auth"
 import { calendarRoutes } from "./calendar/routes"
@@ -288,6 +289,8 @@ export function createHandler(
     if (ratings) return ratings
     const leaderboard = await leaderboardRoutes(request, url, env, session)
     if (leaderboard) return leaderboard
+    const announcements = await announcementRoutes(request, url, env, ctx, session, record)
+    if (announcements) return announcements
     const history = await historyRoutes(request, url, env, ctx, upstream)
     if (history) return history
     return problem(404, "not found")

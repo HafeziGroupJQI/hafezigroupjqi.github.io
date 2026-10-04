@@ -45,6 +45,8 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
         ...publicNav,
         // Members only; generated from the public vault's history (tools/recent-changes.mjs).
         { label: "Recently modified", slug: "recent", member: true },
+        // Members by contributions and their pages' votes and readers, and the top pages.
+        { label: "Leaderboard", slug: "leaderboard", member: true },
         {
           label: "Resources",
           menu: "resources",

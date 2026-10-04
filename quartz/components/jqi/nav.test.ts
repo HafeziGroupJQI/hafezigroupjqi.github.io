@@ -18,6 +18,14 @@ test("members keep public navigation and gain native resource and tool menus", (
   assert.ok(resources.children?.some((item) => item.href === "/resources/equipment/"))
   // The Wolfram Language guide is part of Code, not an entry of its own.
   assert.ok(!resources.children?.some((item) => /wolfram/i.test(item.label)))
+  // Top-level member links beside the menus.
+  assert.deepEqual(
+    items.filter((item) => item.member && item.slug).map((item) => [item.label, item.slug]),
+    [
+      ["Recently modified", "recent"],
+      ["Leaderboard", "leaderboard"],
+    ],
+  )
   const tools = items.find((item) => item.label === "Tools")!
   // The devices dashboard's tabs (experiments, the builder) are one entry: Command Center.
   assert.deepEqual(

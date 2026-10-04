@@ -24,11 +24,16 @@ export const manifest = {
 const BUILD_KEYS =
   /^(?:site_public|site_internal|site_home|vault_source|edit_repo|edit_path|edit_sha|edit_mode|edit_note|acl):.*\r?\n(?:[ \t]+.*\r?\n)*/gm
 
+// What the build adds about restricted pages of other rules (tools/acl/lists.mjs): an element
+// tagged data-acl, which the Worker shows only to some members. A page's source is the same file for
+// every member, so it goes out without them.
+const RESTRICTED = /<(div|ul|span) data-acl="[^"]*">[\s\S]*?<\/\1>\n?/g
+
 /** The source as it goes out: the staged page, without the build's own front matter keys. */
 export function pageSource(text) {
   const front = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/)
-  if (!front) return text
-  return front[0].replace(BUILD_KEYS, "") + text.slice(front[0].length)
+  if (!front) return text.replace(RESTRICTED, "")
+  return front[0].replace(BUILD_KEYS, "") + text.slice(front[0].length).replace(RESTRICTED, "")
 }
 
 /** Where a page's source goes in the output: beside its HTML, or nowhere without a Markdown file. */

@@ -26,6 +26,15 @@ test("a page's source loses only the build's own front matter keys", () => {
   )
 })
 
+test("a page's source goes out without what it holds of restricted pages (data-acl)", () => {
+  assert.equal(
+    pageSource(
+      '---\ntitle: Laser\nacl: r2\n---\nIntro <span data-acl="r1">![x](/resources/p/x.png)</span> on.\n\n<div data-acl="r1">\n\n![[resources/p/meeting]]\n\n</div>\n\n## Documents (members)\n\n- [[resources/a|A]]\n\n<ul data-acl="r1">\n<li><a class="internal" href="/resources/p/meeting">Kerr meeting</a></li>\n</ul>\n',
+    ),
+    "---\ntitle: Laser\n---\nIntro  on.\n\n\n## Documents (members)\n\n- [[resources/a|A]]\n\n",
+  )
+})
+
 test("only Markdown pages get a source, next to their HTML", () => {
   assert.equal(
     sourcePath("/out", { slug: "resources/onboarding/git", filePath: "c/onboarding/git.md" }),

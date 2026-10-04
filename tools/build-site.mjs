@@ -112,6 +112,16 @@ if (options.mode === "internal") {
   )
   // The restricted pages' search index entries and every private page's file (tools/acl/outputs.mjs).
   config.plugins.push({ source: "./quartz/plugins/local/acl-index", enabled: true })
+  // Pages' search text and descriptions without what they hold of other rules' restricted pages:
+  // right after Quartz's description plugin (order 70) makes them.
+  const description = config.plugins.find(
+    (plugin) => plugin.source === "@quartz-community/description",
+  )
+  config.plugins.push({
+    source: "./quartz/plugins/local/acl-text",
+    enabled: true,
+    order: (description?.order ?? 70) + 1,
+  })
 }
 const generatedConfig = path.join(stage, "quartz.config.yaml")
 fs.writeFileSync(generatedConfig, yaml.stringify(config))

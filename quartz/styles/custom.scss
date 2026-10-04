@@ -8,6 +8,8 @@
 @use "./page-editor";
 // The Markdown editors' formatting toolbar (the page editor, the announcement composer).
 @use "./editor-kit";
+// Announcements: the spotlight on every member page, and /announcements.
+@use "./announcements";
 
 // 2. Additions from the original onboarding site: tables, callouts, materials tints.
 .table-wrap {

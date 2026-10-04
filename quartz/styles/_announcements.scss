@@ -1,0 +1,201 @@
+// ---- Announcements (frontend/announcements/) ----
+// The spotlight: a dialog over the page, the rest of the site dimmed and blurred behind it.
+html.announcement-open {
+  overflow: hidden;
+}
+dialog.announcement-modal {
+  box-sizing: border-box;
+  width: min(640px, calc(100vw - 24px));
+  max-width: none;
+  max-height: min(85dvh, 900px);
+  padding: 0;
+  border: 1px solid var(--c-rule, #ddd);
+  border-radius: 8px;
+  background: var(--light, #fff);
+  color: var(--darkgray, #454545);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.35);
+  font-family: Roboto, system-ui, sans-serif;
+  &[open] {
+    display: flex;
+    flex-direction: column;
+    animation: announcement-in 0.2s ease-out;
+  }
+  &::backdrop {
+    background: rgb(0 0 0 / 0.72);
+    backdrop-filter: blur(2px);
+  }
+  &[open]::backdrop {
+    animation: announcement-fade 0.2s ease-out;
+  }
+  @media (max-width: 480px) {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+}
+@keyframes announcement-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes announcement-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.announcement-modal[open],
+  dialog.announcement-modal[open]::backdrop {
+    animation: none;
+  }
+}
+.announcement-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 0 20px;
+}
+.announcement-modal__kicker {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  color: var(--secondary, #e21833);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.announcement-modal__step {
+  color: var(--c-muted, #5f5f66);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.announcement-modal__close {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  &:hover {
+    background: var(--c-surface-2, #f0f0f0);
+  }
+}
+.announcement-modal__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 20px 16px;
+}
+.announcement-modal__title {
+  margin: 2px 0 4px;
+  color: var(--dark, #222);
+  font-size: 1.45rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.announcement-modal__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--c-rule, #ddd);
+  background: var(--c-surface-1, #fafafa);
+  border-radius: 0 0 8px 8px;
+  .spacer {
+    flex: 1;
+  }
+  button {
+    min-height: 40px;
+    padding: 6px 16px;
+    border: 1px solid var(--c-rule, #ccc);
+    border-radius: 4px;
+    background: var(--light, #fff);
+    color: var(--dark, #222);
+    font: inherit;
+    cursor: pointer;
+    &.primary {
+      background: var(--secondary, #e21833);
+      border-color: var(--secondary, #e21833);
+      color: var(--c-on-accent, #fff);
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+}
+// On a phone the buttons share the row, the link to the page goes under them.
+@media (max-width: 480px) {
+  .announcement-modal__foot {
+    .spacer {
+      display: none;
+    }
+    button {
+      flex: 1 1 0;
+    }
+    .announcement-modal__all {
+      order: 2;
+      flex-basis: 100%;
+      text-align: center;
+    }
+  }
+}
+.announcement-modal__close,
+.announcement-modal__foot :is(a, button) {
+  &:focus-visible {
+    outline: 3px solid var(--c-focus, #2a78d6);
+    outline-offset: 2px;
+  }
+}
+
+// An announcement's parts, in the spotlight and on /announcements.
+.announcement-meta {
+  margin: 0 0 12px;
+  color: var(--c-muted, #5f5f66);
+  font-size: 0.88rem;
+}
+.announcement-body {
+  overflow-wrap: anywhere;
+  > :first-child {
+    margin-top: 0;
+  }
+  > :last-child {
+    margin-bottom: 0;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+    margin: 12px 0;
+  }
+  pre {
+    overflow-x: auto;
+  }
+  .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+.announcement-raw {
+  white-space: pre-wrap;
+}
+.announcement-files {
+  margin: 14px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--c-rule, #ddd);
+  list-style: none;
+  font-size: 0.9rem;
+  li {
+    margin: 4px 0;
+    overflow-wrap: anywhere;
+  }
+}

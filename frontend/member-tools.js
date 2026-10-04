@@ -288,6 +288,17 @@ if (session.user) {
       }),
   )
   installLauncher({ api, session })
+  // Announcements (frontend/announcements/): a live one the member hasn't dismissed opens in a
+  // spotlight over the page. Its renderer loads only when there is one.
+  api("/api/announcements/pending")
+    .then(({ announcements }) =>
+      announcements?.length
+        ? import("./announcements/modal.js").then(({ showSpotlight }) =>
+            showSpotlight(announcements),
+          )
+        : null,
+    )
+    .catch((error) => console.error(error))
   // The Scratchpad (frontend/scratchpad/) loads only on its own page.
   mount("data-scratchpad", (root) =>
     import("./scratchpad/index.js")

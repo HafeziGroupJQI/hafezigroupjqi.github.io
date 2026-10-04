@@ -94,9 +94,14 @@ function parseList(raw: string): string[] {
 }
 
 /** The live policy, from this isolate's copy while its version is current. */
-export async function aclPolicy(env: Pick<Env, "DB">, now = Date.now()): Promise<AclPolicy> {
+export async function aclPolicy(
+  env: Pick<Env, "DB">,
+  now = Date.now(),
+  { fresh = false } = {},
+): Promise<AclPolicy> {
   if (memo && memo.db === env.DB) {
-    if (now - memo.checked < RECHECK_MS) return memo.policy
+    // `fresh`: D1's version now, whatever this isolate checked lately (the compute host's poll).
+    if (!fresh && now - memo.checked < RECHECK_MS) return memo.policy
     const row = await env.DB.prepare("SELECT version FROM acl_meta WHERE id = 1").first<{
       version: number
     }>()

@@ -65,6 +65,12 @@ describe("the compute host's access rules", () => {
     })
   })
 
+  it("give the rules' version in D1 as it is now, for the host's rebuilds", async () => {
+    const before = ((await (await acl()).json()) as any).version
+    await env.DB.prepare("UPDATE acl_meta SET version = version + 1").run()
+    expect(((await (await acl()).json()) as any).version).toBe(before + 1)
+  })
+
   it("answer for one member, by their People page too", async () => {
     await approvedProfile("pdolgirev", "pavel-dolgirev")
     expect(((await (await acl("?login=PDolgirev")).json()) as any).members).toEqual({

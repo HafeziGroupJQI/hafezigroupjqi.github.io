@@ -440,18 +440,7 @@ export function mountAdmin(root, { api, session }) {
     // The rebuild banner: pages follow a change at once, the site's build a little later.
     const notice = rebuildNotice(status)
     const banner = notice
-      ? h(
-          "div",
-          { class: notice.kind === "error" ? "dash-error" : "acl-banner", role: "status" },
-          h("span", { text: notice.text }),
-          notice.retry
-            ? h("button", {
-                type: "button",
-                text: "Send to vault-private again",
-                onclick: act(() => send("/publish", "POST")),
-              })
-            : null,
-        )
+      ? h("div", { class: "acl-banner", role: "status" }, h("span", { text: notice.text }))
       : null
 
     // ---- groups ----

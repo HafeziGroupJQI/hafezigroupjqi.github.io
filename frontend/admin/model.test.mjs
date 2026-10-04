@@ -307,14 +307,10 @@ test("a rule's form becomes the API's body, or says what it misses", () => {
 })
 
 test("the rebuild banner says whether the site has the rules as they are", () => {
-  assert.equal(rebuildNotice({ d1Version: 3, committedVersion: 3, buildVersion: 3 }), null)
+  assert.equal(rebuildNotice({ d1Version: 3, buildVersion: 3 }), null)
   assert.match(
-    rebuildNotice({ d1Version: 4, committedVersion: 4, buildVersion: 3 }).text,
+    rebuildNotice({ d1Version: 4, buildVersion: 3 }).text,
     /rebuild pending.*version 3.*version 4/,
   )
-  assert.equal(rebuildNotice({ d1Version: 4, committedVersion: 3, buildVersion: 3 }).retry, true)
-  assert.equal(
-    rebuildNotice({ d1Version: 1, committedVersion: null, buildVersion: null }).kind,
-    "pending",
-  )
+  assert.equal(rebuildNotice({ d1Version: 1, buildVersion: null }).kind, "pending")
 })

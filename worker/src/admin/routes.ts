@@ -145,7 +145,7 @@ export async function adminRoutes(
   const path = url.pathname.slice("/api/admin".length)
 
   // ---- access rules for restricted pages (src/acl/admin.ts) ----
-  const acl = await aclAdminRoutes(request, path, url, env, session, record, privateVaultFetch)
+  const acl = await aclAdminRoutes(request, path, url, env, session, record)
   if (acl) return acl
 
   if (path === "/audit" && request.method === "GET") {

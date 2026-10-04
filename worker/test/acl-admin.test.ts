@@ -4,7 +4,7 @@ import { as, auditRows, setAcl } from "./helpers"
 import { privateVault } from "./worker"
 
 // /api/admin/acl: admins manage the groups and rules; every change bumps the version, is audited,
-// applies at once, and is committed to vault-private as .hafezi/acl.json for the site's build.
+// applies at once; the build reads the rules from D1 and nothing goes into vault-private.
 
 beforeEach(async () => {
   await setAcl()
@@ -18,7 +18,8 @@ const send = async (method: string, path: string, body?: object) =>
     method,
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
-const snapshot = () => JSON.parse(privateVault.text(".hafezi/acl.json") ?? "null")
+/** The rules as the admin API lists them (D1's, which the build reads). */
+const listed = async () => (await send("GET", "")).body
 
 describe("the access rules' admin API", () => {
   it("is for admins only", async () => {
@@ -43,14 +44,14 @@ describe("the access rules' admin API", () => {
     expect(typeof body.version).toBe("number")
   })
 
-  it("makes a group and a rule that apply at once, committed for the build, and audited", async () => {
+  it("makes a group and a rule that apply at once, a new version each, and audited", async () => {
     const before = (await send("GET", "")).body.version
     expect(
       (await send("POST", "/groups", { name: "Theory", description: "the theory group" })).status,
     ).toBe(201)
     expect((await send("POST", "/groups/theory/members", { login: "@Ada" })).body).toMatchObject({
       login: "ada",
-      published: { committed: true },
+      version: expect.any(Number),
     })
     expect(
       (await send("POST", "/groups/theory/members", { person: "content/people/lida-xu.md" })).body
@@ -76,23 +77,26 @@ describe("the access rules' admin API", () => {
     // At once, in this isolate, without waiting for the next check of the version.
     expect((await outsider.fetch("/api/site/resources/notes")).status).toBe(404)
     expect((await (await as("ada")).fetch("/api/site/resources/notes")).status).toBe(200)
-    // Committed to vault-private's main for the build.
-    expect(snapshot()).toMatchObject({
+    const now = await listed()
+    expect(now).toMatchObject({
       version: before + 4,
-      groups: { theory: { logins: ["ada"], people: ["people/lida-xu"] } },
+      groups: expect.arrayContaining([
+        expect.objectContaining({ name: "theory", logins: ["ada"], people: ["people/lida-xu"] }),
+      ]),
       rules: expect.arrayContaining([
-        {
+        expect.objectContaining({
           id: "r100",
           pattern: "notes",
           allow: ["group:theory", "login:eve"],
           deny: [],
           note: "theory notes",
-        },
+          created_by: "boss",
+        }),
       ]),
     })
-    expect(privateVault.made.at(-1)!.message).toBe(
-      `update the members site access rules (version ${before + 4})`,
-    )
+    // vault-private, where every member may push, is never written.
+    expect(privateVault.made).toEqual([])
+    expect(privateVault.calls).toEqual([])
     const rows = await auditRows("action LIKE 'admin.acl.%'")
     expect(rows.map((row) => row.action)).toEqual([
       "admin.acl.group.create",
@@ -100,7 +104,6 @@ describe("the access rules' admin API", () => {
       "admin.acl.member.add",
       "admin.acl.rule.create",
     ])
-    expect((await send("GET", "")).body.committed_version).toBe(before + 4)
   })
 
   it("refuses what isn't a group, member or rule", async () => {
@@ -141,7 +144,7 @@ describe("the access rules' admin API", () => {
     ).toBe(200)
     expect((await send("DELETE", "/rules/r1")).status).toBe(200)
     expect((await send("DELETE", "/groups/optical-rl")).status).toBe(200)
-    expect(snapshot()).toMatchObject({ groups: {}, rules: [] })
+    expect(await listed()).toMatchObject({ groups: [], rules: [] })
   })
 
   it("explains who may read a path, and which rule says so", async () => {

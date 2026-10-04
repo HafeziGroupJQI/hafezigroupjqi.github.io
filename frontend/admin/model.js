@@ -362,13 +362,7 @@ export function ruleBody({ pattern = "", allow = [], deny = [], note = "" }) {
 /** What the rebuild banner says, from GET /api/acl/build-status; null when the site is current. */
 export function rebuildNotice(status) {
   if (!status) return null
-  const { d1Version, committedVersion, buildVersion } = status
-  if (committedVersion !== null && committedVersion !== undefined && committedVersion < d1Version)
-    return {
-      kind: "error",
-      text: `The rules' last change (version ${d1Version}) didn't reach vault-private, so the site won't rebuild with it. Pages and the API follow it already.`,
-      retry: true,
-    }
+  const { d1Version, buildVersion } = status
   if (buildVersion === null || buildVersion === undefined)
     return {
       kind: "pending",
@@ -377,7 +371,7 @@ export function rebuildNotice(status) {
   if (buildVersion < d1Version)
     return {
       kind: "pending",
-      text: `Site rebuild pending: it was built with version ${buildVersion} of the rules, and version ${d1Version} applies to pages and the API now. Search, folder pages and backlinks follow when the rebuild is deployed (usually within 15 minutes).`,
+      text: `Site rebuild pending: it was built with version ${buildVersion} of the rules, and version ${d1Version} applies to pages and the API now. Search, folder pages and backlinks follow when the rebuild it starts is deployed.`,
     }
   return null
 }

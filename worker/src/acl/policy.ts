@@ -26,7 +26,7 @@ export interface AclGroup {
   people: string[]
 }
 
-/** The rules and groups, as D1 holds them and the site's build reads them (.hafezi/acl.json). */
+/** The rules and groups, as D1 holds them (and the site's build reads them from there). */
 export interface AclSnapshot {
   version: number
   groups: Record<string, AclGroup>

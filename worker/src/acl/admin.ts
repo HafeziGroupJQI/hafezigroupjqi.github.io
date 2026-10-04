@@ -2,9 +2,7 @@ import { type Auditor, isAdmin } from "../audit"
 import { requireMutation } from "../auth"
 import type { Env } from "../env"
 import { HttpError, decodeSegment, json, readJson } from "../http"
-import { GitRepo, type RepoFetch } from "../repo"
 import { type Session, issueProbe } from "../session"
-import { vaultRepo, PRIVATE_VAULT } from "../vaults"
 import {
   type AclRefs,
   aclPolicy,
@@ -17,67 +15,16 @@ import {
 import { type AclPolicy, validPattern, validPrincipal } from "./policy"
 
 // /api/admin/acl/*: the access rules' groups, members and rules (admins only; admin/routes.ts
-// checks). Every change bumps acl_meta.version, is audited (admin.acl.*), applies in this isolate
-// at once and in others within seconds (index.ts), and is committed to vault-private's main as
-// .hafezi/acl.json, which starts the members site's rebuild: the build reads it to keep
-// restricted pages out of everything it makes for everyone (search, folder pages, backlinks).
-
-/** Where the build reads the rules: in vault-private, beside its own tooling. */
-export const SNAPSHOT_PATH = ".hafezi/acl.json"
+// checks). Every change bumps acl_meta.version, is audited (admin.acl.*) and applies in this
+// isolate at once and in others within seconds (index.ts). The members site's build reads the
+// rules from D1 itself, and the compute host polls their version (GET /api/compute/acl) to start
+// a rebuild: nothing goes into vault-private, where every member may push.
 
 const GROUP = /^[a-z0-9][a-z0-9-]{0,63}$/
 const LOGIN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/
 const PERSON = /^people\/(?:alumni\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/
 const NOTE_MAX = 500
 const PRINCIPALS_MAX = 100
-
-/** vault-private's main, with the uploads token, for the snapshot. */
-const vaultPrivate = (env: Env, fetcher: RepoFetch) =>
-  new GitRepo(
-    fetcher,
-    vaultRepo(env, PRIVATE_VAULT),
-    env.GITHUB_VAULT_PRIVATE_TOKEN,
-    "the site has no token for vault-private, so the rules can't reach the site's build",
-  )
-
-/**
- * Commit D1's rules to vault-private as .hafezi/acl.json, unless the file there is as new: two
- * admins' changes at once commit the newer last. Returns the version committed, or null.
- */
-export async function publishSnapshot(
-  env: Env,
-  fetcher: RepoFetch,
-  by: string,
-): Promise<number | null> {
-  const repo = vaultPrivate(env, fetcher)
-  let version: number | null = null
-  await repo.commit(
-    { name: by, email: `${by}@users.noreply.github.com` },
-    async () => {
-      const snapshot = await readSnapshot(env)
-      const current = await repo.read(SNAPSHOT_PATH)
-      let committed = -1
-      try {
-        committed = Number((JSON.parse(current ?? "{}") as { version?: number }).version ?? -1)
-      } catch {}
-      version = snapshot.version
-      if (committed >= snapshot.version) return { files: [], message: "" }
-      return {
-        files: [{ path: SNAPSHOT_PATH, content: `${JSON.stringify(snapshot, null, 2)}\n` }],
-        message: `update the members site access rules (version ${snapshot.version})`,
-      }
-    },
-    { skipEmpty: true },
-  )
-  if (version !== null)
-    await env.DB.prepare(
-      `UPDATE acl_meta SET committed_version = MAX(COALESCE(committed_version, 0), ?),
-         committed_at = ? WHERE id = 1`,
-    )
-      .bind(version, Date.now())
-      .run()
-  return version
-}
 
 /** The version the deployed site was built with (static/acl-build.json), or null. */
 export async function buildVersion(env: Pick<Env, "ASSETS">): Promise<number | null> {
@@ -188,13 +135,12 @@ export async function aclAdminRoutes(
   env: Env,
   session: Session,
   record: Auditor,
-  fetcher: RepoFetch,
 ): Promise<Response | null> {
   if (path !== "/acl" && !path.startsWith("/acl/")) return null
   const method = request.method
   const write = () => requireMutation(request, env)
 
-  /** Apply a change (with the version bump), use it here at once, and commit it for the build. */
+  /** Apply a change with the version bump, and use it here at once. */
   const change = async (
     statements: D1PreparedStatement[],
     action: string,
@@ -205,18 +151,7 @@ export async function aclAdminRoutes(
     const snapshot = await readSnapshot(env)
     useSnapshot(env, snapshot)
     record(`admin.acl.${action}`, target, { ...detail, version: snapshot.version })
-    let published: { committed: boolean; error?: string }
-    try {
-      await publishSnapshot(env, fetcher, session.login)
-      published = { committed: true }
-    } catch (error) {
-      console.error("committing the access rules failed", error)
-      published = {
-        committed: false,
-        error: error instanceof HttpError ? error.detail : "GitHub did not take the commit",
-      }
-    }
-    return { version: snapshot.version, published }
+    return { version: snapshot.version }
   }
 
   const groupId = async (name: string) => {
@@ -236,9 +171,7 @@ export async function aclAdminRoutes(
   if (path === "/acl" && method === "GET") {
     const snapshot = await readSnapshot(env)
     const [meta, groups, rules] = await env.DB.batch<any>([
-      env.DB.prepare(
-        "SELECT version, updated_at, committed_version, committed_at FROM acl_meta WHERE id = 1",
-      ),
+      env.DB.prepare("SELECT version, updated_at FROM acl_meta WHERE id = 1"),
       env.DB.prepare("SELECT name, description, created_by, created_at FROM acl_groups"),
       env.DB.prepare("SELECT id, created_by, updated_at FROM acl_rules"),
     ])
@@ -297,14 +230,6 @@ export async function aclAdminRoutes(
     const probe = await issueProbe(env)
     record("admin.acl.probe", probe.login, { exp: probe.exp })
     return json(probe, 201)
-  }
-
-  // Commit the rules again (when the last commit failed).
-  if (path === "/acl/publish" && method === "POST") {
-    write()
-    const version = await publishSnapshot(env, fetcher, session.login)
-    record("admin.acl.publish", null, { version })
-    return json({ version })
   }
 
   if (path === "/acl/groups" && method === "POST") {
@@ -504,13 +429,12 @@ export async function aclAdminRoutes(
 
 /** GET /api/acl/build-status: the rules' version in D1 and the one the deployed site was built with. */
 export async function buildStatus(env: Env): Promise<Response> {
-  const meta = await env.DB.prepare(
-    "SELECT version, committed_version FROM acl_meta WHERE id = 1",
-  ).first<{ version: number; committed_version: number | null }>()
+  const meta = await env.DB.prepare("SELECT version FROM acl_meta WHERE id = 1").first<{
+    version: number
+  }>()
   const build = await buildVersion(env)
   return json({
     d1Version: meta?.version ?? 0,
-    committedVersion: meta?.committed_version ?? null,
     buildVersion: build,
     pending: build === null || build < (meta?.version ?? 0),
   })

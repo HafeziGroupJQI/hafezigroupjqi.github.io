@@ -4,7 +4,8 @@ import { VAULTS } from "../vaults"
 import { aclPolicy, peopleOf, viewerFor } from "./index"
 
 // GET /api/compute/acl (the compute host, with its host key: src/compute/routes.ts): who may read
-// what, for the Scratchpad's ~/published mounts. The host binds a member's restricted vaults and
+// what, for the Scratchpad's ~/published mounts, and the rules' version, which the host polls to
+// start a rebuild of the members site. The host binds a member's restricted vaults and
 // the folders of rules they may read at their server's start.
 //   {version, vaults: [{repo, prefix}], rules: [{id, pattern}],
 //    members: {<login>: {admin, vaults: [<repo>…], rules: [<rule id>…]}}}
@@ -15,7 +16,8 @@ import { aclPolicy, peopleOf, viewerFor } from "./index"
 const LOGIN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/
 
 export async function computeAcl(url: URL, env: Env): Promise<Response> {
-  const policy = await aclPolicy(env)
+  // The version is acl_meta.version as it is now: the host polls it to rebuild the members site.
+  const policy = await aclPolicy(env, Date.now(), { fresh: true })
   const asked = url.searchParams.get("login")?.trim().toLowerCase() || null
   if (asked !== null && !LOGIN.test(asked))
     return json({ detail: "login must be a GitHub login" }, 422)

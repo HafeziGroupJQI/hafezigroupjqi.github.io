@@ -1,8 +1,8 @@
 -- Access rules for restricted pages (src/acl/): named groups of members (GitHub logins, or People
 -- pages for those without one yet) and rules over vault paths, each a file, a folder ("dir/") or a
 -- glob, whose most specific match decides who reads a path (src/acl/policy.ts). Admins edit them in
--- /admin; every change bumps acl_meta.version and is committed to vault-private as
--- .hafezi/acl.json, which the members site's build reads.
+-- /admin; every change bumps acl_meta.version, which the compute host polls to rebuild the members
+-- site, whose build reads the rules from here.
 CREATE TABLE IF NOT EXISTS acl_groups (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL UNIQUE,     -- group:<name> in a rule
@@ -38,9 +38,7 @@ CREATE TABLE IF NOT EXISTS acl_meta (
   id                INTEGER PRIMARY KEY CHECK (id = 1),
   version           INTEGER NOT NULL,     -- bumped by every change
   next_rule         INTEGER NOT NULL,     -- the number of the next rule's id
-  updated_at        INTEGER,
-  committed_version INTEGER,              -- the last version committed to vault-private
-  committed_at      INTEGER
+  updated_at        INTEGER
 );
 
 -- The first group: the optical RL project (HafeziGroupJQI/vault-optical-rl, mounted at

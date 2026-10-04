@@ -1,5 +1,5 @@
 import { contentIndexFor } from "./acl/content-index"
-import { aclRefs, aclViewer, canSee, deny } from "./acl/index"
+import { aclRefs, aclViewer, canSee, deny, scrubLinks } from "./acl/index"
 import { adminRoutes } from "./admin/routes"
 import { announcementRoutes } from "./announcements"
 import { type Auditor, audit, auditor, isAdmin } from "./audit"
@@ -362,6 +362,12 @@ export function createHandler(
         request.headers.get("accept"),
       )
       if (page) recordView(env, ctx, session.login, page)
+      // A page's links to restricted pages it may not read, and blocks of them (folder rows,
+      // transclusions the build marked data-acl), from the rules as they are now.
+      if (asset.ok && !viewer.open && /^text\/html/i.test(asset.headers.get("content-type") ?? ""))
+        return withPrivateHeaders(
+          scrubLinks(asset, viewer, await aclRefs(env), decoded, env.PUBLIC_SITE_URL),
+        )
       return withPrivateHeaders(asset, { store: isHashedAsset(sitePath) })
     }
     const docPath = decoded.replace(/^\//, "")

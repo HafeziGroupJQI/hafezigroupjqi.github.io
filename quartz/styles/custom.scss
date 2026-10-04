@@ -2791,6 +2791,11 @@ a.device-card:hover {
 .admin-console .table-scroll {
   overflow-x: auto;
 }
+// A link to a restricted page the member can't read, as the Worker leaves it (worker/src/acl/).
+.acl-hidden {
+  color: var(--c-muted, #555);
+  font-style: italic;
+}
 .admin-console .usage-table input {
   width: 9ch;
   padding: 4px 6px;

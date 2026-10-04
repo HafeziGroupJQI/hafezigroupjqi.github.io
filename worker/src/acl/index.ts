@@ -365,3 +365,47 @@ export async function canReadSitePath(
   if (viewer.open) return true
   return canSee(viewer, await aclRefs(env), sitePath)
 }
+
+/** What a link to a restricted page becomes for a member who can't read it. */
+export const HIDDEN_LINK = '<span class="acl-hidden">restricted page</span>'
+
+/**
+ * A page as a member may see it: each link to a page they can't read is a plain "restricted page",
+ * and each element the build marked as showing a restricted page (data-acl="<rule>": folder rows,
+ * transclusions, list items) whose rule they can't read is gone. HTMLRewriter streams it.
+ */
+export function scrubLinks(
+  page: Response,
+  viewer: AclViewer,
+  refs: AclRefs,
+  sitePath: string,
+  siteUrl: string,
+): Response {
+  const base = new URL(sitePath, "https://members.invalid")
+  const site = new URL(siteUrl).origin
+  return new HTMLRewriter()
+    .on("a[href]", {
+      element(link) {
+        let target: URL
+        try {
+          target = new URL(link.getAttribute("href")!, base)
+        } catch {
+          return
+        }
+        if (target.origin !== base.origin && target.origin !== site) return
+        let path: string
+        try {
+          path = decodeURIComponent(target.pathname)
+        } catch {
+          return
+        }
+        if (!canSee(viewer, refs, path)) link.replace(HIDDEN_LINK, { html: true })
+      },
+    })
+    .on("[data-acl]", {
+      element(block) {
+        if (!viewer.canReadRule(block.getAttribute("data-acl") ?? "")) block.remove()
+      },
+    })
+    .transform(page)
+}

@@ -766,7 +766,7 @@ export function mountAdmin(root, { api, session }) {
     })
 
     panel.append(
-      banner,
+      ...present(banner),
       principalList,
       peopleList,
       pathList,

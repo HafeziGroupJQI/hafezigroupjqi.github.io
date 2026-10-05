@@ -18,13 +18,22 @@ test("members keep public navigation and gain native resource and tool menus", (
   assert.ok(resources.children?.some((item) => item.href === "/resources/equipment/"))
   // The Wolfram Language guide is part of Code, not an entry of its own.
   assert.ok(!resources.children?.some((item) => /wolfram/i.test(item.label)))
-  // Top-level member links beside the menus.
+  // Members' links are menus only (Activity, Resources, Tools), so they fit one row of the header.
   assert.deepEqual(
-    items.filter((item) => item.member && item.slug).map((item) => [item.label, item.slug]),
+    items.filter((item) => item.member).map((item) => [item.label, Boolean(item.children)]),
     [
-      ["Recently modified", "recent"],
-      ["Leaderboard", "leaderboard"],
-      ["Announcements", "announcements"],
+      ["Activity", true],
+      ["Resources", true],
+      ["Tools", true],
+    ],
+  )
+  const activity = items.find((item) => item.label === "Activity")!
+  assert.deepEqual(
+    activity.children?.map((item) => [item.label, item.href]),
+    [
+      ["Announcements", "/announcements"],
+      ["Leaderboard", "/leaderboard"],
+      ["Recently modified", "/recent"],
     ],
   )
   const tools = items.find((item) => item.label === "Tools")!

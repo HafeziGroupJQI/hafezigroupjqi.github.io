@@ -43,12 +43,18 @@ export function navigation(mode = process.env.SITE_MODE): NavItem[] {
   return mode === "internal"
     ? [
         ...publicNav,
-        // Members only; generated from the public vault's history (tools/recent-changes.mjs).
-        { label: "Recently modified", slug: "recent", member: true },
-        // Members by contributions and their pages' votes and readers, and the top pages.
-        { label: "Leaderboard", slug: "leaderboard", member: true },
-        // Members only: news from the admins (frontend/announcements/).
-        { label: "Announcements", slug: "announcements", member: true },
+        // What members do on the site, one menu so a member's links stay on one row beside
+        // Resources and Tools: news from the admins (frontend/announcements/), the Leaderboard
+        // (contributions, votes and readers) and the changes feed (tools/recent-changes.mjs).
+        {
+          label: "Activity",
+          member: true,
+          children: [
+            { label: "Announcements", href: "/announcements" },
+            { label: "Leaderboard", href: "/leaderboard" },
+            { label: "Recently modified", href: "/recent" },
+          ],
+        },
         {
           label: "Resources",
           menu: "resources",

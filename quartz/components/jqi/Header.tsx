@@ -58,7 +58,12 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
         </div>
         <nav class="site-header__nav" aria-label="Main" aria-hidden="false">
           <ul>
-            {navigation().map((item) => (
+            {navigation().map((item, i, items) => [
+              // Signed in, the desktop header is two rows: the public links, then the member's
+              // menus and Sign out. Hidden with the member entries until the session shows them.
+              item.member && !items[i - 1]?.member ? (
+                <li class="site-header__nav-break" data-member="" aria-hidden="true" hidden />
+              ) : null,
               <li
                 data-member={item.member ? "" : undefined}
                 data-auth={item.auth ?? undefined}
@@ -100,8 +105,8 @@ const JqiHeader: QuartzComponent = ({ fileData, children }: QuartzComponentProps
                     {item.label}
                   </a>
                 )}
-              </li>
-            ))}
+              </li>,
+            ])}
           </ul>
         </nav>
         <div class="site-header__search-slot hidden 1000:block">{children}</div>

@@ -367,7 +367,11 @@ export async function changeRoutes(
     where.push("login = ?")
     binds.push(login)
   }
-  const repos = oneOf(query.get("repo"), REPOS, "repo")
+  // "vault-private" is the private vault as members see it: with the restricted vaults mounted in
+  // it (worker/vaults.json), whose rows the access rules then keep to their readers.
+  const repos = oneOf(query.get("repo"), REPOS, "repo")?.flatMap((repo) =>
+    repo === "vault-private" ? REPOS.filter((name) => name !== "vault") : [repo],
+  )
   if (repos) {
     where.push(`repo IN (${repos.map(() => "?").join(", ")})`)
     binds.push(...repos)

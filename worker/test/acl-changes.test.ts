@@ -83,6 +83,9 @@ describe("restricted changes in the activity feed", () => {
       next: null,
     })
     expect((await feed("outsider", "?repo=vault-optical-rl")).changes).toEqual([])
+    expect((await feed("outsider", "?repo=vault-private")).changes.map((c) => c.path)).toEqual([
+      "notes/meeting.md",
+    ])
   })
 
   it("are there for the group and admins", async () => {
@@ -92,6 +95,14 @@ describe("restricted changes in the activity feed", () => {
     ] as const) {
       const { changes } = await feed(login, "", role)
       expect(changes).toHaveLength(5)
+      // The page's "Private vault" filter takes in the vaults mounted in it.
+      const private_ = (await feed(login, "?repo=vault-private", role)).changes
+      expect(private_.map((c) => c.repo).sort()).toEqual([
+        "vault-optical-rl",
+        "vault-private",
+        "vault-private",
+        "vault-private",
+      ])
       expect(changes.find((c) => c.repo === "vault-optical-rl").commit.url).toBe(
         `https://github.com/HafeziGroupJQI/vault-optical-rl/commit/${COMMIT}`,
       )

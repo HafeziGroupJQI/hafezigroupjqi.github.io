@@ -19,15 +19,17 @@ out of the way.
 ## Rebuild triggers
 
 ```
-vault push ───────(validate)──┬─► hafezigroupjqi.github.io: deploy.yml ─► GitHub Pages
-                              │        └─ dispatch website-updated ─┐
-vault-private push (validate) ┼──────────────────────────────────────┼─► members-site: deploy.yml
-website push ─────────────────┘  (vault-updated, vault-private-updated, website-updated,
-                                  daily schedule, manual) ─► build:members ─► wrangler deploy
+website push ─────────────► hafezigroupjqi.github.io: deploy.yml ─► GitHub Pages
+compute host (hafezi-dispatch, every 2 min) watches main of the website, vault,
+vault-private and each restricted vault, and the Worker's access rules version:
+  vault moved ─────────────► hafezigroupjqi.github.io: deploy.yml (workflow_dispatch)
+  any of them moved ───────► members-site: deploy.yml (workflow_dispatch) ─► build:members ─► wrangler deploy
+plus each workflow's daily schedule and manual runs
 ```
 
-Each dispatch uses the `MEMBERS_DISPATCH_TOKEN` secret (contents: write on `members-site`);
-the members-site workflow itself is kept in `worker/ci/members-site-deploy.yml`.
+The dispatcher's token (Actions only, on the two site repositories) lives on the compute host,
+never in a repository members can push to; the members-site workflow itself is kept in
+`worker/ci/members-site-deploy.yml`.
 
 ## How it fits together
 

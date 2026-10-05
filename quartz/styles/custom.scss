@@ -1010,6 +1010,14 @@ article.popover-hint > *:first-child {
   }
 }
 @media (min-width: 1200px) {
+  /* A signed-in member's links take two or three rows at these widths: the header grows with them
+     rather than clipping the first row above the page and running the last into the border. */
+  .site-header__inner {
+    height: auto;
+    min-height: 96px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
   .site-header__mobile-controls {
     display: none;
   }

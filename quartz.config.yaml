@@ -58,7 +58,14 @@ plugins:
         light: github-light
         dark: github-dark
       keepBackground: false
+      # Its copy button read each block once, with innerText, and copied nothing in Safari for a block
+      # inside a closed <details>; quartz/plugins/local/code-blocks replaces it.
+      clipboard: false
     order: 20
+  # The copy button for code blocks, and a member's choice to wrap their long lines (/settings).
+  - source: "./quartz/plugins/local/code-blocks"
+    enabled: true
+    order: 21
   - source: "@quartz-community/obsidian-flavored-markdown"
     enabled: true
     options:

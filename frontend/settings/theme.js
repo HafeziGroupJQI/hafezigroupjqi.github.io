@@ -3,7 +3,7 @@
 // signed-out visitors keep the site's own look. Pointing at a theme shows it on the whole page;
 // choosing it saves it. The themes are tools/themes/'s, the copy in the browser frontend/theme/'s.
 import { h } from "../dashboard/dom.js"
-import { DEFAULT_PREFS, applyTheme, readCache, resolve } from "../theme/cache.js"
+import { DEFAULT_PREFS, applyCodeWrap, applyTheme, readCache, resolve } from "../theme/cache.js"
 import { remember, themeData } from "../theme/sync.js"
 import { MODES, MORE, groups, matches, slotThemes, summary } from "./theme-model.js"
 
@@ -178,6 +178,29 @@ export async function showAppearance(section, api) {
     ),
   )
 
+  const wrap = h("input", {
+    type: "checkbox",
+    id: "theme-wrap",
+    onchange: (event) => {
+      applyCodeWrap(document.documentElement, event.target.checked)
+      save({ wrap: event.target.checked })
+    },
+  })
+  const wrapRow = h(
+    "div",
+    { class: "theme-figures" },
+    wrap,
+    h(
+      "label",
+      { for: "theme-wrap" },
+      h("strong", { text: "Wrap long lines in code blocks" }),
+      h("span", {
+        class: "muted",
+        text: " Long lines continue on the next line instead of scrolling sideways. Copying a block still copies its lines exactly as written.",
+      }),
+    ),
+  )
+
   const search = h("input", {
     type: "search",
     class: "theme-search",
@@ -254,6 +277,7 @@ export async function showAppearance(section, api) {
   function render() {
     for (const input of modes.querySelectorAll("input")) input.checked = input.value === prefs.mode
     figures.checked = prefs.figures
+    wrap.checked = prefs.wrap !== false
     for (const { slot, cards } of pickers)
       for (const { theme, card, input } of cards) {
         const chosen = prefs[slot] === theme.id
@@ -276,7 +300,7 @@ export async function showAppearance(section, api) {
     }),
     modes,
     said,
-    h("div", { class: "theme-preview" }, sample(), figuresRow),
+    h("div", { class: "theme-preview" }, sample(), figuresRow, wrapRow),
     search,
     ...pickers.map(({ picker }) => picker),
     status,

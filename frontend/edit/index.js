@@ -119,7 +119,7 @@ function previewFrame() {
 
 // The member's theme on the preview's page as on this one: its attributes and its tokens (set
 // inline on <html>).
-const THEME_ATTRIBUTES = ["saved-theme", "data-palette", "data-figures", "style"]
+const THEME_ATTRIBUTES = ["saved-theme", "data-palette", "data-figures", "data-code-wrap", "style"]
 const themeAttributes = () =>
   THEME_ATTRIBUTES.map((name) => [name, document.documentElement.getAttribute(name)])
     .filter(([, value]) => value !== null)

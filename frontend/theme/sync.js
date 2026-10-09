@@ -9,6 +9,7 @@ import {
   SYNC_EVERY,
   SYNC_KEY,
   THEME_KEY,
+  applyCodeWrap,
   applyTheme,
   buildCache,
   readCache,
@@ -30,6 +31,7 @@ export const currentTheme = () => resolve(readCache(localStorage), deviceDark())
 /** Puts a copy's theme on the page and tells everything that draws in the theme's colors. */
 export function show(cache) {
   applyTheme(document.documentElement, resolve(cache, deviceDark()), cache?.figures !== false)
+  applyCodeWrap(document.documentElement, cache ? cache.wrap !== false : null)
   const theme = document.documentElement.getAttribute("saved-theme") === "dark" ? "dark" : "light"
   document.dispatchEvent(new CustomEvent("themechange", { detail: { theme } }))
 }

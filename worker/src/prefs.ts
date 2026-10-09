@@ -4,7 +4,8 @@ import type { Env } from "./env"
 import { HttpError, json, readJson } from "./http"
 import type { Session } from "./session"
 
-// A member's own settings for how the members site looks (D1 member_prefs, migration 0016), read
+// A member's own settings for how the members site looks (D1 member_prefs, migrations 0016 and
+// 0021), read
 // and saved from /settings (frontend/settings/theme.js) and kept in the browser for the first
 // paint (frontend/theme/). GET /api/prefs answers the defaults for a member who never saved any.
 // The theme ids are the site's (tools/themes/); the Worker checks only their shape, and a browser
@@ -20,6 +21,8 @@ export interface ThemePrefs {
   dark: string
   /** Figures drawn on white are matched to a dark theme. */
   figures: boolean
+  /** Long lines in code blocks wrap instead of scrolling sideways. */
+  wrap: boolean
 }
 
 export const DEFAULT_THEME: ThemePrefs = {
@@ -27,6 +30,7 @@ export const DEFAULT_THEME: ThemePrefs = {
   light: "default",
   dark: "default-dark",
   figures: true,
+  wrap: true,
 }
 
 const MODES: ThemeMode[] = ["light", "dark", "system"]
@@ -37,6 +41,7 @@ interface Row {
   theme_light: string
   theme_dark: string
   figures: number
+  code_wrap: number
   updated_at: number
 }
 
@@ -45,7 +50,7 @@ export async function readPrefs(
   login: string,
 ): Promise<{ theme: ThemePrefs; updated_at: number | null }> {
   const row = await env.DB.prepare(
-    "SELECT theme_mode, theme_light, theme_dark, figures, updated_at FROM member_prefs WHERE login = ?",
+    "SELECT theme_mode, theme_light, theme_dark, figures, code_wrap, updated_at FROM member_prefs WHERE login = ?",
   )
     .bind(login)
     .first<Row>()
@@ -56,6 +61,7 @@ export async function readPrefs(
       light: row.theme_light,
       dark: row.theme_dark,
       figures: row.figures === 1,
+      wrap: row.code_wrap === 1,
     },
     updated_at: row.updated_at,
   }
@@ -80,11 +86,11 @@ export function mergeTheme(current: ThemePrefs, sent: unknown): ThemePrefs {
         throw new HttpError(400, `${key} must be a theme id`)
       next[key] = theme[key]
     }
-  if (theme.figures !== undefined) {
-    if (typeof theme.figures !== "boolean")
-      throw new HttpError(400, "figures must be true or false")
-    next.figures = theme.figures
-  }
+  for (const key of ["figures", "wrap"] as const)
+    if (theme[key] !== undefined) {
+      if (typeof theme[key] !== "boolean") throw new HttpError(400, `${key} must be true or false`)
+      next[key] = theme[key]
+    }
   return next
 }
 
@@ -103,13 +109,21 @@ export async function prefsRoutes(
   const theme = mergeTheme((await readPrefs(env, session.login)).theme, body.theme)
   const now = Date.now()
   await env.DB.prepare(
-    `INSERT INTO member_prefs (login, theme_mode, theme_light, theme_dark, figures, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO member_prefs (login, theme_mode, theme_light, theme_dark, figures, code_wrap, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (login) DO UPDATE SET theme_mode = excluded.theme_mode,
        theme_light = excluded.theme_light, theme_dark = excluded.theme_dark,
-       figures = excluded.figures, updated_at = excluded.updated_at`,
+       figures = excluded.figures, code_wrap = excluded.code_wrap, updated_at = excluded.updated_at`,
   )
-    .bind(session.login, theme.mode, theme.light, theme.dark, theme.figures ? 1 : 0, now)
+    .bind(
+      session.login,
+      theme.mode,
+      theme.light,
+      theme.dark,
+      theme.figures ? 1 : 0,
+      theme.wrap ? 1 : 0,
+      now,
+    )
     .run()
   record("prefs.theme", null, { ...theme })
   return json({ theme, updated_at: now })

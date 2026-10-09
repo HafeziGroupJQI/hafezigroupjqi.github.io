@@ -5218,5 +5218,19 @@ dialog.page-history {
 @include meta.load-css("themes");
 @include meta.load-css("figures");
 
+// ---- code blocks: a member's choice to wrap long lines (/settings, worker/src/prefs.ts `wrap`) ----
+// frontend/theme/ and the head script (quartz/components/jqi/themeBootstrap.ts) put
+// data-code-wrap="on" or "off" on <html> for a signed-in member; without it (signed out, the public
+// site) code scrolls sideways as before. Quartz lays a block out as a grid of line spans
+// (quartz/styles/base.scss), so the column must be allowed to shrink for the lines to wrap.
+html[data-code-wrap="on"] pre > code {
+  grid-template-columns: minmax(0, 1fr);
+}
+html[data-code-wrap="on"] pre > code,
+html[data-code-wrap="on"] pre > code > [data-line] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 // Printing and PDFs: quartz/styles/print.scss, last so it wins ties with everything above.
 @include meta.load-css("print");

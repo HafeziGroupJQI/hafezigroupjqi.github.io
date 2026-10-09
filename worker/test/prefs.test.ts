@@ -24,6 +24,7 @@ describe("member preferences (/api/prefs)", () => {
       light: "default",
       dark: "default-dark",
       figures: true,
+      wrap: true,
     })
   })
 
@@ -36,6 +37,7 @@ describe("member preferences (/api/prefs)", () => {
       light: "default",
       dark: "catppuccin-mocha",
       figures: false,
+      wrap: true,
     })
     expect(typeof saved.body.updated_at).toBe("number")
     const elsewhere = await as("Ada")
@@ -53,6 +55,7 @@ describe("member preferences (/api/prefs)", () => {
       light: "catppuccin-latte",
       dark: "rose-pine-moon",
       figures: true,
+      wrap: true,
     })
   })
 
@@ -66,6 +69,8 @@ describe("member preferences (/api/prefs)", () => {
       { light: "a".repeat(65) },
       { dark: "../x" },
       { figures: "yes" },
+      { wrap: 1 },
+      { wrap: "off" },
       { accent: "#fff" },
       "dark",
       null,
@@ -96,7 +101,19 @@ describe("member preferences (/api/prefs)", () => {
       light: "default",
       dark: "dracula",
       figures: true,
+      wrap: true,
     })
+  })
+
+  it("keeps a member's choice to let code blocks scroll instead of wrap", async () => {
+    const ada = await as("ada")
+    const saved = await put(ada, { wrap: false })
+    expect(saved.status).toBe(200)
+    expect(saved.body.theme).toEqual({ ...DEFAULT_THEME, wrap: false })
+    // A later change to something else leaves the choice as it was.
+    expect((await put(ada, { mode: "dark" })).body.theme.wrap).toBe(false)
+    expect((await ada.json("/api/prefs")).body.theme.wrap).toBe(false)
+    expect((await put(ada, { wrap: true })).body.theme.wrap).toBe(true)
   })
 
   it("merges a partial theme and names what it refuses", () => {

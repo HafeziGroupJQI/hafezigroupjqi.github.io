@@ -5,6 +5,7 @@ import {
   DEFAULT_PREFS,
   SYNC_KEY,
   THEME_KEY,
+  applyCodeWrap,
   applyTheme,
   buildCache,
   clearCache,
@@ -147,4 +148,33 @@ test("sign-in puts a saved theme in the copy, and keeps nothing for the site's l
   await primeTheme("https://api.test", "tok", { storage: plain, fetcher: fetcher(DEFAULT_PREFS) })
   assert.equal(calls.length, 1)
   assert.equal(plain.items.size, 0)
+})
+
+test("a copy carries the member's choice of wrapping code blocks, on unless they turned it off", () => {
+  assert.equal(DEFAULT_PREFS.wrap, true)
+  const on = buildCache({ ...DEFAULT_PREFS }, data)
+  assert.equal(on.wrap, true)
+  const off = buildCache({ ...DEFAULT_PREFS, wrap: false }, data)
+  assert.equal(off.wrap, false)
+  assert.equal(off.prefs.wrap, false)
+  // A copy from before the setting existed is rebuilt: it no longer matches the saved choice.
+  const old = {
+    prefs: { mode: "light", light: DEFAULT_PREFS.light, dark: DEFAULT_PREFS.dark, figures: true },
+  }
+  assert.ok(!samePrefs(old, { ...DEFAULT_PREFS }))
+  assert.ok(samePrefs(off, { ...DEFAULT_PREFS, wrap: false }))
+  assert.ok(!samePrefs(off, { ...DEFAULT_PREFS }))
+})
+
+test("the wrap choice goes on <html> whatever the theme, and signing out takes it away", () => {
+  const root = element()
+  applyCodeWrap(root, true)
+  assert.equal(root.getAttribute("data-code-wrap"), "on")
+  applyCodeWrap(root, false)
+  assert.equal(root.getAttribute("data-code-wrap"), "off")
+  // The site's own look clears the theme's attributes but not the wrap choice.
+  applyTheme(root, null)
+  assert.equal(root.getAttribute("data-code-wrap"), "off")
+  applyCodeWrap(root, null)
+  assert.equal(root.getAttribute("data-code-wrap"), null)
 })

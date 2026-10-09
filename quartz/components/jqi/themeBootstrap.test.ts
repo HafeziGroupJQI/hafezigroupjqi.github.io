@@ -107,6 +107,28 @@ test("a damaged copy is ignored", () => {
   })
 })
 
+test("a member's copy wraps code blocks unless they chose scrolling, whatever the theme", () => {
+  const saved = (extra = {}) =>
+    cache("light", { prefs: { mode: "light", light: "default", dark: "default-dark" }, ...extra })
+  // The site's own look: no theme is applied, but the wrap choice (on by default) is.
+  assert.deepEqual(run({ "hafezi.signedInUntil": signedIn(), [THEME_KEY]: saved() }), {
+    attributes: { "data-code-wrap": "on" },
+    style: {},
+  })
+  assert.deepEqual(
+    run({ "hafezi.signedInUntil": signedIn(), [THEME_KEY]: saved({ wrap: false }) }).attributes,
+    { "data-code-wrap": "off" },
+  )
+  const dark = run({
+    "hafezi.signedInUntil": signedIn(),
+    [THEME_KEY]: saved({ mode: "dark", wrap: true }),
+  })
+  assert.equal(dark.attributes["data-code-wrap"], "on")
+  assert.equal(dark.attributes["data-palette"], "catppuccin-mocha")
+  // Signed out, nothing: the public site's scrolling.
+  assert.deepEqual(run({ [THEME_KEY]: saved() }), nothing)
+})
+
 test("small enough to inline in every member page", () => {
   assert.ok(themeBootstrap.length < 800, String(themeBootstrap.length))
 })

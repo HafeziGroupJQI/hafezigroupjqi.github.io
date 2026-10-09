@@ -15,6 +15,7 @@ export const DEFAULT_PREFS = {
   light: DEFAULT_LIGHT,
   dark: DEFAULT_DARK,
   figures: true,
+  wrap: true,
 }
 
 const entry = (theme) =>
@@ -39,7 +40,14 @@ export function buildCache(prefs, data) {
     v: data.v,
     mode: ["light", "dark", "system"].includes(prefs.mode) ? prefs.mode : "light",
     figures: prefs.figures !== false,
-    prefs: { mode: prefs.mode, light: prefs.light, dark: prefs.dark, figures: prefs.figures },
+    wrap: prefs.wrap !== false,
+    prefs: {
+      mode: prefs.mode,
+      light: prefs.light,
+      dark: prefs.dark,
+      figures: prefs.figures,
+      wrap: prefs.wrap,
+    },
     light: pick(prefs.light, DEFAULT_LIGHT),
     dark: pick(prefs.dark, DEFAULT_DARK),
   }
@@ -48,7 +56,7 @@ export function buildCache(prefs, data) {
 /** Whether a saved choice is what this copy was built from. */
 export const samePrefs = (cache, prefs) =>
   !!cache?.prefs &&
-  ["mode", "light", "dark", "figures"].every((key) => cache.prefs[key] === prefs[key])
+  ["mode", "light", "dark", "figures", "wrap"].every((key) => cache.prefs[key] === prefs[key])
 
 /** The theme to show now: the dark one when dark mode is on, or on and the device is dark. */
 export function resolve(cache, deviceDark) {
@@ -97,6 +105,16 @@ export function applyTheme(root, theme, figures = true) {
   root.setAttribute("data-figures", figures ? "match" : "keep")
   for (const [token, value] of Object.entries(theme.vars))
     if (/^--[\w-]+$/.test(token)) root.style.setProperty(token, String(value))
+}
+
+/**
+ * Whether long lines in code blocks wrap (data-code-wrap="on") or scroll ("off") for the member, on
+ * <html>; null (no copy: signed out) takes the attribute away, and the site's own scrolling applies.
+ * The CSS is quartz/plugins/local/code-blocks. Independent of the theme: the site's own look wraps too.
+ */
+export function applyCodeWrap(root, wrap) {
+  if (wrap === null || wrap === undefined) root.removeAttribute("data-code-wrap")
+  else root.setAttribute("data-code-wrap", wrap === false ? "off" : "on")
 }
 
 /** The lab's theme message (compute's labextensions, lib/theme.ts): light or dark, and the palette. */
